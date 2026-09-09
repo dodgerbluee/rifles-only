@@ -24,8 +24,8 @@ export type WalkRig = {
   rKnee: THREE.Group;
 };
 
-const EMBER = 0x6a3a28;
-const STONE = 0x3a4a58;
+const EMBER = 0xc44a22;
+const STONE = 0x2f6cad;
 const SKIN = 0xc4a07a;
 const BOOT = 0x1c1814;
 const STEEL = 0x1c1e18;
@@ -40,8 +40,14 @@ export function teamCloth(team: Team) {
 }
 
 export function teamHelm(team: Team) {
-  return team === "ember" ? 0x3a2018 : 0x1c2830;
+  return team === "ember" ? 0x8a280c : 0x163a68;
 }
+
+export function teamTrim(team: Team) {
+  return team === "ember" ? 0xf0a030 : 0x7ec8ff;
+}
+
+export type Stance = "stand" | "crouch" | "prone" | "down";
 
 export function skinFor(id?: number): PawnSkin {
   if (id == null) return "rifle";
@@ -62,6 +68,7 @@ export function buildPawn(root: THREE.Group, team: Team, botId?: number): PawnPa
     if (!m.parent) root.add(m);
   }
   root.userData.body = parts.body;
+  root.userData.bodyRestY = parts.body.position.y;
   root.userData.cloth = parts.cloth;
   root.userData.head = parts.head;
   root.userData.helm = parts.helm;
@@ -94,13 +101,48 @@ export function stepWalk(root: THREE.Group, dist: number, moving: boolean) {
   poseWalk(rig, gait, moving, root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined);
 }
 
+export function poseStance(root: THREE.Group, stance: Stance) {
+  root.userData.stance = stance;
+  const body = root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined;
+  const rest = typeof root.userData.bodyRestY === "number" ? root.userData.bodyRestY : BODY_REST_Y;
+  const rig = root.userData.walk as WalkRig | null | undefined;
+  if (stance === "down") {
+    root.rotation.x = 1.25;
+    return;
+  }
+  if (stance === "prone") {
+    root.rotation.x = 1.08;
+    if (body) body.position.y = rest;
+    if (rig) {
+      rig.lHip.rotation.x = 0.18;
+      rig.rHip.rotation.x = 0.18;
+      rig.lKnee.rotation.x = 0.06;
+      rig.rKnee.rotation.x = 0.06;
+    }
+    return;
+  }
+  root.rotation.x = 0;
+  if (stance === "crouch") {
+    if (body) body.position.y = rest - 0.34;
+    if (rig) {
+      rig.lHip.rotation.x = 0.82 + rig.lHip.rotation.x * 0.28;
+      rig.rHip.rotation.x = 0.82 + rig.rHip.rotation.x * 0.28;
+      rig.lKnee.rotation.x = -1.12 + rig.lKnee.rotation.x * 0.2;
+      rig.rKnee.rotation.x = -1.12 + rig.rKnee.rotation.x * 0.2;
+    }
+  }
+}
+
 function poseWalk(rig: WalkRig, phase: number, moving: boolean, body?: THREE.Mesh) {
+  const root = body?.parent;
+  const stance = root && typeof (root as THREE.Object3D).userData?.stance === "string" ? (root as THREE.Object3D).userData.stance : "stand";
+  if (stance === "prone" || stance === "down") return;
   if (!moving) {
     rig.lHip.rotation.x *= 0.72;
     rig.rHip.rotation.x *= 0.72;
     rig.lKnee.rotation.x *= 0.72;
     rig.rKnee.rotation.x *= 0.72;
-    if (body) body.position.y += (BODY_REST_Y - body.position.y) * 0.35;
+    if (body && stance !== "crouch") body.position.y += (BODY_REST_Y - body.position.y) * 0.35;
     return;
   }
   const s = Math.sin(phase);
@@ -153,47 +195,49 @@ type Kit = {
 
 function kitFor(team: Team, skin: PawnSkin): Kit {
   const ember = team === "ember";
+  const cloth = teamCloth(team);
+  const helm = teamHelm(team);
   if (skin === "rifle") {
     return {
       robot: false,
-      tunic: mat(teamCloth(team), 0.86),
-      pants: mat(ember ? 0x4a2c1e : 0x2c3844, 0.9),
+      tunic: mat(cloth, 0.82),
+      pants: mat(ember ? 0x5a2410 : 0x1a3a58, 0.9),
       flesh: mat(SKIN, 0.72),
       boot: mat(BOOT, 0.92),
-      helm: mat(teamHelm(team), 0.58, 0.18),
+      helm: mat(helm, 0.5, 0.22),
       plate: mat(STEEL, 0.48, 0.35),
     };
   }
   if (skin === "field") {
     return {
       robot: false,
-      tunic: mat(ember ? 0x5a4a32 : 0x3a4840, 0.88),
-      pants: mat(ember ? 0x2a2418 : 0x243038, 0.92),
+      tunic: mat(ember ? 0xb24a18 : 0x2a68a8, 0.86),
+      pants: mat(ember ? 0x3a2010 : 0x1c3048, 0.92),
       flesh: mat(0x8a6a48, 0.74),
       boot: mat(0x2a2018, 0.9),
-      helm: mat(ember ? 0x4a3820 : 0x2a3030, 0.7, 0.08),
+      helm: mat(helm, 0.62, 0.12),
       plate: mat(STEEL, 0.48, 0.35),
     };
   }
   if (skin === "unit") {
     return {
       robot: true,
-      tunic: mat(ember ? 0x6a4030 : 0x3a4a58, 0.42, 0.55),
-      pants: mat(ember ? 0x4a3228 : 0x2c3848, 0.4, 0.5),
-      flesh: mat(ember ? 0x8a7060 : 0x6a7888, 0.35, 0.7),
+      tunic: mat(cloth, 0.38, 0.55),
+      pants: mat(ember ? 0x5a2818 : 0x1c3858, 0.4, 0.5),
+      flesh: mat(ember ? 0x9a6050 : 0x5a88b0, 0.35, 0.7),
       boot: mat(0x1a1c1e, 0.4, 0.45),
-      helm: mat(ember ? 0x3a2218 : 0x1c2830, 0.32, 0.65),
-      plate: mat(ember ? 0x8a5a40 : 0x5a7080, 0.28, 0.72),
+      helm: mat(helm, 0.28, 0.65),
+      plate: mat(ember ? 0xe06028 : 0x4a90d0, 0.28, 0.72),
     };
   }
   return {
     robot: true,
-    tunic: mat(ember ? 0x3a2a24 : 0x2a3238, 0.38, 0.62),
+    tunic: mat(ember ? 0xa83818 : 0x245888, 0.38, 0.62),
     pants: mat(0x1c1e20, 0.36, 0.58),
     flesh: mat(0x4a5054, 0.3, 0.75),
     boot: mat(0x121416, 0.35, 0.5),
-    helm: mat(ember ? 0xc45a28 : 0x6a90b0, 0.25, 0.7),
-    plate: mat(ember ? 0xb04a28 : 0x4a6a88, 0.22, 0.8),
+    helm: mat(ember ? 0xff6a28 : 0x6ab4ff, 0.25, 0.7),
+    plate: mat(ember ? 0xe05020 : 0x3a78c0, 0.22, 0.8),
   };
 }
 
@@ -215,6 +259,11 @@ function limbsPawn(team: Team, skin: PawnSkin): PawnParts {
 
   const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 8), k.robot ? k.plate : mat(0x2a2218, 0.9));
   belt.position.y = 0.98;
+
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.46, 0.05), mat(teamTrim(team), 0.45, 0.2));
+  sash.position.set(team === "ember" ? 0.16 : -0.16, 1.22, 0.04);
+  sash.rotation.z = team === "ember" ? -0.28 : 0.28;
+  cloth.push(sash);
 
   const lLeg = makeLeg(-1, k, extras);
   const rLeg = makeLeg(1, k, extras);
@@ -240,7 +289,7 @@ function limbsPawn(team: Team, skin: PawnSkin): PawnParts {
   head.position.y = 1.62;
 
   const helm = k.robot
-    ? robotHelm(k, skin)
+    ? robotHelm(k, skin, team)
     : skin === "field"
       ? fieldCap(k)
       : bowlHelm(k);
@@ -283,16 +332,17 @@ function fieldCap(k: Kit) {
   return dome;
 }
 
-function robotHelm(k: Kit, skin: PawnSkin) {
+function robotHelm(k: Kit, skin: PawnSkin, team: Team) {
   const helm = new THREE.Mesh(
     skin === "frame" ? new THREE.BoxGeometry(0.3, 0.2, 0.26) : new THREE.CylinderGeometry(0.155, 0.175, 0.18, 8),
     k.helm,
   );
+  const ember = team === "ember";
   const visor = new THREE.Mesh(
     new THREE.BoxGeometry(0.2, 0.05, 0.05),
     new THREE.MeshStandardMaterial({
-      color: skin === "frame" ? 0x7ad0ff : 0xff6a32,
-      emissive: skin === "frame" ? 0x226688 : 0x5a1808,
+      color: ember ? 0xff6a32 : 0x7ad0ff,
+      emissive: ember ? 0x5a1808 : 0x226688,
       emissiveIntensity: 0.85,
       roughness: 0.25,
       metalness: 0.4,
@@ -343,8 +393,8 @@ function robotBits(k: Kit, skin: PawnSkin, team: Team) {
     const lens = new THREE.Mesh(
       new THREE.CylinderGeometry(0.035, 0.035, 0.04, 8),
       new THREE.MeshStandardMaterial({
-        color: 0xff6a32,
-        emissive: 0x5a1808,
+        color: team === "ember" ? 0xff6a32 : 0x7ad0ff,
+        emissive: team === "ember" ? 0x5a1808 : 0x226688,
         emissiveIntensity: 0.7,
         metalness: 0.4,
         roughness: 0.3,

@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import {
   addBotSlot,
+  concludeBestPlay,
   createMatch,
   dropWire,
   markDead,
@@ -29,6 +30,7 @@ import {
   spawnBot,
   updateBots,
   type Bot,
+  type BotSkill,
 } from "./bots";
 import { pickBodyVictim, meleeTarget, remoteTargets, type LiveBody } from "./combat";
 import type { ClientEvent, KillFeedItem, Pawn, PlayerInput, Snapshot } from "./net";
@@ -49,7 +51,9 @@ import {
   clearNades,
   drainPops,
   dropSmoke,
+  fullNades,
   smokeBlocksLos,
+  spendNade,
   throwSmoke,
   updateSmoke,
   type NadeKind,
@@ -96,6 +100,8 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
   let seenRound = match.round;
   let friendlyFire = false;
   let oneShot = false;
+  let skipRecap = false;
+  let botSkill: BotSkill = "normal";
   const roundKills: KillFeedItem[] = [];
   const pendingHeads: number[] = [];
 
@@ -117,6 +123,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       r.root.position.copy(spawnAt);
       r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
       r.root.visible = true;
+      r.nades = fullNades();
       restorePawnHead(r.root);
     }
   }
@@ -407,6 +414,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         botShoot,
         smokeBlocksLos,
         [],
+        botSkill,
       ).cutting;
 
       for (const r of remotes.values()) {
@@ -430,6 +438,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         spawnPlant: world.plantSpawns[2]!,
         onDetonate: detonateWire,
         botCutting,
+        skipRecap,
       });
 
       if (match.round !== seenRound) {
@@ -473,9 +482,10 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       if (event.kind === "throwSmoke") {
         if (!r?.alive) return;
         if (time - r.lastThrow < 0.45) return;
+        const kind = event.nade ?? "smoke";
+        if (!spendNade(r.nades, kind)) return;
         r.lastThrow = time;
         const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
-        const kind = event.nade ?? "smoke";
         if ((event.power ?? 0.55) <= 0) dropSmoke(scene, origin, kind, r.slotId);
         else throwSmoke(scene, origin, new THREE.Vector3(event.dx, event.dy, event.dz), event.power, kind, r.slotId);
         return;
@@ -505,6 +515,14 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       }
       if (event.kind === "takeover") {
         takeoverPeer(scene, match, bots, remotes, peerId, event.slotId);
+        return;
+      }
+      if (event.kind === "rules") {
+        if (event.highlights != null) skipRecap = !event.highlights;
+        if (event.friendlyFire != null) friendlyFire = event.friendlyFire;
+        if (event.oneShot != null) oneShot = event.oneShot;
+        if (event.botSkill) botSkill = event.botSkill;
+        if (skipRecap && match.phase === "bestplay") concludeBestPlay(match);
         return;
       }
       if (event.kind === "shot") {
@@ -570,6 +588,9 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
             alive: r.alive,
             weapon: r.weapon,
             ads: r.ads,
+            crouch: r.crouch,
+            prone: r.prone,
+            nades: { ...r.nades },
             kills: line(r.homeId).kills,
             assists: line(r.homeId).assists,
             deaths: line(r.homeId).deaths,
@@ -592,6 +613,9 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
             alive: b.hp > 0,
             weapon: "kar",
             ads: b.aim,
+            crouch: false,
+            prone: false,
+            nades: { ...b.nades },
             kills: line(b.id).kills,
             assists: line(b.id).assists,
             deaths: line(b.id).deaths,

@@ -5,6 +5,7 @@ import {
   type Team,
 } from "./match";
 import { TUNING_FIELDS, tuning } from "./tuning";
+import type { BotSkill } from "./bots";
 
 export const rules = {
   godmode: false,
@@ -12,6 +13,8 @@ export const rules = {
   highlights: true,
   oneShot: false,
   classicPawn: false,
+  minimapEnemies: true,
+  botSkill: "normal" as BotSkill,
 };
 
 export function bindAdmin(opts: {
@@ -22,12 +25,15 @@ export function bindAdmin(opts: {
   onKick: (slot: Slot) => void;
   onCow: (slot: Slot) => void;
   onPawnStyle?: (classic: boolean) => void;
+  onRules?: () => void;
 }) {
   const panel = document.querySelector<HTMLElement>("#admin")!;
   const god = document.querySelector<HTMLInputElement>("#admin-god")!;
   const ff = document.querySelector<HTMLInputElement>("#admin-ff")!;
   const hl = document.querySelector<HTMLInputElement>("#admin-hl")!;
   const one = document.querySelector<HTMLInputElement>("#admin-oneshot")!;
+  const radar = document.querySelector<HTMLInputElement>("#admin-radar");
+  const skill = document.querySelector<HTMLSelectElement>("#admin-bot-skill");
   const classicPawn = document.querySelector<HTMLInputElement>("#admin-classic-pawn");
   const emberN = document.querySelector("#admin-ember")!;
   const stoneN = document.querySelector("#admin-stone")!;
@@ -59,11 +65,15 @@ export function bindAdmin(opts: {
 
   const selected = (): Slot | undefined => opts.match.slots.find((s) => String(s.id) === pick.value);
 
+  const pushRules = () => opts.onRules?.();
+
   const sync = () => {
     god.checked = rules.godmode;
     ff.checked = rules.friendlyFire;
     hl.checked = rules.highlights;
     one.checked = rules.oneShot;
+    if (radar) radar.checked = rules.minimapEnemies;
+    if (skill) skill.value = rules.botSkill;
     if (classicPawn) classicPawn.checked = rules.classicPawn;
     emberN.textContent = String(teamBotCount(opts.match, "ember"));
     stoneN.textContent = String(teamBotCount(opts.match, "stone"));
@@ -83,12 +93,22 @@ export function bindAdmin(opts: {
   });
   ff.addEventListener("change", () => {
     rules.friendlyFire = ff.checked;
+    pushRules();
   });
   hl.addEventListener("change", () => {
     rules.highlights = hl.checked;
+    pushRules();
   });
   one.addEventListener("change", () => {
     rules.oneShot = one.checked;
+    pushRules();
+  });
+  radar?.addEventListener("change", () => {
+    rules.minimapEnemies = radar.checked;
+  });
+  skill?.addEventListener("change", () => {
+    rules.botSkill = skill.value as BotSkill;
+    pushRules();
   });
   classicPawn?.addEventListener("change", () => {
     opts.onPawnStyle?.(classicPawn.checked);

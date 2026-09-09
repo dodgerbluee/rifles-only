@@ -12,6 +12,7 @@ import {
 } from "./match";
 import { teamCloth, setPawnCloth, buildPawn, stepWalkFromPos } from "./pawn";
 import { tuning } from "./tuning";
+import { fullNades, type NadeBag } from "./smoke";
 
 export type Bot = {
   id: number;
@@ -45,6 +46,15 @@ export type Bot = {
   lastZ: number;
   seeT: number;
   stuckT: number;
+  nades: NadeBag;
+};
+
+export type BotSkill = "easy" | "normal" | "hard";
+
+const BOT_AIM: Record<BotSkill, { turn: number; see: number; spread: number; fireMul: number; err: number }> = {
+  easy: { turn: 1.55, see: 1.05, spread: 0.32, fireMul: 1.45, err: 0.32 },
+  normal: { turn: 3.2, see: 0.55, spread: 0.16, fireMul: 1, err: 0.2 },
+  hard: { turn: 6.4, see: 0.28, spread: 0.07, fireMul: 0.72, err: 0.12 },
 };
 
 export const HEAD_POP_RATE = 1;
@@ -122,6 +132,7 @@ function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bo
     lastZ: spawn.z,
     seeT: 0,
     stuckT: 0,
+    nades: fullNades(),
   };
 }
 
@@ -197,9 +208,11 @@ export function updateBots(
     z1: number,
   ) => boolean,
   frozenIds: number[] = [],
+  skill: BotSkill = "normal",
 ): { cutting: boolean } {
   const plant = plantingTeam(match);
   const watch = watchingTeam(match);
+  const aim = BOT_AIM[skill] ?? BOT_AIM.normal;
   let cutting = false;
 
   for (const b of bots) {
@@ -241,19 +254,19 @@ export function updateBots(
       const horiz = Math.hypot(dx, dz) || 1;
       b.lookPitch = -Math.atan2(dy, horiz);
       const want = Math.atan2(-dx, -dz);
-      b.yaw = dampAngle(b.yaw, want, dt * 3.2);
-      const interval = 1.05 + (b.id % 5) * 0.18;
+      b.yaw = dampAngle(b.yaw, want, dt * aim.turn);
+      const interval = (1.05 + (b.id % 5) * 0.18) * aim.fireMul;
       const err = angleErr(b.yaw, want);
-      if (b.seeT > 0.55 && err < 0.2 && time - b.lastShot > interval) {
+      if (b.seeT > aim.see && err < aim.err && time - b.lastShot > interval) {
         b.lastShot = time;
         const dir = new THREE.Vector3(
           -Math.sin(b.yaw) * Math.cos(b.lookPitch),
           -Math.sin(b.lookPitch),
           -Math.cos(b.yaw) * Math.cos(b.lookPitch),
         );
-        dir.x += (Math.random() - 0.5) * 0.16;
-        dir.y += (Math.random() - 0.5) * 0.1;
-        dir.z += (Math.random() - 0.5) * 0.16;
+        dir.x += (Math.random() - 0.5) * aim.spread;
+        dir.y += (Math.random() - 0.5) * aim.spread * 0.62;
+        dir.z += (Math.random() - 0.5) * aim.spread;
         dir.normalize();
         onShoot(new THREE.Vector3(b.x, b.y + 1.45, b.z), dir, enemy, b.id);
       }
@@ -426,6 +439,7 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     b.seeT = 0;
     b.stuckT = 0;
     setPawnCloth(b.cloth, teamCloth(b.team));
+    b.nades = fullNades();
   }
 }
 

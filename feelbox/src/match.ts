@@ -249,13 +249,19 @@ export function tickMatch(
     spawnPlant: { x: number; y: number; z: number };
     onDetonate?: (x: number, y: number, z: number) => void;
     botCutting?: boolean;
+    skipRecap?: boolean;
   },
 ) {
   if (m.phase === "settle") {
     m.endT -= dt;
     if (m.endT <= 0) {
       m.phase = "bestplay";
-      m.endT = BESTPLAY_HOLD;
+      if (ctx.skipRecap) {
+        m.endT = 0;
+        concludeBestPlay(m);
+      } else {
+        m.endT = BESTPLAY_HOLD;
+      }
     }
     return;
   }

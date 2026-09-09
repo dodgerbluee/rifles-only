@@ -29,7 +29,9 @@ import {
   applyNadeSnap,
   billowClouds,
   dropSmoke,
+  fullNades,
   nadeColor,
+  NADE_MAX,
   NADE_ORDER,
   smokeBlocksLos,
   smokeCoverage,
@@ -57,7 +59,8 @@ import {
   type Team,
 } from "./match";
 import { bindAdmin, rules } from "./admin";
-import { buildPawn, pawnStyle, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
+import { buildPawn, pawnStyle, poseStance, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
+import { clearPodium, mountPodium, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
   clearTape,
@@ -125,7 +128,6 @@ const RADIUS = 0.32;
 const RELOAD = 1.45;
 const MOUSE = 0.0036;
 const HP_MAX = 100;
-const NADE_MAX: Record<NadeKind, number> = { smoke: 2, frag: 1, stun: 1, flash: 1 };
 const FRAG_R = 6.5;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
@@ -361,6 +363,7 @@ function explodeCow() {
 
 function restartRoom() {
   hidePodium();
+  clearPodium(scene);
   podiumOn = false;
   clearCow();
   resetStats();
@@ -528,6 +531,15 @@ bindAdmin({
     pawnStyle.current = classic ? "classic" : "limbs";
     rebuildPawns();
   },
+  onRules: () => {
+    net.sendEvent({
+      kind: "rules",
+      highlights: rules.highlights,
+      friendlyFire: rules.friendlyFire,
+      oneShot: rules.oneShot,
+      botSkill: rules.botSkill,
+    });
+  },
 });
 
 const camera = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 85);
@@ -559,7 +571,7 @@ const nadeBody = new THREE.Mesh(
   new THREE.MeshStandardMaterial({ color: 0x3a4a32, roughness: 0.55, metalness: 0.2 }),
 );
 nadeView.add(nadeBody);
-nadeView.position.set(0.18, -0.2, -0.4);
+nadeView.position.set(0.18, -0.2, -0.2);
 nadeView.visible = false;
 camera.add(nadeView);
 
@@ -1888,7 +1900,7 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
       g.visible = id !== mvpId;
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
-      g.rotation.x = p.alive ? 0 : 1.25;
+      poseStance(g, p.alive ? "stand" : "down");
       stepWalkFromPos(g, p.x, p.z, p.alive);
     }
   } else {
@@ -1903,7 +1915,7 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
       b.root.visible = b.id !== mvpId;
       b.root.position.set(p.x, p.y, p.z);
       b.root.rotation.y = p.yaw;
-      b.root.rotation.x = p.alive ? 0 : 1.25;
+      poseStance(b.root, p.alive ? "stand" : "down");
       stepWalkFromPos(b.root, p.x, p.z, p.alive);
       restoreHead(b);
       setPawnCloth(b.cloth, p.alive ? teamCloth(b.team) : 0x2a3224);
@@ -1914,7 +1926,7 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
       r.root.visible = r.slotId !== mvpId;
       r.root.position.set(p.x, p.y, p.z);
       r.root.rotation.y = p.yaw;
-      r.root.rotation.x = p.alive ? 0 : 1.25;
+      poseStance(r.root, p.alive ? "stand" : "down");
       stepWalkFromPos(r.root, p.x, p.z, p.alive);
     }
   }
@@ -1923,7 +1935,7 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
     ghost.visible = true;
     ghost.position.set(you.x, you.y, you.z);
     ghost.rotation.y = you.yaw;
-    ghost.rotation.x = you.alive ? 0 : 1.25;
+    poseStance(ghost, you.alive ? "stand" : "down");
     stepWalkFromPos(ghost, you.x, you.z, you.alive);
   } else ghost.visible = false;
   const cam = poses.get(mvpId);
@@ -1952,15 +1964,15 @@ function applyReelHands(cam: Pose) {
   const g = kind === "mosin" ? mosin.root : kar.root;
   g.position.copy(rest);
   g.position.z += cam.kick;
-  g.rotation.x = (cam.ads ? 0.018 : 0) - cam.punchP * 0.04;
-  g.rotation.y = 0;
-  g.rotation.z = cam.punchY * 0.05;
+  g.rotation.x = (cam.ads ? 0.018 : 0.1) - cam.punchP * 0.04;
+  g.rotation.y = cam.ads ? 0 : 0.22;
+  g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
   const hold = liveRifleFor(kind);
   poseBolt(hold, 0);
   hold.root.updateMatrixWorld(true);
   if (isNade(cam.weapon as Weapon) && !bashing) {
     nadeView.rotation.set(0, 0, 0);
-    nadeView.position.set(0.18, -0.2, -0.4);
+    nadeView.position.set(0.18, -0.2, -0.2);
   }
   kar.flash.visible = false;
   mosin.flash.visible = false;
@@ -2131,6 +2143,7 @@ function roundSpawn() {
     r.root.position.copy(spawnAt);
     r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
     r.root.visible = true;
+    r.nades = fullNades();
     restorePawnHead(r.root);
   }
   clearTape(tape);
@@ -2557,6 +2570,7 @@ function frame(now: number) {
       botShoot,
       smokeBlocksLos,
       skipAi(),
+      rules.botSkill,
     ).cutting;
   }
 
@@ -2576,6 +2590,7 @@ function frame(now: number) {
     spawnPlant: world.plantSpawns[2]!,
     onDetonate: detonateWire,
     botCutting,
+    skipRecap: !rules.highlights,
   });
   }
 
@@ -2640,10 +2655,8 @@ function frame(now: number) {
   seenPhase = match.phase;
 
   if (match.phase === "bestplay") {
-    if (!rules.highlights) {
-      if (reel) stopReel();
-      else if (!isClient) concludeBestPlay(match);
-    } else if (!reelPlayed) tickReel(dt);
+    if (rules.highlights && !reelPlayed) tickReel(dt);
+    else if (reel) stopReel();
   } else if (reel) {
     stopReel();
   }
@@ -2668,7 +2681,9 @@ function frame(now: number) {
       loadMap(snapMap as MapId);
     }
     if (!reel) {
-      syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt);
+      syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt, {
+        forceSnap: lastSnap.round !== seenRound,
+      });
       for (const p of lastSnap.pawns) {
         if ((p.netId ?? 0) === net.peerId) continue;
         const g = clientPawns.get(p.id);
@@ -2693,6 +2708,17 @@ function frame(now: number) {
       }
       if (match.phase === "live" || match.phase === "planted") recordSnap();
       if (me) {
+        if (me.nades) {
+          if (!alive && me.alive) nadeBag = { ...me.nades };
+          else {
+            nadeBag = {
+              smoke: Math.min(nadeBag.smoke, me.nades.smoke),
+              frag: Math.min(nadeBag.frag, me.nades.frag),
+              stun: Math.min(nadeBag.stun, me.nades.stun),
+              flash: Math.min(nadeBag.flash, me.nades.flash),
+            };
+          }
+        }
         if (me.hp < hp) {
           lastDamage = `−${Math.round(hp - me.hp)}`;
           hurtEl.style.opacity = "0.55";
@@ -2800,7 +2826,8 @@ function frame(now: number) {
       const radius = span * 0.3;
       const ang = time * 0.12;
       camera.position.set(cx + Math.sin(ang) * radius, 40, cz + Math.cos(ang) * radius);
-      camera.lookAt(cx, 1.1, cz);
+      const look = podiumLookAt(world);
+      camera.lookAt(look.x, look.y, look.z);
       fov += (62 - fov) * Math.min(1, dt * 4);
       camera.fov = fov;
       camera.updateProjectionMatrix();
@@ -2809,13 +2836,7 @@ function frame(now: number) {
       nadeView.visible = false;
       arm.root.visible = false;
       setSpec(null);
-      const youTeam = slotById(match, playerId)?.team ?? "ember";
-      setPawnCloth((ghost.userData.cloth as THREE.Mesh[]) ?? [ghost.userData.body], teamCloth(youTeam));
-      ghost.visible = true;
-      ghost.position.set(px, py, pz);
-      ghost.rotation.y = yaw;
-      ghost.rotation.x = alive ? 0 : 1.25;
-      stepWalkFromPos(ghost, px, pz, walking && alive);
+      ghost.visible = false;
       if (!isClient) {
         for (const b of bots) b.root.visible = b.id !== possessId;
         for (const r of remotes.values()) r.root.visible = true;
@@ -2859,16 +2880,16 @@ function frame(now: number) {
         if (throwing) poseThrow(nadeView, throwK, throwDrop);
         else if (isNade(weapon)) {
           nadeView.rotation.x = Math.sin(time * 3) * 0.04;
-          nadeView.position.set(0.18, -0.2, -0.4 - smokeCharge * 0.18);
+          nadeView.position.set(0.18, -0.2, -0.2 - smokeCharge * 0.18);
         }
         const hold = liveRifle();
         const rest = (ads ? hold.adsPos : hold.hipPos).clone();
         const g = hold.root;
         g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
-        g.rotation.x = (ads ? 0.018 : 0) - punchP * 0.04;
-        g.rotation.y = 0;
-        g.rotation.z = punchY * 0.05;
+        g.rotation.x = (ads ? 0.018 : 0.1) - punchP * 0.04;
+        g.rotation.y = ads ? 0 : 0.22;
+        g.rotation.z = (ads ? 0 : 0.06) + punchY * 0.05;
         const reloadK = reloading > 0 ? 1 - reloading / RELOAD : 0;
         if (reloading > 0 && weapon === "rifle") {
           if (!ads) applyReloadPose(g, rifleKind, reloadK);
@@ -3000,11 +3021,33 @@ function frame(now: number) {
     if (!podiumOn) {
       podiumOn = true;
       hideDeath();
-      showPodium(match);
+      const ranked = [...(lastSnap?.pawns ?? match.slots.map((s) => ({
+        id: s.id,
+        name: s.name,
+        team: s.team,
+        kills: line(s.id).kills,
+        assists: line(s.id).assists,
+        deaths: line(s.id).deaths,
+        absent: false as boolean | undefined,
+      })))]
+        .filter((p) => !p.absent)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          team: p.team,
+          kills: p.kills ?? line(p.id).kills,
+          assists: p.assists ?? line(p.id).assists,
+          deaths: p.deaths ?? line(p.id).deaths,
+        }))
+        .sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)
+        .slice(0, 3);
+      showPodium(match, ranked);
+      mountPodium(scene, world, ranked);
     }
   } else if (podiumOn) {
     podiumOn = false;
     hidePodium();
+    clearPodium(scene);
     ghost.visible = false;
   }
   updateHud({
@@ -3025,7 +3068,7 @@ function frame(now: number) {
     bots:
       isClient && lastSnap
         ? lastSnap.pawns
-            .filter((p) => (p.netId ?? 0) !== (net.peerId ?? -1))
+            .filter((p) => (p.netId ?? 0) !== (net.peerId ?? -1) && !p.absent)
             .map((p) => ({ x: p.x, z: p.z, team: p.team, hp: p.alive ? p.hp : 0 }))
         : [
             ...bots.map((b) => ({ x: b.x, z: b.z, team: b.team, hp: b.hp })),
@@ -3046,6 +3089,8 @@ function frame(now: number) {
     weapon: weapon === "rifle" ? rifleKind : weapon,
     rifleName: RIFLES[rifleKind].name,
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
+    youTeam,
+    minimapEnemies: rules.minimapEnemies,
   });
 
   const netLine = statusLine(net);
@@ -3069,6 +3114,9 @@ function frame(now: number) {
           alive,
           weapon: weapon === "rifle" ? rifleKind : weapon,
           ads,
+          crouch,
+          prone,
+          nades: { ...nadeBag },
           kills: line(playerId).kills,
           assists: line(playerId).assists,
           deaths: line(playerId).deaths,

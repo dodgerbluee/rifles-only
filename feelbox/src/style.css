@@ -212,11 +212,11 @@ body.started #killfeed {
 }
 
 .kill-row .who.ember {
-  color: #d07048;
+  color: #f06028;
 }
 
 .kill-row .who.stone {
-  color: #7aa0c4;
+  color: #4aa8ff;
 }
 
 .kill-row .sep {
@@ -356,11 +356,13 @@ body.started #roster {
 }
 
 #roster span.ember {
-  color: #d07048;
+  color: #ff6a32;
+  border-color: rgba(240, 96, 40, 0.45);
 }
 
 #roster span.stone {
-  color: #7aa0c4;
+  color: #5ad0ff;
+  border-color: rgba(58, 144, 232, 0.45);
 }
 
 #roster span.you {
@@ -855,6 +857,22 @@ body.admin #admin {
   cursor: pointer;
 }
 
+.admin-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.admin-select select {
+  background: #1c1e18;
+  color: #e8e4d4;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  padding: 4px 8px;
+}
+
 .admin-team {
   display: flex;
   align-items: center;
@@ -1155,12 +1173,11 @@ body.board #scoreboard {
   inset: 0;
   z-index: 24;
   background:
-    linear-gradient(to top, rgba(12, 13, 10, 0.86) 0%, rgba(12, 13, 10, 0.42) 36%, transparent 64%),
-    radial-gradient(ellipse at 50% 100%, rgba(20, 16, 10, 0.35) 0%, transparent 55%);
+    linear-gradient(to top, rgba(12, 13, 10, 0.72) 0%, rgba(12, 13, 10, 0.12) 28%, transparent 52%);
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  padding: 0 24px 48px;
+  padding: 0 24px 36px;
   pointer-events: none;
   text-shadow: 0 1px 8px rgba(8, 8, 6, 0.7);
 }
@@ -1178,35 +1195,17 @@ body.podium #death {
 .stands {
   display: flex;
   align-items: flex-end;
-  gap: 18px;
-  margin: 24px 0 28px;
+  gap: 48px;
+  margin: 8px 0 18px;
 }
 
 .stand {
-  width: 140px;
+  width: 160px;
   text-align: center;
 }
 
 .stand .block {
-  margin: 0 auto 8px;
-  width: 110px;
-  background: #3a3428;
-  border: 1px solid rgba(232, 217, 168, 0.35);
-}
-
-.stand.gold .block {
-  height: 120px;
-  background: linear-gradient(#ead28a, #8a6a22);
-}
-
-.stand.silver .block {
-  height: 78px;
-  background: linear-gradient(#d8dce0, #5a6064);
-}
-
-.stand.bronze .block {
-  height: 52px;
-  background: linear-gradient(#c4844a, #5a3018);
+  display: none;
 }
 
 .stand .place {

@@ -31,9 +31,14 @@ check("alive player cannot take a bot", takeoverPeer(scene, match, bots, remotes
 
 r.alive = false;
 r.hp = 0;
+r.nades.smoke = 0;
+r.nades.frag = 0;
+r.nades.stun = 0;
+r.nades.flash = 0;
 markDead(match, r.slotId, r.x, r.y, r.z);
 const ok = takeoverPeer(scene, match, bots, remotes, 1, bot.id);
 check("dead player takes the bot seat", ok === true);
+check("takeover copies the bot nade bag", r.nades.smoke === 2 && r.nades.frag === 1);
 check("remote is alive on the bot slot", r.alive === true && r.slotId === bot.id);
 check("old seat is no longer this remote", r.slotId !== oldSlot);
 check("taken bot is gone", !bots.some((b) => b.id === bot.id));

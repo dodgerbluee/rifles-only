@@ -5,6 +5,20 @@ export type NadeKind = "smoke" | "frag" | "stun" | "flash";
 
 export const NADE_ORDER: NadeKind[] = ["smoke", "frag", "stun", "flash"];
 
+export const NADE_MAX: Record<NadeKind, number> = { smoke: 2, frag: 1, stun: 1, flash: 1 };
+
+export type NadeBag = Record<NadeKind, number>;
+
+export function fullNades(): NadeBag {
+  return { smoke: NADE_MAX.smoke, frag: NADE_MAX.frag, stun: NADE_MAX.stun, flash: NADE_MAX.flash };
+}
+
+export function spendNade(bag: NadeBag, kind: NadeKind): boolean {
+  if (bag[kind] <= 0) return false;
+  bag[kind] -= 1;
+  return true;
+}
+
 export const NADE_COLOR: Record<NadeKind, number> = {
   smoke: 0x3a4a32,
   frag: 0x5c3a22,

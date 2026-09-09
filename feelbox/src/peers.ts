@@ -8,7 +8,8 @@ import { activeClouds, activeNades, drainPops } from "./smoke";
 import { line, swapLines } from "./stats";
 import { tuning } from "./tuning";
 import { emptyQueue, type FireQueue } from "./fireQueue";
-import { buildPawn, stepWalk, stepWalkFromPos } from "./pawn";
+import { buildPawn, poseStance, stepWalk, stepWalkFromPos } from "./pawn";
+import { fullNades, type NadeBag } from "./smoke";
 
 const RADIUS = 0.32;
 
@@ -37,6 +38,7 @@ export type Remote = {
   jumpHeld: boolean;
   ping: number;
   fireQ: FireQueue;
+  nades: NadeBag;
   root: THREE.Group;
 };
 
@@ -80,6 +82,7 @@ export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, t
     jumpHeld: false,
     ping: 0,
     fireQ: emptyQueue(),
+    nades: fullNades(),
     root,
   };
 }
@@ -250,6 +253,7 @@ export function takeoverPeer(
   r.alive = true;
   r.yaw = bot.yaw;
   r.pitch = bot.lookPitch;
+  r.nades = { ...bot.nades };
   r.root.position.set(bot.x, bot.y, bot.z);
   r.root.rotation.set(0, bot.yaw, 0);
   r.root.visible = true;
@@ -266,10 +270,12 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   r.prone = !!inp.prone;
   r.weapon = inp.weapon;
   r.ping = inp.ping ?? r.ping;
+  const stance = !r.alive ? "down" : r.prone ? "prone" : r.crouch ? "crouch" : "stand";
   if (!r.alive || froze) {
     r.root.position.set(r.x, r.y, r.z);
     r.root.rotation.y = r.yaw;
     stepWalkFromPos(r.root, r.x, r.z, false);
+    poseStance(r.root, stance);
     return;
   }
   const height = r.prone ? 0.55 : r.crouch ? 1.2 : 1.78;
@@ -322,8 +328,8 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   }
   r.root.position.set(r.x, r.y, r.z);
   r.root.rotation.y = r.yaw;
-  r.root.rotation.x = r.alive ? 0 : 1.25;
   stepWalkFromPos(r.root, r.x, r.z, grounded && len > 0);
+  poseStance(r.root, stance);
 }
 
 export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<number, Remote>) {
@@ -350,6 +356,10 @@ export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<numbe
       alive: false,
       weapon: "kar",
       ads: false,
+      crouch: false,
+      prone: false,
+      absent: true,
+      nades: { smoke: 0, frag: 0, stun: 0, flash: 0 },
       kills: line(s.id).kills,
       assists: line(s.id).assists,
       deaths: line(s.id).deaths,
@@ -382,6 +392,9 @@ export function buildSnapshot(
         alive: r.alive,
         weapon: r.weapon,
         ads: r.ads,
+        crouch: r.crouch,
+        prone: r.prone,
+        nades: { ...r.nades },
         kills: line(r.homeId).kills,
         assists: line(r.homeId).assists,
         deaths: line(r.homeId).deaths,
@@ -404,6 +417,9 @@ export function buildSnapshot(
         alive: b.hp > 0,
         weapon: "kar",
         ads: b.aim,
+        crouch: false,
+        prone: false,
+        nades: { ...b.nades },
         kills: line(b.id).kills,
         assists: line(b.id).assists,
         deaths: line(b.id).deaths,
@@ -507,7 +523,7 @@ export function collectInput(opts: {
 }
 
 const HARD_SNAP_XZ = 1.6;
-const HARD_SNAP_Y = 2.2;
+const HARD_SNAP_Y = 0.85;
 const SNAP_BLEND = 0.22;
 
 export function snapWalkSpeed(px: number, pz: number, x: number, z: number, interval: number) {
@@ -547,12 +563,20 @@ export function syncClientPawns(
   selfNetId: number,
   store: Map<number, THREE.Group>,
   dt: number,
+  opts?: { forceSnap?: boolean },
 ) {
   const seen = new Set<number>();
   const a = 1 - Math.exp(-16 * dt);
+  const force = !!opts?.forceSnap;
   for (const p of pawns) {
     if ((p.netId ?? 0) === selfNetId) continue;
     seen.add(p.id);
+    const dummy = !!p.absent || (!p.alive && p.hp <= 0 && p.x === 0 && p.z === 0 && p.yaw === 0);
+    if (dummy) {
+      const hidden = store.get(p.id);
+      if (hidden) hidden.visible = false;
+      continue;
+    }
     let g = store.get(p.id);
     if (!g) {
       g = standIn(p.team, p.name, p.id);
@@ -560,22 +584,28 @@ export function syncClientPawns(
       g.rotation.y = p.yaw;
       g.userData.tx = p.x;
       g.userData.tz = p.z;
+      g.userData.walkX = p.x;
+      g.userData.walkZ = p.z;
       g.userData.walkSpeed = 0;
       scene.add(g);
       store.set(p.id, g);
     }
     g.visible = true;
     const err = Math.hypot(p.x - g.position.x, p.z - g.position.z);
-    if (err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
+    if (force || err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
+      g.userData.walkX = p.x;
+      g.userData.walkZ = p.z;
+      g.userData.tx = p.x;
+      g.userData.tz = p.z;
     } else {
       g.position.x += (p.x - g.position.x) * a;
       g.position.y += (p.y - g.position.y) * a;
       g.position.z += (p.z - g.position.z) * a;
       g.rotation.y = lerpAngle(g.rotation.y, p.yaw, a);
     }
-    g.rotation.x = p.alive ? 0 : 1.25;
+    const stance = !p.alive ? "down" : p.prone ? "prone" : p.crouch ? "crouch" : "stand";
     const tx = typeof g.userData.tx === "number" ? g.userData.tx : p.x;
     const tz = typeof g.userData.tz === "number" ? g.userData.tz : p.z;
     if (Math.abs(p.x - tx) > 1e-4 || Math.abs(p.z - tz) > 1e-4) {
@@ -584,7 +614,8 @@ export function syncClientPawns(
       g.userData.tz = p.z;
     }
     const speed = Number(g.userData.walkSpeed) || 0;
-    stepWalk(g, speed * dt, p.alive && speed > 0.4);
+    stepWalk(g, speed * dt, p.alive && speed > 0.4 && stance === "stand");
+    poseStance(g, stance);
   }
   for (const [id, g] of store) {
     if (seen.has(id)) continue;

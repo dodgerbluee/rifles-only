@@ -141,6 +141,8 @@ export function updateHud(opts: {
   deaths: number;
   yaw: number;
   bots: { x: number; z: number; team: string; hp: number }[];
+  youTeam?: string;
+  minimapEnemies?: boolean;
   world: World;
   smokes: number;
   smokeMax: number;
@@ -196,7 +198,10 @@ export function updateHud(opts: {
   if (ch) ch.style.setProperty("--spread", `${Math.max(6, Math.round(opts.spread ?? 10))}px`);
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle && opts.world.title) mapTitle.textContent = opts.world.title;
-  drawMinimap(opts.world, opts.x, opts.z, opts.yaw, opts.bots, alive, opts.clouds, opts.air);
+  drawMinimap(opts.world, opts.x, opts.z, opts.yaw, opts.bots, alive, opts.clouds, opts.air, {
+    youTeam: opts.youTeam,
+    enemies: opts.minimapEnemies !== false,
+  });
 }
 
 function drawMinimap(
@@ -208,6 +213,7 @@ function drawMinimap(
   alive: boolean,
   clouds: { x: number; z: number; radius: number; opacity: number }[],
   air: { x: number; z: number }[] = [],
+  radar?: { youTeam?: string; enemies?: boolean },
 ) {
   const dpr = Math.min(2, devicePixelRatio || 1);
   if (mapCanvas.width !== MAP_W * dpr) {
@@ -274,9 +280,10 @@ function drawMinimap(
   }
 
   for (const bot of bots) {
+    if (radar?.youTeam && radar.enemies === false && bot.team !== radar.youTeam) continue;
     const p = to(bot.x, bot.z);
     mapCtx.fillStyle =
-      bot.hp <= 0 ? "#5a4038" : bot.team === "ember" ? "#c45a3a" : "#6a90b4";
+      bot.hp <= 0 ? "#5a4038" : bot.team === "ember" ? "#e85a22" : "#3a90e8";
     mapCtx.fillRect(p.x - 2.4, p.y - 2.4, 4.8, 4.8);
   }
 
@@ -362,21 +369,29 @@ export function renderScoreboard(
   for (const s of m.slots.filter((s) => s.team === "stone")) stone.append(row(s));
 }
 
-export function showPodium(m: Match) {
+export function showPodium(
+  m: Match,
+  ranked?: { id: number; name: string; kills: number; assists: number; deaths: number }[],
+) {
   const root = document.querySelector<HTMLElement>("#podium")!;
   document.body.classList.add("podium");
   const first = document.querySelector<HTMLElement>("#podium-first")!;
   first.classList.remove("on");
-  const ranked = topThree(m.slots.map((s) => ({ id: s.id, name: s.name })));
-  const fill = (el: HTMLElement | null, p?: (typeof ranked)[0]) => {
+  const list =
+    ranked && ranked.length
+      ? ranked
+      : topThree(m.slots.map((s) => ({ id: s.id, name: s.name })));
+  const fill = (el: HTMLElement | null, p?: (typeof list)[0], place = "") => {
     if (!el) return;
     el.querySelector(".who")!.textContent = p?.name ?? "—";
     el.querySelector(".stat")!.textContent = p ? `${p.kills} / ${p.assists} / ${p.deaths}` : "";
+    const tag = el.querySelector(".place");
+    if (tag && place) tag.textContent = place;
   };
-  fill(document.querySelector("#pod-1"), ranked[0]);
-  fill(document.querySelector("#pod-2"), ranked[1]);
-  fill(document.querySelector("#pod-3"), ranked[2]);
-  const gold = ranked[0];
+  fill(document.querySelector("#pod-1"), list[0], "1");
+  fill(document.querySelector("#pod-2"), list[1], "2");
+  fill(document.querySelector("#pod-3"), list[2], "3");
+  const gold = list[0];
   document.querySelector("#podium-name")!.textContent = gold?.name ?? "—";
   document.querySelector("#podium-line")!.textContent = gold
     ? `${gold.kills} kills · ${gold.assists} assists · ${gold.deaths} deaths · ${kd(gold)} K/D`

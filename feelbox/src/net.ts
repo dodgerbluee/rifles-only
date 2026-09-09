@@ -41,6 +41,10 @@ export type Pawn = {
   alive: boolean;
   weapon: Weapon;
   ads: boolean;
+  crouch?: boolean;
+  prone?: boolean;
+  absent?: boolean;
+  nades?: { smoke: number; frag: number; stun: number; flash: number };
   kills?: number;
   assists?: number;
   deaths?: number;
@@ -92,6 +96,13 @@ export type ClientEvent =
   | { kind: "removeBot"; team: Team }
   | { kind: "kick"; slotId: number }
   | { kind: "takeover"; slotId: number }
+  | {
+      kind: "rules";
+      highlights?: boolean;
+      friendlyFire?: boolean;
+      oneShot?: boolean;
+      botSkill?: "easy" | "normal" | "hard";
+    }
   | { kind: "shot"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number }
   | { kind: "melee"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number; bash?: boolean };
 

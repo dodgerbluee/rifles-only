@@ -31,6 +31,12 @@ check("bestplay still holding near the end", match.phase === "bestplay");
 tickMatch(match, 0.4, dummy);
 check("bestplay concludes after the hold", match.phase === "ending" || match.phase === "matchover", `phase=${match.phase}`);
 
+const skipped = createMatch({ claimLocal: false });
+skipped.phase = "settle";
+skipped.endT = 0.01;
+tickMatch(skipped, 0.02, { ...dummy, skipRecap: true });
+check("skipRecap leaves settle without a recap hold", skipped.phase !== "bestplay", `phase=${skipped.phase}`);
+
 const sim = createSim({ name: "Last Wire" });
 sim.join(1, "Reed");
 for (let i = 0; i < 4; i++) sim.tick(1 / 30);

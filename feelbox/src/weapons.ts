@@ -184,8 +184,8 @@ export function makeKar98(): RifleView {
   const flash = flashMesh(0, axisY, -0.52);
   root.add(flash);
   const { rounds, clip } = makeAmmoKit(root, axisY, "kar", steel);
-  const hipPos = new THREE.Vector3(0.17, -0.16, -0.4);
-  const adsPos = new THREE.Vector3(0, -(recTop + postH * 0.5), -0.22);
+  const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
+  const adsPos = new THREE.Vector3(0, -(recTop + postH), -0.11);
   root.position.copy(hipPos);
   return { id: "kar", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
@@ -210,39 +210,41 @@ export function makeMosin(): RifleView {
   place(bolt, cylX(0.005, 0.068, steel, 6), 0.04, 0.006, 0);
 
   const ringR = 0.0031;
-  const tube = 0.001;
+  const tube = 0.00028;
   const recTop = axisY + recR;
   const ringZ = -0.04;
   const ringY = recTop + ringR;
-  place(root, cylY(0.0014, ringR + tube, steel, 6), 0, recTop + (ringR + tube) * 0.5, ringZ);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, tube, 8, 16), steel);
+  place(root, cylY(0.0007, ringR + tube, steel, 6), 0, recTop + (ringR + tube) * 0.5, ringZ);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, tube, 8, 24), steel);
   place(root, ring, 0, ringY, ringZ);
 
   const flash = flashMesh(0, axisY, -0.57);
   root.add(flash);
   const { rounds, clip } = makeAmmoKit(root, axisY, "mosin", steel);
-  const hipPos = new THREE.Vector3(0.17, -0.16, -0.4);
-  const adsPos = new THREE.Vector3(0, -ringY, -0.24);
+  const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
+  const adsPos = new THREE.Vector3(0, -ringY, -0.12);
   root.position.copy(hipPos);
   return { id: "mosin", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
 export function makeKnife(): THREE.Group {
   const root = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: 0.22, metalness: 0.85 });
-  const edge = new THREE.MeshStandardMaterial({ color: 0xeef0f4, roughness: 0.1, metalness: 0.95 });
-  const wrap = new THREE.MeshStandardMaterial({ color: 0x2c1a10, roughness: 0.92, metalness: 0.04 });
-  const brass = new THREE.MeshStandardMaterial({ color: 0x8a6a32, roughness: 0.4, metalness: 0.65 });
-  part(root, 0, 0, 0.08, 0.026, 0.032, 0.14, wrap);
-  part(root, 0, 0, 0.155, 0.03, 0.03, 0.028, brass);
-  part(root, 0, 0.002, 0.01, 0.09, 0.01, 0.022, brass);
-  const blade = new THREE.Mesh(new THREE.ConeGeometry(0.024, 0.34, 7), steel);
-  blade.rotation.x = Math.PI / 2;
-  blade.position.set(0, 0.004, -0.2);
+  const steel = new THREE.MeshStandardMaterial({ color: 0xd8dce4, roughness: 0.14, metalness: 0.92 });
+  const edge = new THREE.MeshStandardMaterial({ color: 0xf7f8fc, roughness: 0.06, metalness: 0.98 });
+  const wrap = new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.9, metalness: 0.04 });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xc49a48, roughness: 0.32, metalness: 0.72 });
+  part(root, 0, -0.09, 0, 0.028, 0.11, 0.022, wrap);
+  part(root, 0, -0.148, 0, 0.032, 0.026, 0.026, brass);
+  part(root, 0, 0.008, 0, 0.09, 0.012, 0.028, brass);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.26, 0.006), steel);
+  blade.position.set(0, 0.15, 0);
   root.add(blade);
-  part(root, 0, 0.01, -0.18, 0.006, 0.004, 0.28, edge);
-  part(root, 0, -0.008, -0.12, 0.02, 0.01, 0.16, steel);
-  root.position.set(0.16, -0.18, -0.36);
+  const clip = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.07, 0.006), steel);
+  clip.position.set(0.004, 0.3, 0);
+  clip.rotation.z = 0.55;
+  root.add(clip);
+  part(root, 0.02, 0.16, 0, 0.004, 0.24, 0.007, edge);
+  root.position.set(0.3, -0.3, -0.22);
   return root;
 }
 
@@ -400,16 +402,16 @@ export function poseThrow(nade: THREE.Group, k: number, drop = false) {
 }
 
 export function poseKnifeRest(knife: THREE.Group) {
-  knife.rotation.set(-0.28, 0.2, 0.58);
-  knife.position.set(0.24, -0.28, -0.4);
+  knife.rotation.set(0.08, 0.42, -0.12);
+  knife.position.set(0.3, -0.28, -0.2);
 }
 
 /** Horizontal / diagonal cut across the camera. k=0..1. */
 export function poseKnifeSlash(knife: THREE.Group, k: number) {
   const e = smooth01(k);
   const lift = Math.sin(k * Math.PI);
-  knife.position.set(0.34 - e * 0.72, 0.1 - e * 0.24 + lift * 0.03, -0.32 - lift * 0.08);
-  knife.rotation.set(-0.5 + e * 0.12, 1.12 - e * 2.2, 1.08 - e * 2.2);
+  knife.position.set(0.34 - e * 0.68, -0.16 + lift * 0.12, -0.18 - lift * 0.06);
+  knife.rotation.set(0.08 + e * 0.35, 0.42 - e * 1.4, -0.12 + e * 1.35);
 }
 
 export function rifleWrist(view: RifleView, boltK: number, out = _wrist) {
@@ -422,7 +424,7 @@ export function rifleWrist(view: RifleView, boltK: number, out = _wrist) {
 }
 
 export function knifeWrist(knife: THREE.Group, out = _wrist) {
-  return cameraLocal(knife, 0, 0, 0.07, out);
+  return cameraLocal(knife, 0, -0.09, 0.01, out);
 }
 
 export function nadeWrist(nade: THREE.Group, out = _wrist) {

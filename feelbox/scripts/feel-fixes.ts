@@ -1,0 +1,85 @@
+/**
+ * Stance, recap skip, takeover nades, and dummy pawns.
+ */
+import { createSim } from "../src/sim.ts";
+import { BESTPLAY_HOLD, createMatch, tickMatch } from "../src/match.ts";
+import { fillAbsentSlots } from "../src/peers.ts";
+import { NADE_MAX } from "../src/smoke.ts";
+
+let failed = 0;
+function check(name: string, ok: boolean, extra = "") {
+  if (!ok) failed += 1;
+  console.log(`${ok ? "ok" : "FAIL"}  ${name}${extra ? `  ${extra}` : ""}`);
+}
+
+const dummy = {
+  living: () => 5,
+  inSite: () => false as const,
+  holdingUse: false,
+  actor: { id: 0, team: "ember" as const, x: 0, y: 0, z: 0, alive: true },
+  spawnPlant: { x: 0, y: 0, z: 0 },
+};
+
+const hold = createMatch({ claimLocal: false });
+hold.phase = "settle";
+hold.endT = 0.01;
+tickMatch(hold, 0.02, dummy);
+check("highlights on still recap", hold.phase === "bestplay" && Math.abs(hold.endT - BESTPLAY_HOLD) < 0.001);
+
+const skip = createMatch({ claimLocal: false });
+skip.phase = "settle";
+skip.endT = 0.01;
+tickMatch(skip, 0.02, { ...dummy, skipRecap: true });
+check("highlights off skips recap hold", skip.phase === "ending" || skip.phase === "matchover", `phase=${skip.phase}`);
+
+const sim = createSim({ name: "Last Wire" });
+sim.join(1, "Reed");
+for (let i = 0; i < 4; i++) sim.tick(1 / 30);
+sim.setInput(1, {
+  keys: [],
+  yaw: 0,
+  pitch: 0,
+  fire: false,
+  ads: false,
+  lean: 0,
+  weapon: "kar",
+  crouch: false,
+  prone: true,
+  jump: false,
+  use: false,
+  mx: 0,
+  my: 0,
+});
+sim.tick(1 / 30);
+const posed = sim.snapshot();
+const me = posed.pawns.find((p) => p.netId === 1);
+check("snapshot sends prone", me?.prone === true, `prone=${me?.prone}`);
+check("joined pawn has a full nade bag", me?.nades?.smoke === NADE_MAX.smoke && me?.nades?.frag === NADE_MAX.frag);
+
+sim.event(1, {
+  kind: "throwSmoke",
+  ox: me!.x,
+  oy: me!.y + 1.5,
+  oz: me!.z,
+  dx: 0.2,
+  dy: 0.4,
+  dz: 0.8,
+  power: 0.8,
+  nade: "smoke",
+});
+sim.tick(1 / 30);
+const thrown = sim.snapshot().pawns.find((p) => p.netId === 1);
+check("throw spends a smoke", thrown?.nades?.smoke === NADE_MAX.smoke - 1, `smoke=${thrown?.nades?.smoke}`);
+
+const absentPawns: { absent?: boolean }[] = [];
+fillAbsentSlots(
+  { slots: [{ id: 99, team: "ember", kind: "bot", name: "Cal", alive: false }] } as never,
+  absentPawns as never,
+);
+check("dummy pawn is absent", absentPawns[0]?.absent === true);
+
+if (failed) {
+  console.error(`\n${failed} case(s) failed`);
+  process.exit(1);
+}
+console.log("\nfeel fixes hold");
