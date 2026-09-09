@@ -472,6 +472,7 @@ export function syncClientPawns(
 }
 
 export function statusLine(net: NetHandle) {
+  if (net.status === "connecting") return "Connecting to the match";
   if (net.role === "client") return "Joined · dedicated match";
   return "Lobby · pick a server";
 }

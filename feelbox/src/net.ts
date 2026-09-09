@@ -109,12 +109,15 @@ export type Snapshot = {
 
 export type NetHandle = {
   role: NetRole;
+  status: "offline" | "connecting" | "client";
+  attempt: number;
   peerId: number | null;
   pingMs: number;
   sendInput(input: PlayerInput): void;
   sendSnapshot(snap: Snapshot): void;
   sendEvent(event: ClientEvent): void;
   onRole(cb: (role: NetRole, peerId: number) => void): void;
+  onStatus(cb: (status: NetHandle["status"], attempt: number) => void): void;
   onInput(cb: (peerId: number, input: PlayerInput) => void): void;
   onSnapshot(cb: (snap: Snapshot) => void): void;
   onEvent(cb: (peerId: number, event: ClientEvent) => void): void;
@@ -171,6 +174,7 @@ export function connectNet(url?: string): NetHandle {
   let reconnectTimer = 0;
   let rttTimer = 0;
 
+  const statusCbs: Array<(status: NetHandle["status"], attempt: number) => void> = [];
   const roleCbs: Array<(role: NetRole, peerId: number) => void> = [];
   const inputCbs: Array<(peerId: number, input: PlayerInput) => void> = [];
   const snapCbs: Array<(snap: Snapshot) => void> = [];
@@ -180,6 +184,8 @@ export function connectNet(url?: string): NetHandle {
 
   const handle: NetHandle = {
     role: "offline",
+    status: "connecting",
+    attempt: 1,
     peerId: null,
     pingMs: 0,
     sendInput(input) {
@@ -194,6 +200,9 @@ export function connectNet(url?: string): NetHandle {
     },
     onRole(cb) {
       roleCbs.push(cb);
+    },
+    onStatus(cb) {
+      statusCbs.push(cb);
     },
     onInput(cb) {
       inputCbs.push(cb);
@@ -220,13 +229,37 @@ export function connectNet(url?: string): NetHandle {
         /* ignore */
       }
       ws = null;
-      setRole("offline", handle.peerId ?? 0);
+      setOffline();
     },
   };
 
+  function emitStatus() {
+    for (const cb of statusCbs) cb(handle.status, handle.attempt);
+  }
+
+  function setConnecting() {
+    handle.status = "connecting";
+    handle.role = "offline";
+    handle.peerId = null;
+    emitStatus();
+  }
+
+  function setOffline() {
+    const wasClient = handle.role === "client";
+    handle.status = "offline";
+    handle.role = "offline";
+    handle.peerId = null;
+    emitStatus();
+    if (wasClient) {
+      for (const cb of roleCbs) cb("offline", 0);
+    }
+  }
+
   function setRole(role: NetRole, peerId: number) {
     handle.role = role;
+    handle.status = role === "client" ? "client" : "offline";
     handle.peerId = role === "offline" ? null : peerId;
+    emitStatus();
     for (const cb of roleCbs) cb(role, role === "offline" ? 0 : peerId);
   }
 
@@ -265,6 +298,8 @@ export function connectNet(url?: string): NetHandle {
       const id = Number(msg.id);
       const role = "client";
       if (!Number.isFinite(id)) return;
+      tries = 0;
+      handle.attempt = 1;
       setRole(role, id);
       return;
     }
@@ -304,6 +339,8 @@ export function connectNet(url?: string): NetHandle {
 
   function open() {
     if (dead) return;
+    handle.attempt = Math.max(1, tries + 1);
+    setConnecting();
     try {
       ws = new WebSocket(target);
     } catch {
@@ -311,13 +348,19 @@ export function connectNet(url?: string): NetHandle {
       return;
     }
     ws.addEventListener("open", () => {
-      tries = 0;
       rawSend({ type: "hello", name: helloName });
     });
     ws.addEventListener("message", onMessage);
     ws.addEventListener("close", () => {
       ws = null;
-      setRole("offline", 0);
+      if (dead) return;
+      const wasClient = handle.role === "client";
+      handle.role = "offline";
+      handle.peerId = null;
+      if (wasClient) {
+        for (const cb of roleCbs) cb("offline", 0);
+      }
+      setConnecting();
       schedule();
     });
     ws.addEventListener("error", () => {
@@ -329,6 +372,8 @@ export function connectNet(url?: string): NetHandle {
     if (dead) return;
     const wait = BACKOFF[Math.min(tries, BACKOFF.length - 1)]!;
     tries += 1;
+    handle.attempt = tries + 1;
+    emitStatus();
     reconnectTimer = window.setTimeout(open, wait);
   }
 

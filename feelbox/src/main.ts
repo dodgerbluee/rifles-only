@@ -163,12 +163,15 @@ scene.add(ghost);
 function idleNet(): NetHandle {
   return {
     role: "offline",
+    status: "offline",
+    attempt: 0,
     peerId: null,
     pingMs: 0,
     sendInput() {},
     sendSnapshot() {},
     sendEvent() {},
     onRole() {},
+    onStatus() {},
     onInput() {},
     onSnapshot() {},
     onEvent() {},
@@ -194,14 +197,52 @@ function bindNet(handle: NetHandle) {
     if (role === "client" && prefs.team) {
       handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
     }
+    paintJoin();
+  });
+  handle.onStatus(() => {
+    paintJoin();
   });
 }
 
-function joinGame() {
-  if (net.role === "client") return;
+let joiningName = "";
+
+function joinGame(name?: string) {
+  if (net.role === "client" || net.status === "connecting") {
+    paintJoin();
+    return;
+  }
+  if (name) joiningName = name;
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
+  paintJoin();
+}
+
+function paintJoin() {
+  const el = document.querySelector<HTMLElement>("#join-status");
+  const list = document.querySelector("#server-list");
+  if (!el) return;
+  el.classList.remove("busy", "ok");
+  if (net.status === "connecting") {
+    const who = joiningName || "the game";
+    const tryN = net.attempt > 1 ? ` · try ${net.attempt}` : "";
+    el.textContent = `Connecting to ${who}${tryN}`;
+    el.classList.add("busy");
+    el.hidden = false;
+  } else if (net.role === "client") {
+    el.textContent = "Joined · click to play";
+    el.classList.add("ok");
+    el.hidden = false;
+  } else {
+    el.textContent = "";
+    el.hidden = true;
+  }
+  if (!list) return;
+  for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
+    const busy = net.status === "connecting";
+    row.classList.toggle("busy", busy);
+    row.disabled = busy || row.dataset.offline === "1";
+  }
 }
 
 addEventListener("pagehide", () => net.destroy());
@@ -619,10 +660,17 @@ function lock() {
   canvas.requestPointerLock();
 }
 startEl.addEventListener("click", lock);
+document.querySelector("#join-status")?.addEventListener("click", (e) => {
+  if (net.status === "connecting") e.stopPropagation();
+});
 {
   const list = document.querySelector("#server-list")!;
   list.addEventListener("click", (e) => e.stopPropagation());
   const paintServers = async () => {
+    if (net.status === "connecting") {
+      paintJoin();
+      return;
+    }
     const servers = await fetchServers();
     list.replaceChildren();
     if (!servers.length) {
@@ -636,16 +684,20 @@ startEl.addEventListener("click", lock);
       const row = document.createElement("button");
       row.type = "button";
       row.className = "server-row";
-      if (!s.online) row.disabled = true;
+      if (!s.online) {
+        row.disabled = true;
+        row.dataset.offline = "1";
+      }
       row.textContent = s.online
         ? `${s.name} · ${s.mapTitle} · ${s.players}/${s.max}`
         : `${s.name} · offline`;
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        joinGame();
+        joinGame(s.name);
       });
       list.append(row);
     }
+    paintJoin();
   };
   void paintServers();
   window.setInterval(() => {
