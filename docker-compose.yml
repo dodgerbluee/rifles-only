@@ -1,15 +1,11 @@
-name: rifles-only
-
-# One container: built client + WebSocket match server, published on a single play port.
-#   docker compose up --build
-#   LAN: http://HOST_IP:8080
 services:
-  feelbox:
-    build:
-      context: ./feelbox
-    ports:
-      - "0.0.0.0:${FEELBOX_PORT:-8080}:8080"
-    environment:
-      HOST: "0.0.0.0"
-      PORT: "8080"
+  rifles:
+    image: ghcr.io/dodgerbluee/rifles-only:latest
+    container_name: rifles
     restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+    ports:
+      - "8080:8080"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro

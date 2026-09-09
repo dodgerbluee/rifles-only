@@ -52,6 +52,7 @@ import {
 } from "./match";
 import { bindAdmin, rules } from "./admin";
 import { buildPawn, pawnStyle, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
+import { pickBodyVictim, remoteTargets, type LiveBody } from "./combat";
 import {
   clearTape,
   createTape,
@@ -942,6 +943,131 @@ function skipAi() {
   return ids;
 }
 
+function liveRemotes(): LiveBody[] {
+  return [...remotes.values()].map((r) => ({
+    id: r.slotId,
+    team: r.team,
+    x: r.x,
+    y: r.y,
+    z: r.z,
+    alive: r.alive,
+  }));
+}
+
+function crouchIds() {
+  const ids: number[] = [];
+  for (const r of remotes.values()) if (r.crouch) ids.push(r.slotId);
+  if (crouch) ids.push(actorId());
+  return ids;
+}
+
+function hurtRemote(r: Remote, dmg: number, killerId: number) {
+  if (!r.alive) return false;
+  const amount = rules.oneShot ? Math.max(dmg, 200) : dmg;
+  noteHit(killerId, r.slotId, time);
+  r.hp = Math.max(0, r.hp - amount);
+  if (r.hp <= 0) {
+    r.alive = false;
+    r.root.rotation.x = 1.25;
+    markDead(match, r.slotId, r.x, r.y, r.z);
+    frag(killerId, r.slotId, r.name, r.x, r.y, r.z);
+    return true;
+  }
+  return false;
+}
+
+function gunDmg(head: boolean) {
+  return rules.oneShot ? 200 : head ? 100 : 50;
+}
+
+function shotPeople(
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  worldHit: { dist: number; point: THREE.Vector3; normal: THREE.Vector3 } | null,
+  shooterId: number,
+  muzzle: THREE.Vector3,
+  opts: { hitmark?: boolean; extra?: LiveBody[]; shooterName?: string } = {},
+): boolean {
+  const youTeam = slotById(match, shooterId)?.team;
+  const skip = rules.friendlyFire ? undefined : youTeam;
+  const skipIds = [...skipAi(), shooterId];
+  for (const b of bots) b.root.updateMatrixWorld(true);
+  for (const r of remotes.values()) r.root.updateMatrixWorld(true);
+  raycaster.set(origin, dir);
+  const meshHit = raycaster.intersectObjects(
+    [...botTargets(bots, skip, skipIds), ...remoteTargets(remotes.values(), skip, skipIds)],
+    false,
+  )[0];
+  let meshDist = meshHit ? meshHit.distance : Infinity;
+  if (worldHit && worldHit.dist < meshDist - 0.02) meshDist = Infinity;
+
+  if (meshHit && meshDist < Infinity) {
+    const id = meshHit.object.userData.botId as number;
+    const head = meshHit.object.userData.part === "head";
+    const dmg = gunDmg(head);
+    const bot = bots.find((b) => b.id === id);
+    if (bot && bot.hp > 0 && (rules.friendlyFire || bot.team !== youTeam)) {
+      noteHit(shooterId, bot.id, time);
+      const killed = hurtBot(bot, dmg, time);
+      if (opts.hitmark) {
+        lastHit = head ? "HEADSHOT" : "hit";
+        flashHit(head || killed);
+        bang(head ? 520 : 280, 0.06, 0.05);
+      }
+      if (head && killed && Math.random() < HEAD_POP_RATE) {
+        popHead(bot, scene);
+        bang(70, 0.12, 0.16);
+        bang(140, 0.06, 0.1);
+      }
+      if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+      impact(meshHit.point, meshHit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, head);
+      tracer(muzzle, meshHit.point);
+      return true;
+    }
+    const remote = [...remotes.values()].find((x) => x.slotId === id);
+    if (remote && remote.alive && (rules.friendlyFire || remote.team !== youTeam)) {
+      const killed = hurtRemote(remote, dmg, shooterId);
+      if (opts.hitmark) {
+        lastHit = head ? "HEADSHOT" : "hit";
+        flashHit(head || killed);
+        bang(head ? 520 : 280, 0.06, 0.05);
+      }
+      impact(meshHit.point, meshHit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, head);
+      tracer(muzzle, meshHit.point);
+      return true;
+    }
+  }
+
+  const worldDist = worldHit?.dist ?? Infinity;
+  const bodyHit = pickBodyVictim(
+    origin,
+    dir,
+    [...liveRemotes(), ...(opts.extra ?? [])],
+    worldDist,
+    youTeam,
+    rules.friendlyFire,
+    skipIds,
+    crouchIds(),
+  );
+  if (!bodyHit) return false;
+  if (bodyHit.body.id === actorId()) {
+    hurtPlayer(gunDmg(false), opts.shooterName ?? "Rifle", shooterId);
+    tracer(muzzle, bodyHit.point);
+    return true;
+  }
+  const remote = [...remotes.values()].find((x) => x.slotId === bodyHit.body.id);
+  if (!remote || !remote.alive) return false;
+  const killed = hurtRemote(remote, gunDmg(false), shooterId);
+  if (opts.hitmark) {
+    lastHit = "hit";
+    flashHit(killed);
+    bang(280, 0.06, 0.05);
+  }
+  impact(bodyHit.point, new THREE.Vector3(0, 1, 0), true, false);
+  tracer(muzzle, bodyHit.point);
+  return true;
+}
+
 type SpecT = { id: number; name: string; bot: boolean; x: number; y: number; z: number; yaw: number; pitch: number };
 
 function specRoster(): SpecT[] {
@@ -1054,19 +1180,34 @@ function tryMelee(bash: boolean) {
   const youTeam = slotById(match, actorId())?.team;
   raycaster.set(origin, dir);
   const skip = rules.friendlyFire ? undefined : youTeam;
-  const hit = raycaster.intersectObjects(botTargets(bots, skip, skipAi()), false)[0];
+  for (const b of bots) b.root.updateMatrixWorld(true);
+  for (const r of remotes.values()) r.root.updateMatrixWorld(true);
+  const hit = raycaster.intersectObjects(
+    [...botTargets(bots, skip, skipAi()), ...remoteTargets(remotes.values(), skip, skipAi())],
+    false,
+  )[0];
   const worldHit = rayWorld(origin, dir, tuning.melee, world.colliders);
   if (!hit || hit.distance > tuning.melee) return;
   if (worldHit && worldHit.dist < hit.distance - 0.04) return;
-  const bot = bots.find((b) => b.id === (hit.object.userData.botId as number));
-  if (!bot || bot.hp <= 0) return;
-  if (!rules.friendlyFire && bot.team === youTeam) return;
-  noteHit(actorId(), bot.id, time);
-  const killed = hurtBot(bot, rules.oneShot ? 200 : 100, time);
+  const id = hit.object.userData.botId as number;
+  const bot = bots.find((b) => b.id === id);
+  if (bot && bot.hp > 0) {
+    if (!rules.friendlyFire && bot.team === youTeam) return;
+    noteHit(actorId(), bot.id, time);
+    const killed = hurtBot(bot, rules.oneShot ? 200 : 100, time);
+    lastHit = bash ? "bash" : "knife";
+    flashHit(killed);
+    impact(hit.point, hit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, false);
+    if (killed) frag(actorId(), bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+    return;
+  }
+  const remote = [...remotes.values()].find((x) => x.slotId === id);
+  if (!remote || !remote.alive) return;
+  if (!rules.friendlyFire && remote.team === youTeam) return;
+  const killed = hurtRemote(remote, rules.oneShot ? 200 : 100, actorId());
   lastHit = bash ? "bash" : "knife";
   flashHit(killed);
   impact(hit.point, hit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, false);
-  if (killed) frag(actorId(), bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
 }
 
 function slashSound() {
@@ -1154,34 +1295,11 @@ function tryFire() {
 
   const worldHit = rayShot(origin, dir, 120, world.colliders);
   const floorHit = rayWorld(origin, dir, 120, world.colliders);
-  raycaster.set(origin, dir);
-  const youTeam = slotById(match, actorId())?.team;
-  const skip = rules.friendlyFire ? undefined : youTeam;
-  const botHit = raycaster.intersectObjects(botTargets(bots, skip, skipAi()), false)[0];
-
-  let botDist = botHit ? botHit.distance : Infinity;
-  if (worldHit && worldHit.dist < botDist - 0.02) botDist = Infinity;
-
-  if (botHit && botDist < Infinity) {
-    const bot = bots.find((b) => b.id === (botHit.object.userData.botId as number));
-    if (bot && bot.hp > 0 && (rules.friendlyFire || bot.team !== youTeam)) {
-      const head = botHit.object.userData.part === "head";
-      const dmg = rules.oneShot ? 200 : head ? 100 : 50;
-      noteHit(actorId(), bot.id, time);
-      const killed = hurtBot(bot, dmg, time);
-      lastHit = head ? "HEADSHOT" : "hit";
-      flashHit(head || killed);
-      bang(head ? 520 : 280, 0.06, 0.05);
-      if (head && killed && Math.random() < HEAD_POP_RATE) {
-        popHead(bot, scene);
-        bang(70, 0.12, 0.16);
-        bang(140, 0.06, 0.1);
-      }
-      if (killed) frag(actorId(), bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
-      impact(botHit.point, botHit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, head);
-      tracer(muzzle, botHit.point);
-    }
-  } else if (worldHit) {
+  if (shotPeople(origin, dir, worldHit, actorId(), muzzle, { hitmark: true })) {
+    if (mag === 0) startReload();
+    return;
+  }
+  if (worldHit) {
     lastHit = "world";
     impact(worldHit.point, worldHit.normal, false, false);
     tracer(muzzle, worldHit.point);
@@ -1648,40 +1766,27 @@ function roundSpawn() {
 
 function botShoot(from: THREE.Vector3, dir: THREE.Vector3, target: { id: number; team: string }, shooterId: number) {
   const worldHit = rayShot(from, dir, 80, world.colliders);
-  if (target.id === actorId()) {
-    const chest = new THREE.Vector3(
-      px + Math.cos(yaw) * lastLeanM,
-      py + chestOff(),
-      pz - Math.sin(yaw) * lastLeanM,
-    );
-    const toChest = chest.clone().sub(from);
-    const t = Math.max(0, toChest.dot(dir));
-    const closest = from.clone().addScaledVector(dir, t);
-    const playerDist = closest.distanceTo(chest);
-    const hitPlayer = alive && playerDist < 0.42 && t > 0.2 && (!worldHit || worldHit.dist > t - 0.1);
-    const end = hitPlayer ? closest : worldHit ? worldHit.point : from.clone().addScaledVector(dir, 30);
-    tracer(from, end);
-    bang(150, 0.06, 0.035);
-    if (hitPlayer) {
-      const shooter = nearestBot(from);
-      const where = placeName(from.x, from.z);
-      const name = shooter ? `${slotById(match, shooter.id)?.name ?? "Rifle"} · ${where}` : `Rifle · ${where}`;
-      noteHit(shooterId, actorId(), time);
-      hurtPlayer(34, name, shooterId);
-    } else if (worldHit) impact(worldHit.point, worldHit.normal, false, false);
-    return;
-  }
-  const bot = bots.find((b) => b.id === target.id);
-  if (!bot || bot.hp <= 0) return;
-  const dist = Math.hypot(bot.x - from.x, bot.y + 1.2 - from.y, bot.z - from.z);
-  if (worldHit && worldHit.dist < dist - 0.2) {
+  bang(150, 0.06, 0.035);
+  const shooter = nearestBot(from);
+  const where = placeName(from.x, from.z);
+  const name = shooter ? `${slotById(match, shooter.id)?.name ?? "Rifle"} · ${where}` : `Rifle · ${where}`;
+  const extra: LiveBody[] = [
+    {
+      id: actorId(),
+      team: slotById(match, actorId())?.team ?? "ember",
+      x: px + Math.cos(yaw) * lastLeanM,
+      y: py,
+      z: pz - Math.sin(yaw) * lastLeanM,
+      alive,
+    },
+  ];
+  if (shotPeople(from, dir, worldHit, shooterId, from, { extra, shooterName: name })) return;
+  if (worldHit) {
     impact(worldHit.point, worldHit.normal, false, false);
     tracer(from, worldHit.point);
-    return;
+  } else {
+    tracer(from, from.clone().addScaledVector(dir, 30));
   }
-  tracer(from, new THREE.Vector3(bot.x, bot.y + 1.2, bot.z));
-  noteHit(shooterId, bot.id, time);
-  if (hurtBot(bot, rules.oneShot ? 200 : 50, time)) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
 }
 
 function playBlast(x: number, y: number, z: number) {
@@ -1830,60 +1935,18 @@ function remoteFire(r: Remote): boolean {
     -Math.cos(r.yaw) * Math.cos(r.pitch),
   ).normalize();
   const worldHit = rayShot(origin, dir, 120, world.colliders);
-  raycaster.set(origin, dir);
-  const skip = rules.friendlyFire ? undefined : r.team;
-  const botHit = raycaster.intersectObjects(botTargets(bots, skip, skipAi()), false)[0];
-  let botDist = botHit ? botHit.distance : Infinity;
-  if (worldHit && worldHit.dist < botDist - 0.02) botDist = Infinity;
   bang(110, 0.07, 0.05);
-  if (botHit && botDist < Infinity) {
-    const bot = bots.find((b) => b.id === (botHit.object.userData.botId as number));
-    if (bot && bot.hp > 0) {
-      const head = botHit.object.userData.part === "head";
-      const dmg = rules.oneShot ? 200 : head ? 100 : 50;
-      noteHit(r.slotId, bot.id, time);
-      const killed = hurtBot(bot, dmg, time);
-      if (head && killed && Math.random() < HEAD_POP_RATE) {
-        popHead(bot, scene);
-        bang(70, 0.12, 0.16);
-      }
-      if (killed)
-        frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
-      impact(botHit.point, botHit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, head);
-      tracer(origin, botHit.point);
-      return true;
-    }
-  }
-  const youTeam = slotById(match, playerId)?.team;
-  if (alive && (rules.friendlyFire || r.team !== youTeam)) {
-    const chest = new THREE.Vector3(px, py + chestOff(), pz);
-    const t = Math.max(0, chest.clone().sub(origin).dot(dir));
-    const closest = origin.clone().addScaledVector(dir, t);
-    if (closest.distanceTo(chest) < 0.42 && t > 0.2 && (!worldHit || worldHit.dist > t - 0.1)) {
-      noteHit(r.slotId, actorId(), time);
-      hurtPlayer(50, r.name, r.slotId);
-      tracer(origin, closest);
-      return true;
-    }
-  }
-  for (const o of remotes.values()) {
-    if (o.peerId === r.peerId || !o.alive || (!rules.friendlyFire && o.team === r.team)) continue;
-    const chest = new THREE.Vector3(o.x, o.y + 1.05, o.z);
-    const t = Math.max(0, chest.clone().sub(origin).dot(dir));
-    const closest = origin.clone().addScaledVector(dir, t);
-    if (closest.distanceTo(chest) < 0.42 && t > 0.2 && (!worldHit || worldHit.dist > t - 0.1)) {
-      const dmg = rules.oneShot ? 200 : 50;
-      noteHit(r.slotId, o.slotId, time);
-      o.hp = Math.max(0, o.hp - dmg);
-      if (o.hp <= 0) {
-        o.alive = false;
-        markDead(match, o.slotId, o.x, o.y, o.z);
-        frag(r.slotId, o.slotId, o.name, o.x, o.y, o.z);
-      }
-      tracer(origin, closest);
-      return true;
-    }
-  }
+  const extra: LiveBody[] = [
+    {
+      id: actorId(),
+      team: slotById(match, actorId())?.team ?? "ember",
+      x: px,
+      y: py,
+      z: pz,
+      alive,
+    },
+  ];
+  if (shotPeople(origin, dir, worldHit, r.slotId, origin, { extra, shooterName: r.name })) return true;
   if (worldHit) {
     impact(worldHit.point, worldHit.normal, false, false);
     tracer(origin, worldHit.point);

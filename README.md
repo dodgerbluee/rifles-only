@@ -22,26 +22,20 @@ Client-only (no shared match): `npm run dev` — still Vite on 5173.
 
 ## Docker (one port, shared match)
 
-From the repo root or `feelbox/`:
+From the repo root (pulls the published image, no local build):
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 Serves the built client **and** the WebSocket match server in one container, bound to `0.0.0.0`.
 
 - Default play URL: `http://HOST_IP:8080`
-- Override the published port: `FEELBOX_PORT=9090 docker compose up --build` → `http://HOST_IP:9090`
+- Override the published port: `FEELBOX_PORT=9090 docker compose up -d` → `http://HOST_IP:9090`
 - WebSocket path: `/ws` (same origin)
+- Build from source instead: `docker compose -f feelbox/docker-compose.yml up --build`
 
 Find `HOST_IP` with `ipconfig` / `ifconfig` / `ip addr`. Friends on the LAN use that address, not `127.0.0.1`. For the public internet, forward the play port to this machine.
-
-Pushes to `main` build and publish `ghcr.io/dodgerbluee/rifles-only:latest`. Deploy that image instead of building on the box:
-
-```bash
-docker pull ghcr.io/dodgerbluee/rifles-only:latest
-docker run --rm -p 8080:8080 ghcr.io/dodgerbluee/rifles-only:latest
-```
 
 ## Ports
 
