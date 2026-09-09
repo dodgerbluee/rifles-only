@@ -53,7 +53,7 @@ export function makeKit(scene: THREE.Scene): Kit {
   const colliders: Aabb[] = [];
   const shootables: THREE.Object3D[] = [];
 
-  const box: BoxFn = (x, y, z, sx, sy, sz, mat, collide = true, walk = false, shot = true) => {
+  const box: BoxFn = (x, y, z, sx, sy, sz, mat, collide = true, walk = true, shot = true) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
     mesh.position.set(x, y, z);
     mesh.castShadow = true;

@@ -56,14 +56,14 @@ export const COVER_SIZE: Record<CoverKind, [number, number, number]> = {
   truck: [5.2, 1.4, 2.1],
 };
 
-/** Only jump crates are walk tops. Legacy crate stays a block so old maps play the same. */
+/** Cover tops are standable. High is a wall you can still land on if you get up there. */
 export const COVER_WALK: Record<CoverKind, boolean> = {
-  crate: false,
+  crate: true,
   jumpCrate: true,
-  fullCrate: false,
-  low: false,
-  high: false,
-  truck: false,
+  fullCrate: true,
+  low: true,
+  high: true,
+  truck: true,
 };
 
 export type ClimbDir = "+x" | "-x" | "+z" | "-z";

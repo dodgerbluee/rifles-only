@@ -97,11 +97,13 @@ import {
   pickLotEdge,
   place,
   placeBuildingRect,
+  playableSpec,
   postDraft,
   resizeNearestBuilding,
   saveStored,
   setLotEdge,
   snap,
+  snapFloor,
   surfaceAt,
   toolFromCode,
   toolsFor,
@@ -227,7 +229,7 @@ const studio = {
   on: false,
   spec: blankSpec(),
   tool: "select" as ToolId,
-  palette: "build" as PaletteId,
+  palette: "hand" as PaletteId,
   lastKit: "crate" as ToolId,
   sel: null as StudioItem | null,
   bw: 12,
@@ -388,7 +390,7 @@ function leaveToLobby() {
     studio.orbiting = false;
     studio.panning = false;
     studioGhost.visible = false;
-    document.body.classList.remove("studio", "studio-nav", "studio-walk", "locker", "locker-drag");
+    document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab", "locker", "locker-drag");
     locker.on = false;
     lockerPawn.visible = false;
   }
@@ -691,13 +693,16 @@ function setStudioTool(id: ToolId) {
   studio.tool = id;
   studio.palette = paletteOf(id);
   if (isAccessoryTool(id)) studio.lastKit = id;
-  if (studio.walk && !isAccessoryTool(id) && id !== "select") leaveWalk();
+  if (studio.walk && !isAccessoryTool(id)) leaveWalk();
   paintStudio();
 }
 
 function paintStudio() {
   document.body.classList.toggle("studio", studio.on);
   document.body.classList.toggle("studio-walk", studio.on && studio.walk);
+  document.body.classList.toggle("studio-hand", studio.on && studio.tool === "select" && !studio.walk);
+  document.body.classList.toggle("studio-grab", studio.on && studio.tool === "select" && studio.drag?.mode === "move");
+  document.querySelector("#studio-pal-hand")?.classList.toggle("on", studio.palette === "hand");
   document.querySelector("#studio-pal-build")?.classList.toggle("on", studio.palette === "build");
   document.querySelector("#studio-pal-kit")?.classList.toggle("on", studio.palette === "kit");
   const tools = document.querySelector("#studio-tools")!;
@@ -725,7 +730,7 @@ function paintStudio() {
   if (hint) {
     hint.textContent = studio.walk
       ? "WASD move · click lock look · click to drop accessories · Esc orbit"
-      : "Build in orbit · drag lot rims · Select then drag or Delete · Walk drops accessories · Esc leave";
+      : "Hand grabs what is on the lot · Build stamps walls · Accessories stamp cover · Play starts a match · Esc leave";
   }
   const status = document.querySelector("#studio-status");
   const b = studio.spec.bounds;
@@ -762,7 +767,7 @@ function enterStudio() {
   studio.drag = null;
   studio.sel = null;
   studio.tool = "select";
-  studio.palette = "build";
+  studio.palette = "hand";
   studio.spec = loadStored() ?? blankSpec();
   studio.cam = defaultOrbit(studio.spec.bounds);
   studio.faceYaw = 0;
@@ -794,7 +799,7 @@ function leaveStudio() {
   studio.lastCell = "";
   studioGhost.visible = false;
   studioSel.visible = false;
-  document.body.classList.remove("studio", "studio-nav", "studio-walk");
+  document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab");
   camera.near = 0.05;
   camera.far = 85;
   camera.fov = 90;
@@ -995,7 +1000,7 @@ function commitBuildDrag() {
   if (!drag || drag.mode !== "rect") return;
   const w = Math.abs(drag.x1 - drag.x0);
   const d = Math.abs(drag.z1 - drag.z0);
-  if (w >= 4 || d >= 4) {
+  if (w >= 4 || d >= 4 || studio.tool === "floor") {
     studio.spec = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y);
     studio.bw = clampBuildSize(w);
     studio.bd = clampBuildSize(d);
@@ -1067,6 +1072,43 @@ async function saveStudio() {
   } catch {
     status.textContent = "Downloaded spec · lobby save failed, paste the JSON if needed";
   }
+}
+
+function playStudio() {
+  saveStored(studio.spec);
+  const spec = playableSpec(studio.spec);
+  if (net.role === "client") {
+    net.destroy();
+    net = idleNet();
+    bindNet(net);
+    lastSnap = null;
+  }
+  studio.on = false;
+  studio.walk = false;
+  studio.drag = null;
+  studio.sel = null;
+  studio.painting = false;
+  studio.orbiting = false;
+  studio.panning = false;
+  studioGhost.visible = false;
+  studioSel.visible = false;
+  document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab");
+  camera.near = 0.05;
+  const { minX, maxX, minZ, maxZ } = spec.bounds;
+  camera.far = Math.max(140, Math.hypot(maxX - minX, maxZ - minZ) * 1.4);
+  camera.fov = 90;
+  camera.updateProjectionMatrix();
+  for (const b of [...bots]) despawnBot(scene, bots, b.id);
+  wipeMapMeshes();
+  world = compileLayout(scene, spec);
+  afterMapLoad();
+  match.mapTitle = spec.title;
+  bots.push(...createBots(scene, world, match));
+  restartRoom();
+  hideJoinTeam();
+  document.body.classList.add("started");
+  paintMapPick();
+  lock();
 }
 
 function rebuildPawns() {
@@ -1175,6 +1217,10 @@ bindAdmin({
     e.stopPropagation();
     void saveStudio();
   });
+  document.querySelector("#studio-play")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    playStudio();
+  });
   document.querySelector("#studio-leave")?.addEventListener("click", (e) => {
     e.stopPropagation();
     leaveStudio();
@@ -1188,18 +1234,17 @@ bindAdmin({
     e.stopPropagation();
     deleteStudioSel();
   });
+  document.querySelector("#studio-pal-hand")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setStudioTool("select");
+  });
   document.querySelector("#studio-pal-build")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (studio.walk) leaveWalk();
-    studio.palette = "build";
-    if (!BUILD_IDS.includes(studio.tool)) studio.tool = "select";
-    paintStudio();
+    setStudioTool(BUILD_IDS.includes(studio.tool) ? studio.tool : "building");
   });
   document.querySelector("#studio-pal-kit")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    studio.palette = "kit";
-    if (!KIT_IDS.includes(studio.tool)) studio.tool = studio.lastKit;
-    paintStudio();
+    setStudioTool(KIT_IDS.includes(studio.tool) ? studio.tool : studio.lastKit);
   });
   document.querySelector("#studio")?.addEventListener("mousedown", (e) => e.stopPropagation());
 }
@@ -1663,6 +1708,7 @@ addEventListener("mousedown", (e) => {
           studio.painting = true;
         }
         paintStudio();
+        document.body.classList.toggle("studio-grab", !!item);
         return;
       }
       if (isOpeningTool(studio.tool)) {
@@ -1723,6 +1769,7 @@ addEventListener("mouseup", (e) => {
     if (e.button === 2) studio.orbiting = false;
     if (e.button === 1) studio.panning = false;
     document.body.classList.toggle("studio-nav", studio.orbiting || studio.panning);
+    document.body.classList.toggle("studio-grab", studio.tool === "select" && studio.drag?.mode === "move");
   }
   if (e.button === 0) {
     mouseDown = false;
@@ -3323,7 +3370,7 @@ function frame(now: number) {
     cowMesh.visible = cowId !== playerId || reel !== null;
   }
 
-  const isClient = net.role !== "host";
+  const isClient = net.role === "client";
   if (isClient && lastSnap) applyMatchSnap(match, lastSnap);
   const reeling = match.phase === "bestplay";
   const froze = roundFrozen(match.phase);
@@ -3364,7 +3411,7 @@ function frame(now: number) {
   const gh = groundHeight(world.colliders, px, pz, RADIUS, py);
   grounded = py <= gh + 0.06 && vy <= 0.2;
 
-  if (!studio.on && (alive && !froze && net.role !== "offline" && !isCow(playerId)) && locked) {
+  if (!studio.on && alive && !froze && !isCow(playerId) && locked) {
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     const rightX = Math.cos(yaw);
@@ -4211,12 +4258,22 @@ function frame(now: number) {
         studioSel.position.set(box.x, box.y, box.z);
       }
       if (studio.drag?.mode === "rect") {
-        const w = Math.max(2, Math.abs(studio.drag.x1 - studio.drag.x0));
-        const d = Math.max(2, Math.abs(studio.drag.z1 - studio.drag.z0));
-        const [sx, sy, sz] = ghostSize(studio.tool, w, d);
-        studioGhost.visible = true;
-        studioGhost.scale.set(w, sy, d);
-        studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, studio.drag.y + sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
+        if (studio.tool === "floor") {
+          const fit = snapFloor(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1, studio.drag.y, {
+            w: studio.bw,
+            d: studio.bd,
+          });
+          studioGhost.visible = true;
+          studioGhost.scale.set(fit.w, 0.16, fit.d);
+          studioGhost.position.set(fit.x, fit.y - 0.08, fit.z);
+        } else {
+          const w = Math.max(2, Math.abs(studio.drag.x1 - studio.drag.x0));
+          const d = Math.max(2, Math.abs(studio.drag.z1 - studio.drag.z0));
+          const [sx, sy, sz] = ghostSize(studio.tool, w, d);
+          studioGhost.visible = true;
+          studioGhost.scale.set(w, sy, d);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, studio.drag.y + sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
+        }
       } else if (isOpeningTool(studio.tool)) {
         const ground = studioHit();
         const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z, surfaceAt(studio.spec, ground.x, ground.z)) : null;
@@ -4233,10 +4290,18 @@ function frame(now: number) {
         const show = !!hit;
         studioGhost.visible = show;
         if (hit && show) {
-          const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
-          const y = isRectTool(studio.tool) ? surfaceAt(studio.spec, hit.x, hit.z) : 0;
-          studioGhost.scale.set(sx, sy, sz);
-          studioGhost.position.set(snap(hit.x), y + sy / 2, snap(hit.z));
+          if (studio.tool === "floor") {
+            const gx = snap(hit.x);
+            const gz = snap(hit.z);
+            const fit = snapFloor(studio.spec, gx, gz, gx, gz, surfaceAt(studio.spec, gx, gz), { w: studio.bw, d: studio.bd });
+            studioGhost.scale.set(fit.w, 0.16, fit.d);
+            studioGhost.position.set(fit.x, fit.y - 0.08, fit.z);
+          } else {
+            const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
+            const y = isRectTool(studio.tool) ? surfaceAt(studio.spec, hit.x, hit.z) : 0;
+            studioGhost.scale.set(sx, sy, sz);
+            studioGhost.position.set(snap(hit.x), y + sy / 2, snap(hit.z));
+          }
         }
       }
     }

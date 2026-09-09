@@ -9,9 +9,9 @@ The human **paints the lot**. You **finalize**. Do not start from a pile of `box
 
 ## Map studio
 
-Home (server list) → **Map studio**. Orbit to draw buildings and floors, drag lot rims, Select then move or delete. **Walk** drops accessories in first person. Does not join a match. **Save for agent**.
+Home (server list) → **Map studio**. **Hand** grabs existing pieces. **Build** stamps walls and floors. **Accessories** stamps cover. **Play** runs the sketch against bots (no finalize). **Save for agent** if you want a rotation map.
 
-That writes `feelbox/studio-draft.json` (and a download + localStorage). If that file exists, skip ASCII and start at **Finalize**.
+That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play** does not need that file. If the file exists and they ask you to finalize, skip ASCII and start at **Finalize**.
 
 ## Steps
 

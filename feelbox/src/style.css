@@ -1723,8 +1723,13 @@ body.studio #view {
   cursor: crosshair;
 }
 
-body.studio.studio-nav #view {
+body.studio.studio-hand #view {
   cursor: grab;
+}
+
+body.studio.studio-nav #view,
+body.studio.studio-grab #view {
+  cursor: grabbing;
 }
 
 body.studio.studio-walk #crosshair {

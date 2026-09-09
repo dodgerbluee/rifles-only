@@ -3,6 +3,7 @@
  * finalizes (routes, names, map-check, register). See .cursor/skills/design-map/SKILL.md.
  */
 import * as THREE from "three";
+import { T } from "./kit";
 import {
   COVER_SIZE,
   STOREY,
@@ -10,6 +11,7 @@ import {
   buildingBase,
   buildingFloors,
   buildingHeight,
+  type BuildingSpec,
   type ClimbDir,
   type CoverKind,
   type CoverSpec,
@@ -22,7 +24,7 @@ import {
 export const STUDIO_STORE = "rifles-studio-spec";
 export const GRID = 2;
 
-export type PaletteId = "build" | "kit";
+export type PaletteId = "hand" | "build" | "kit";
 
 export type ToolId =
   | "select"
@@ -48,8 +50,9 @@ export type OpeningKind = "door" | "window";
 
 export type ToolDef = { id: ToolId; key: string; label: string };
 
+export const HAND_TOOLS: ToolDef[] = [{ id: "select", key: "Q", label: "Grab" }];
+
 export const BUILD_TOOLS: ToolDef[] = [
-  { id: "select", key: "Q", label: "Select" },
   { id: "building", key: "1", label: "Building" },
   { id: "floor", key: "2", label: "Floor" },
   { id: "door", key: "O", label: "Door" },
@@ -72,23 +75,31 @@ export const KIT_TOOLS: ToolDef[] = [
   { id: "tree", key: "T", label: "Tree" },
 ];
 
-export const TOOLS: ToolDef[] = [...BUILD_TOOLS, ...KIT_TOOLS];
+export const TOOLS: ToolDef[] = [...HAND_TOOLS, ...BUILD_TOOLS, ...KIT_TOOLS];
 
+export const HAND_IDS: ToolId[] = HAND_TOOLS.map((t) => t.id);
 export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
 export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
 export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
 export const RECT_TOOLS: ToolId[] = ["building", "floor"];
 
 export function paletteOf(tool: ToolId): PaletteId {
+  if (tool === "select") return "hand";
   return KIT_IDS.includes(tool) ? "kit" : "build";
 }
 
 export function toolsFor(palette: PaletteId) {
-  return palette === "kit" ? KIT_TOOLS : BUILD_TOOLS;
+  if (palette === "hand") return HAND_TOOLS;
+  if (palette === "kit") return KIT_TOOLS;
+  return BUILD_TOOLS;
 }
 
 export function isRectTool(tool: ToolId) {
   return RECT_TOOLS.includes(tool);
+}
+
+export function isHandTool(tool: ToolId) {
+  return tool === "select";
 }
 
 export function isBuildPaletteTool(tool: ToolId) {
@@ -328,6 +339,62 @@ export function surfaceAt(spec: LayoutSpec, x: number, z: number) {
     if (containsXZ(x, z, b.x, b.z, b.w, b.d)) y = Math.max(y, buildingBase(b) + buildingHeight(b));
   }
   return y;
+}
+
+/** First-floor deck flush with a 1-storey building's outer wall faces. */
+export function snapFloor(
+  spec: LayoutSpec,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  y = 0,
+  fallback?: { w: number; d: number },
+): { x: number; z: number; w: number; d: number; y: number } {
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  const w = Math.abs(x1 - x0);
+  const d = Math.abs(z1 - z0);
+  const hit = (b: BuildingSpec) =>
+    buildingFloors(b) === 1 &&
+    (containsXZ(cx, cz, b.x, b.z, b.w, b.d, 0.6) ||
+      containsXZ(x0, z0, b.x, b.z, b.w, b.d, 0.6) ||
+      containsXZ(x1, z1, b.x, b.z, b.w, b.d, 0.6));
+  const b = (spec.buildings ?? []).find(hit);
+  if (b) {
+    return {
+      x: b.x,
+      z: b.z,
+      w: b.w + T,
+      d: b.d + T,
+      y: buildingBase(b) + (b.h ?? STOREY),
+    };
+  }
+  return {
+    x: snap(cx),
+    z: snap(cz),
+    w: fallback?.w ?? clampBuildSize(Math.max(BUILD_MIN, w)),
+    d: fallback?.d ?? clampBuildSize(Math.max(BUILD_MIN, d)),
+    y: Math.max(SLAB_Y, y || surfaceAt(spec, cx, cz)),
+  };
+}
+
+export function playableSpec(spec: LayoutSpec): LayoutSpec {
+  const next = cloneSpec(spec);
+  if (!next.blurb) next.blurb = "Studio sketch";
+  if ((next.routes?.length ?? 0) >= 2) return next;
+  const a = next.sites.find((s) => s.id === "loft") ?? next.sites[0];
+  const b = next.sites.find((s) => s.id === "well") ?? next.sites[1] ?? a;
+  const p = next.plantSpawns[2] ?? next.plantSpawns[0];
+  const w = next.watchSpawns[2] ?? next.watchSpawns[0];
+  if (!a || !p || !w) return next;
+  const mid: [number, number] = [(p[0] + w[0]) / 2, (p[1] + w[1]) / 2];
+  next.routes = [
+    [p, mid, [a.x, a.z]],
+    [p, mid, [b.x, b.z]],
+    [w, mid, [a.x, a.z]],
+  ];
+  return next;
 }
 
 export function pickItem(spec: LayoutSpec, x: number, z: number, r = 3.2): StudioItem | null {
@@ -733,7 +800,7 @@ export function makeStudioGrid(bounds: LayoutSpec["bounds"]) {
 }
 
 export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId | null {
-  if (code === "KeyQ") return "select";
+  if (code === "KeyQ" || code === "KeyH") return "select";
   if (code === "Digit1" || code === "Numpad1") return palette === "kit" ? "crate" : "building";
   if (code === "Digit2" || code === "Numpad2" || code === "KeyF") return palette === "kit" ? "low" : "floor";
   if (code === "KeyO" || code === "KeyD") return "door";
@@ -822,6 +889,10 @@ export function placeBuildingRect(
   const w = clampBuildSize(Math.abs(x1 - x0));
   const d = clampBuildSize(Math.abs(z1 - z0));
   const placeY = tool === "floor" ? Math.max(SLAB_Y, y || SLAB_Y) : y;
+  if (tool === "floor") {
+    const fit = snapFloor(spec, x0, z0, x1, z1, placeY);
+    return place(spec, "floor", fit.x, fit.z, { yaw, bw: fit.w, bd: fit.d, y: fit.y });
+  }
   return place(spec, isRectTool(tool) ? tool : "building", (x0 + x1) / 2, (z0 + z1) / 2, { yaw, bw: w, bd: d, y: placeY });
 }
 

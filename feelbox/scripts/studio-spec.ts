@@ -2,10 +2,13 @@
  * Studio stamps must round-trip through compileLayout.
  */
 import * as THREE from "three";
-import { compileLayout, COVER_SIZE, COVER_WALK, STOREY } from "../src/maps/layout.ts";
+import { compileLayout, COVER_SIZE, STOREY } from "../src/maps/layout.ts";
+import { T } from "../src/maps/kit.ts";
 import {
   blankSpec,
   ghostSize,
+  paletteOf,
+  toolsFor,
   place,
   eraseNear,
   addOpening,
@@ -15,6 +18,8 @@ import {
   deleteItem,
   setLotEdge,
   surfaceAt,
+  snapFloor,
+  playableSpec,
   placeBuildingRect,
 } from "../src/maps/studio.ts";
 
@@ -50,6 +55,18 @@ spec = placeBuildingRect(spec, -4, -4, 8, 6, "building", 0, onTop);
 const stacked = spec.buildings?.find((b) => (b.y ?? 0) > 0);
 check("second building sits on the floor", !!stacked && stacked.y === onTop);
 
+const house = spec.buildings?.find((b) => (b.y ?? 0) === 0 && b.x === 2);
+const deck = snapFloor(spec, 2, 0, 3, 1, 0);
+check(
+  "floor snaps to the building outer faces",
+  !!house && deck.x === house.x && deck.z === house.z && deck.w === house.w + T && deck.d === house.d + T,
+  `deck=${deck.w}x${deck.d} house=${house?.w}x${house?.d}`,
+);
+check("floor sits on the first-storey wall top", !!house && deck.y === (house.h ?? STOREY));
+
+const play = playableSpec(blankSpec());
+check("playable sketch has bot routes", play.routes.length >= 2);
+
 const wall = nearestBuildingWall(spec, 2, -5);
 check("picks a wall near the building", !!wall);
 if (wall) {
@@ -71,6 +88,12 @@ if (crate) {
   check("moved crate", spec.cover?.some((c) => c.x === 10 && c.z === 6) === true);
 }
 
+check("hand palette owns the grabber", paletteOf("select") === "hand");
+check("build palette owns walls", paletteOf("building") === "build" && paletteOf("door") === "build");
+check("accessories stay on kit", paletteOf("crate") === "kit" && paletteOf("jumpCrate") === "kit");
+check("build tools do not include grab", toolsFor("build").every((t) => t.id !== "select"));
+check("hand tools are grab only", toolsFor("hand").length === 1 && toolsFor("hand")[0]?.id === "select");
+
 const world = compileLayout(new THREE.Scene(), spec);
 check("compiled draft has colliders", world.colliders.length > 8);
 check("compiled title", world.title === "Draft");
@@ -87,13 +110,17 @@ const midHits = coverHit(10, 6);
 const jumpBox = jumpHits.find((c) => Math.abs(c.max.y - COVER_SIZE.jumpCrate[1]) < 0.02);
 const fullBox = fullHits.find((c) => Math.abs(c.max.y - COVER_SIZE.fullCrate[1]) < 0.02);
 const midBox = midHits.find((c) => Math.abs(c.max.y - COVER_SIZE.crate[1]) < 0.02);
-check("jump crate is 0.9m and walkable", !!jumpBox && jumpBox.walk === COVER_WALK.jumpCrate && jumpBox.max.y === 0.9);
-check("full crate is 2.2m over stand eye", !!fullBox && fullBox.max.y === 2.2 && fullBox.max.y > 1.64);
-check("legacy crate stays 1.1m", !!midBox && midBox.max.y === 1.1 && midBox.walk === false);
+check("jump crate is 0.9m and walkable", !!jumpBox && jumpBox.walk === true && jumpBox.max.y === 0.9);
+check("full crate is 2.2m over stand eye", !!fullBox && fullBox.max.y === 2.2 && fullBox.max.y > 1.64 && fullBox.walk === true);
+check("legacy crate is standable", !!midBox && midBox.max.y === 1.1 && midBox.walk === true);
 check("ghost matches compiler jump crate", ghostSize("jumpCrate", 12, 10).join() === COVER_SIZE.jumpCrate.join());
 check("ghost matches compiler full crate", ghostSize("fullCrate", 12, 10).join() === COVER_SIZE.fullCrate.join());
 check("jump crate is under jump lip", COVER_SIZE.jumpCrate[1] < 0.97);
 check("full crate is over stand body", COVER_SIZE.fullCrate[1] > 1.78);
+check(
+  "building walls are standable on top",
+  world.colliders.some((c) => c.walk && c.max.y - c.min.y > 2 && Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5),
+);
 
 const groundB = spec.buildings?.find((b) => (b.y ?? 0) === 0);
 check("ground building still there", !!groundB);

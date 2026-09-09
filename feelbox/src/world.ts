@@ -568,6 +568,7 @@ const WALK_SLAB = 0.4;
 
 function blocksXZ(b: Aabb, y0: number, y1: number) {
   if (y1 < b.min.y || y0 > b.max.y) return false;
+  if (b.walk && y0 >= b.max.y - 0.06) return false;
   if (b.walk && b.max.y - b.min.y <= WALK_SLAB) return false;
   return true;
 }
