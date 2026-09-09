@@ -397,8 +397,7 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     stepWalkFromPos(b.root, spawn.x, spawn.z, false);
     b.yaw = spawnYaw(spawn, world);
     b.stayUp = false;
-    b.head.visible = true;
-    b.helm.visible = true;
+    restorePawnHead(b.root);
     b.pauseUntil = 0;
     b.lastX = spawn.x;
     b.lastZ = spawn.z;
@@ -417,17 +416,30 @@ export function refillBotPawn(b: Bot) {
   b.hits = fig.hits;
 }
 
-export function restoreHead(b: Bot) {
-  b.head.visible = true;
-  b.helm.visible = true;
+export function restorePawnHead(root: THREE.Object3D) {
+  root.userData.headPopped = false;
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.userData?.part === "head") o.visible = true;
+  });
 }
 
-export function popHead(b: Bot, scene: THREE.Scene) {
-  b.head.visible = false;
-  b.helm.visible = false;
-  b.stayUp = true;
-  const origin = b.root.position.clone();
-  origin.y += 1.68;
+export function restoreHead(b: Bot) {
+  restorePawnHead(b.root);
+}
+
+export function popPawnHead(root: THREE.Object3D, scene: THREE.Scene) {
+  if (root.userData.headPopped) return false;
+  root.userData.headPopped = true;
+  root.traverse((o) => {
+    if (o instanceof THREE.Mesh && o.userData?.part === "head") o.visible = false;
+  });
+  const origin = new THREE.Vector3();
+  const head = root.userData.head as THREE.Object3D | undefined;
+  if (head) head.getWorldPosition(origin);
+  else {
+    origin.copy(root.position);
+    origin.y += 1.68;
+  }
   for (let i = 0; i < 14; i++) {
     const s = new THREE.Mesh(
       new THREE.SphereGeometry(0.04 + Math.random() * 0.05, 6, 5),
@@ -442,6 +454,12 @@ export function popHead(b: Bot, scene: THREE.Scene) {
     );
     goreBits.push({ mesh: s, vel, life: 0.55 + Math.random() * 0.35 });
   }
+  return true;
+}
+
+export function popHead(b: Bot, scene: THREE.Scene) {
+  b.stayUp = true;
+  popPawnHead(b.root, scene);
 }
 
 const goreBits: { mesh: THREE.Mesh; vel: THREE.Vector3; life: number }[] = [];

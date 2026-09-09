@@ -5,7 +5,7 @@ import "./style.css";
 import * as THREE from "three";
 import { collideXZ, groundHeight, inSite, rayShot, rayWorld, spawnYaw } from "./world";
 import { buildMap, MAPS, type MapId } from "./maps";
-import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, refillBotPawn, resetBots, restoreHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
+import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, popPawnHead, refillBotPawn, resetBots, restoreHead, restorePawnHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
 import {
   hideDeath,
   hidePodium,
@@ -69,6 +69,7 @@ import {
   recapWindow,
   samplePoses,
   PLAY_RATE,
+  watchLabel,
   type KillClip,
   type Pose,
 } from "./replay";
@@ -249,6 +250,7 @@ function paintJoin() {
 
 addEventListener("pagehide", () => net.destroy());
 
+const bestplayKicker = document.querySelector("#bestplay-kicker")!;
 const bestplayName = document.querySelector("#bestplay-name")!;
 const bestplayStat = document.querySelector("#bestplay-stat")!;
 const bestplayKill = document.querySelector("#bestplay-kill")!;
@@ -1204,6 +1206,11 @@ function shotPeople(
         flashHit(head || killed);
         bang(head ? 520 : 280, 0.06, 0.05);
       }
+      if (head && killed && Math.random() < HEAD_POP_RATE) {
+        popPawnHead(remote.root, scene);
+        bang(70, 0.12, 0.16);
+        bang(140, 0.06, 0.1);
+      }
       impact(meshHit.point, meshHit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, head);
       tracer(muzzle, meshHit.point);
       return true;
@@ -1557,6 +1564,14 @@ function tryFire() {
       flashHit(!!head);
       bang(head ? 520 : 280, 0.06, 0.05);
       tracer(muzzle, meshHit.point);
+      if (head) {
+        const id = meshHit.object.userData.botId as number;
+        const g = clientPawns.get(id);
+        if (g && popPawnHead(g, scene)) {
+          bang(70, 0.12, 0.16);
+          bang(140, 0.06, 0.1);
+        }
+      }
     } else if (worldHit) {
       lastHit = "world";
       impact(worldHit.point, worldHit.normal, false, false);
@@ -1717,11 +1732,18 @@ function frag(killerId: number, victimId: number, victimName: string, x: number,
   markDead(match, victimId, x, y, z);
 }
 
+function reelViewName(id: number) {
+  const slot = slotById(match, id);
+  const snapName = lastSnap?.pawns.find((p) => p.id === id)?.name;
+  return watchLabel(id, playerId, slot?.name ?? snapName);
+}
+
 function startReel() {
   recordSnap();
   mouseDown = false;
   clearFire(fireQ);
   for (const b of bots) restoreHead(b);
+  for (const g of clientPawns.values()) restorePawnHead(g);
   const mvp = pickMvp(tape, match, playerId);
   const t0 = tape.frames[0]?.t ?? 0;
   const t1 = tape.frames[tape.frames.length - 1]?.t ?? 0;
@@ -1732,6 +1754,7 @@ function startReel() {
     if (!recap) {
     document.body.classList.add("bestplay");
     hideDeath();
+    bestplayKicker.textContent = "Best play";
     bestplayName.textContent = "No clip";
     bestplayStat.textContent = "Nothing to replay this round";
     bestplayKill.textContent = "";
@@ -1757,8 +1780,9 @@ function startReel() {
       recap: true,
       skipAt: time + 1.2,
     };
-    bestplayName.textContent = you?.kind === "human" ? "You" : (you?.name ?? "You");
-    bestplayStat.textContent = "Round recap";
+    bestplayKicker.textContent = "Watching";
+    bestplayName.textContent = reelViewName(playerId);
+    bestplayStat.textContent = you?.team === "stone" ? "Stone · round recap" : "Ember · round recap";
     bestplayKill.textContent = "";
     bestplayPace.textContent = "Live";
   } else {
@@ -1772,8 +1796,11 @@ function startReel() {
       recap: false,
       skipAt: time + 1.2,
     };
-    bestplayName.textContent = mvp.name;
-    bestplayStat.textContent = `${mvp.kills} kill${mvp.kills === 1 ? "" : "s"} this round`;
+    const slot = slotById(match, mvp.id);
+    const team = slot?.team === "stone" ? "Stone" : "Ember";
+    bestplayKicker.textContent = "Watching";
+    bestplayName.textContent = reelViewName(mvp.id);
+    bestplayStat.textContent = `${team} · ${mvp.kills} kill${mvp.kills === 1 ? "" : "s"} this round`;
     bestplayKill.textContent = `Kill 0 / ${mvp.kills}`;
     bestplayPace.textContent = "Live";
   }
@@ -2091,6 +2118,7 @@ function roundSpawn() {
     r.root.position.copy(spawnAt);
     r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
     r.root.visible = true;
+    restorePawnHead(r.root);
   }
   clearTape(tape);
   lastRecord = -1;
@@ -2563,6 +2591,7 @@ function frame(now: number) {
       nadeBag = { ...NADE_MAX };
       killedBy = "";
       lastDamage = "No damage taken";
+      for (const g of clientPawns.values()) restorePawnHead(g);
     }
   }
   seenPhase = match.phase;
@@ -2606,6 +2635,13 @@ function frame(now: number) {
     if (snapSeq !== appliedSeq) {
       ingestFeed(lastSnap.feed);
       for (const pop of lastSnap.pops ?? []) applyNadePop(pop, true);
+      for (const id of lastSnap.headPops ?? []) {
+        const g = clientPawns.get(id);
+        if (g && popPawnHead(g, scene)) {
+          bang(70, 0.12, 0.16);
+          bang(140, 0.06, 0.1);
+        }
+      }
       if (match.phase === "live" || match.phase === "planted") recordSnap();
       if (me) {
         if (me.hp < hp) {

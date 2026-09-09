@@ -337,6 +337,7 @@ export function buildSnapshot(
     clouds: activeClouds(),
     nades: activeNades(),
     pops: drainPops(),
+    headPops: [],
     endText: match.endText,
     lastWinner: match.lastWinner,
     mapId,

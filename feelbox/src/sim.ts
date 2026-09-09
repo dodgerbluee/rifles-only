@@ -24,6 +24,7 @@ import {
   despawnBot,
   hurtBot,
   resetBots,
+  restorePawnHead,
   spawnBot,
   updateBots,
   type Bot,
@@ -91,6 +92,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
   let friendlyFire = false;
   let oneShot = false;
   const roundKills: KillFeedItem[] = [];
+  const pendingHeads: number[] = [];
 
   function spawnList(team: Team) {
     const planter = plantingTeam(match);
@@ -110,12 +112,14 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       r.root.position.copy(spawnAt);
       r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
       r.root.visible = true;
+      restorePawnHead(r.root);
     }
   }
 
   function restartRoom() {
     resetStats();
     roundKills.length = 0;
+    pendingHeads.length = 0;
     restartMatch(match, world.plantSpawns[2]!);
     resetBots(bots, world, match);
     roundSpawnHumans();
@@ -215,12 +219,15 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       const bot = bots.find((b) => b.id === hid);
       if (bot && bot.hp > 0 && (friendlyFire || bot.team !== youTeam)) {
         noteHit(shooterId, bot.id, time);
-        if (hurtBot(bot, dmg, time)) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+        const killed = hurtBot(bot, dmg, time);
+        if (head && killed) pendingHeads.push(bot.id);
+        if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
         return true;
       }
       const remote = [...remotes.values()].find((x) => x.slotId === hid);
       if (remote && remote.alive && (friendlyFire || remote.team !== youTeam)) {
-        hurtRemote(remote, dmg, shooterId);
+        const killed = hurtRemote(remote, dmg, shooterId);
+        if (head && killed) pendingHeads.push(remote.slotId);
         return true;
       }
     }
@@ -410,6 +417,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       if (match.round !== seenRound) {
         seenRound = match.round;
         roundKills.length = 0;
+        pendingHeads.length = 0;
         resetBots(bots, world, match);
         roundSpawnHumans();
         for (const s of match.slots) s.alive = true;
@@ -594,6 +602,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         clouds: activeClouds(),
         nades: activeNades(),
         pops: drainPops(),
+        headPops: pendingHeads.splice(0),
         endText: match.endText,
         lastWinner: match.lastWinner,
         mapId,

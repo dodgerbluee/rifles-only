@@ -61,6 +61,12 @@ export function pushKill(tape: RoundTape, kill: KillClip) {
   tape.kills.push(kill);
 }
 
+export function watchLabel(viewId: number, youId: number, name?: string | null) {
+  if (viewId === youId) return "You";
+  const n = name?.trim();
+  return n || "Rifle";
+}
+
 export function pickMvp(tape: RoundTape, match: Match, preferId: number) {
   if (tape.kills.length === 0) return null;
   const counts = new Map<number, number>();

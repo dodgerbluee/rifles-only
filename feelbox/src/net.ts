@@ -110,6 +110,7 @@ export type Snapshot = {
   clouds?: { x: number; y: number; z: number; radius: number; opacity: number }[];
   nades?: { x: number; y: number; z: number; kind: "smoke" | "frag" | "stun" | "flash" }[];
   pops?: { kind: "smoke" | "frag" | "stun" | "flash"; x: number; y: number; z: number }[];
+  headPops?: number[];
   endText?: string;
   lastWinner?: Team | null;
   mapId?: string;
