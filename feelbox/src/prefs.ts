@@ -5,9 +5,10 @@ export type Prefs = {
   sens: number;
   volume: number;
   team?: "ember" | "stone";
+  skin: "rifle" | "field" | "unit" | "frame";
 };
 
-const defaults: Prefs = { name: "You", sens: 1, volume: 0.7 };
+const defaults: Prefs = { name: "You", sens: 1, volume: 0.7, skin: "rifle" };
 
 export const prefs: Prefs = load();
 
@@ -21,6 +22,8 @@ function load(): Prefs {
       sens: clamp(Number(p.sens) || 1, 0.15, 4),
       volume: clamp(Number(p.volume) ?? 0.7, 0, 1),
       team: p.team === "stone" || p.team === "ember" ? p.team : undefined,
+      skin:
+        p.skin === "field" || p.skin === "unit" || p.skin === "frame" || p.skin === "rifle" ? p.skin : defaults.skin,
     };
   } catch {
     return { ...defaults };

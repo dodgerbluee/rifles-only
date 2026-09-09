@@ -134,7 +134,7 @@ wss.on("connection", (ws) => {
       peer.helloed = true;
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
-      sim.join(id, peer.name);
+      sim.join(id, peer.name, undefined, msg.skin);
       send(ws, { type: "welcome", id, role: "client" });
       for (const o of living()) {
         if (o.id === id) continue;

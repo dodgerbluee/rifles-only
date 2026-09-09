@@ -50,6 +50,7 @@ export type Pawn = {
   deaths?: number;
   ping?: number;
   stun?: boolean;
+  skin?: "rifle" | "field" | "unit" | "frame";
 };
 
 export type WireSnap = {
@@ -148,7 +149,7 @@ export type KillFeedItem = {
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */
 export type ClientEvent =
-  | { kind: "joinTeam"; team: Team; name: string }
+  | { kind: "joinTeam"; team: Team; name: string; skin?: "rifle" | "field" | "unit" | "frame" }
   | {
       kind: "throwSmoke";
       ox: number;
@@ -267,9 +268,14 @@ export async function fetchServers(): Promise<ListedServer[]> {
 }
 
 let helloName = "You";
+let helloSkin: "rifle" | "field" | "unit" | "frame" = "rifle";
 
 export function setNetName(name: string) {
   helloName = name.trim().slice(0, 18) || "You";
+}
+
+export function setNetSkin(skin: "rifle" | "field" | "unit" | "frame") {
+  helloSkin = skin;
 }
 
 export function connectNet(url?: string): NetHandle {
@@ -454,7 +460,7 @@ export function connectNet(url?: string): NetHandle {
       return;
     }
     ws.addEventListener("open", () => {
-      rawSend({ type: "hello", name: helloName });
+      rawSend({ type: "hello", name: helloName, skin: helloSkin });
     });
     ws.addEventListener("message", onMessage);
     ws.addEventListener("close", () => {

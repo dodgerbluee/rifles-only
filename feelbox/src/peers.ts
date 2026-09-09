@@ -8,7 +8,7 @@ import { activeClouds, activeNades, drainPops } from "./smoke";
 import { line, swapLines } from "./stats";
 import { tuning } from "./tuning";
 import { emptyQueue, type FireQueue } from "./fireQueue";
-import { buildPawn, poseStance, stepWalk, stepWalkFromPos } from "./pawn";
+import { buildPawn, parseSkin, poseStance, stepWalk, stepWalkFromPos, type PawnSkin } from "./pawn";
 import { fullNades, type NadeBag } from "./smoke";
 
 const RADIUS = 0.32;
@@ -40,11 +40,12 @@ export type Remote = {
   fireQ: FireQueue;
   nades: NadeBag;
   root: THREE.Group;
+  skin: PawnSkin;
 };
 
-function standIn(team: Team, name: string, id?: number) {
+function standIn(team: Team, name: string, id?: number, skin?: PawnSkin) {
   const root = new THREE.Group();
-  const fig = buildPawn(root, team, id);
+  const fig = buildPawn(root, team, id, skin);
   root.userData.name = name;
   root.userData.team = team;
   root.userData.id = id;
@@ -53,8 +54,9 @@ function standIn(team: Team, name: string, id?: number) {
   return root;
 }
 
-export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, team: Team, name: string, spawn: THREE.Vector3): Remote {
-  const root = standIn(team, name, slotId);
+export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, team: Team, name: string, spawn: THREE.Vector3, skin?: PawnSkin): Remote {
+  const look = parseSkin(skin) ?? "rifle";
+  const root = standIn(team, name, slotId, look);
   root.position.copy(spawn);
   scene.add(root);
   return {
@@ -84,6 +86,7 @@ export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, t
     fireQ: emptyQueue(),
     nades: fullNades(),
     root,
+    skin: look,
   };
 }
 
@@ -115,6 +118,7 @@ export function seatPeer(
   peerId: number,
   name: string,
   teamHint?: Team,
+  skin?: PawnSkin,
 ) {
   if (remotes.has(peerId)) return remotes.get(peerId)!;
   const emberH = match.slots.filter((s) => s.kind === "human" && s.team === "ember").length;
@@ -132,7 +136,7 @@ export function seatPeer(
   const planter = plantingTeam(match);
   const list = slot.team === planter ? world.plantSpawns : world.watchSpawns;
   const spawn = list[slot.id % list.length]!.clone();
-  const r = makeRemote(scene, peerId, slot.id, slot.team, name, spawn);
+  const r = makeRemote(scene, peerId, slot.id, slot.team, name, spawn, skin);
   remotes.set(peerId, r);
   match.lastJoin = `${name} joined ${team === "ember" ? "Ember" : "Stone"}`;
   return r;
@@ -147,14 +151,27 @@ export function reseatPeer(
   peerId: number,
   name: string,
   team: Team,
+  skin?: PawnSkin,
 ) {
   const cur = remotes.get(peerId);
-  if (cur?.team === team) return cur;
+  if (cur?.team === team) {
+    if (skin) dressRemote(cur, skin);
+    return cur;
+  }
   const oldId = cur?.homeId ?? cur?.slotId;
   if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
-  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team);
+  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team, skin ?? cur?.skin);
   if (oldId != null && oldId !== seated.slotId) swapLines(oldId, seated.slotId);
   return seated;
+}
+
+export function dressRemote(r: Remote, skin: PawnSkin) {
+  const look = parseSkin(skin) ?? r.skin;
+  if (look === r.skin && r.root.userData.skin === look) return;
+  r.skin = look;
+  const fig = buildPawn(r.root, r.team, r.slotId, look);
+  r.root.userData.body = fig.body;
+  r.root.userData.cloth = fig.cloth;
 }
 
 /** Credit the body that did the work. Takeover kills stay on the bot. */
@@ -362,6 +379,7 @@ export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<numbe
       kills: line(s.id).kills,
       assists: line(s.id).assists,
       deaths: line(s.id).deaths,
+      skin: occ?.skin,
     });
   }
 }
@@ -399,6 +417,7 @@ export function buildSnapshot(
         assists: line(r.homeId).assists,
         deaths: line(r.homeId).deaths,
         ping: r.ping,
+        skin: r.skin,
       }),
     ),
     ...bots.map(
@@ -580,8 +599,9 @@ export function syncClientPawns(
       continue;
     }
     let g = store.get(p.id);
+    const look = parseSkin(p.skin) ?? (typeof g?.userData.skin === "string" ? g.userData.skin : undefined);
     if (!g) {
-      g = standIn(p.team, p.name, p.id);
+      g = standIn(p.team, p.name, p.id, look);
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
       g.userData.tx = p.x;
@@ -591,6 +611,12 @@ export function syncClientPawns(
       g.userData.walkSpeed = 0;
       scene.add(g);
       store.set(p.id, g);
+    } else if (g.userData.team !== p.team || (look && g.userData.skin !== look)) {
+      const fig = buildPawn(g, p.team, p.id, look);
+      g.userData.body = fig.body;
+      g.userData.cloth = fig.cloth;
+      g.userData.team = p.team;
+      g.userData.name = p.name;
     }
     g.visible = true;
     const err = Math.hypot(p.x - g.position.x, p.z - g.position.z);

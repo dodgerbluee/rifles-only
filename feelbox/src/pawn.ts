@@ -5,6 +5,17 @@ import type { Team } from "./match";
 export type PawnStyle = "classic" | "limbs";
 export type PawnSkin = "rifle" | "field" | "unit" | "frame";
 
+export const SKINS: { id: PawnSkin; label: string; blurb: string }[] = [
+  { id: "rifle", label: "Rifle", blurb: "Bowl helm" },
+  { id: "field", label: "Field", blurb: "Cap and kit" },
+  { id: "unit", label: "Unit", blurb: "Visor chassis" },
+  { id: "frame", label: "Frame", blurb: "Box head" },
+];
+
+export function parseSkin(raw: unknown): PawnSkin | undefined {
+  if (raw === "rifle" || raw === "field" || raw === "unit" || raw === "frame") return raw;
+}
+
 export const pawnStyle: { current: PawnStyle } = { current: "limbs" };
 
 export type PawnParts = {
@@ -58,9 +69,10 @@ export function setPawnCloth(cloth: THREE.Mesh[], color: number) {
   for (const m of cloth) (m.material as THREE.MeshStandardMaterial).color.set(color);
 }
 
-export function buildPawn(root: THREE.Group, team: Team, botId?: number): PawnParts {
+export function buildPawn(root: THREE.Group, team: Team, botId?: number, skin?: PawnSkin): PawnParts {
   clearGroup(root);
-  const parts = pawnStyle.current === "classic" ? classicPawn(team) : limbsPawn(team, skinFor(botId));
+  const look = skin ?? skinFor(botId);
+  const parts = pawnStyle.current === "classic" ? classicPawn(team) : limbsPawn(team, look);
   stamp(parts, team, botId);
   root.add(parts.body, parts.head, parts.helm, parts.rifle);
   if (parts.walk) root.add(parts.walk.lHip, parts.walk.rHip);
@@ -73,6 +85,8 @@ export function buildPawn(root: THREE.Group, team: Team, botId?: number): PawnPa
   root.userData.head = parts.head;
   root.userData.helm = parts.helm;
   root.userData.walk = parts.walk ?? null;
+  root.userData.skin = look;
+  root.userData.team = team;
   if (root.userData.gait == null) root.userData.gait = 0;
   root.userData.walkX = root.position.x;
   root.userData.walkZ = root.position.z;

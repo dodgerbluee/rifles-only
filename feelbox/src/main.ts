@@ -95,7 +95,7 @@ import {
   zoomOrbit,
   type ToolId,
 } from "./maps/studio";
-import { buildPawn, pawnStyle, poseStance, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
+import { buildPawn, pawnStyle, poseStance, setPawnCloth, SKINS, stepWalkFromPos, teamCloth } from "./pawn";
 import { clearPodium, mountPodium, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
@@ -143,7 +143,7 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { connectNet, fetchServers, playWsUrl, serverGone, setNetName, type NetHandle, type Snapshot } from "./net";
+import { connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -214,11 +214,23 @@ const studio = {
   drag: null as null | { x0: number; z0: number; x1: number; z1: number },
   lastCell: "",
 };
+const lockerPawn = new THREE.Group();
+lockerPawn.visible = false;
+scene.add(lockerPawn);
+const locker = {
+  on: false,
+  dragging: false,
+  team: (prefs.team ?? "ember") as "ember" | "stone",
+  dist: 3.55,
+  theta: 1.12,
+  phi: Math.PI,
+};
 const match = createMatch();
 {
   const you = humanSlot(match);
   if (you) you.name = prefs.name;
   setNetName(prefs.name);
+  setNetSkin(prefs.skin);
 }
 const bots = createBots(scene, world, match);
 let playerId = humanSlot(match)?.id ?? 0;
@@ -272,7 +284,7 @@ function bindNet(handle: NetHandle) {
   handle.onRole((role) => {
     if (role === "client") lastBeat = performance.now();
     if (role === "client" && prefs.team && document.body.classList.contains("started")) {
-      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
+      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name, skin: prefs.skin });
     }
     paintJoin();
   });
@@ -336,7 +348,9 @@ function leaveToLobby() {
     studio.orbiting = false;
     studio.panning = false;
     studioGhost.visible = false;
-    document.body.classList.remove("studio", "studio-nav", "studio-walk");
+    document.body.classList.remove("studio", "studio-nav", "studio-walk", "locker", "locker-drag");
+    locker.on = false;
+    lockerPawn.visible = false;
   }
   net.destroy();
   net = idleNet();
@@ -540,7 +554,7 @@ function pickTeam(team: Team) {
   prefs.team = team;
   savePrefs();
   if (net.role === "client") {
-    net.sendEvent({ kind: "joinTeam", team, name: prefs.name });
+    net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin });
   }
   paintTeamPick();
 }
@@ -603,6 +617,7 @@ function wipeMapMeshes() {
     ghost,
     wirePack,
     studioGhost,
+    lockerPawn,
     ...[...remotes.values()].map((r) => r.root),
     ...clientPawns.values(),
   ]);
@@ -618,6 +633,8 @@ function wipeMapMeshes() {
 
 function afterMapLoad() {
   if (!studioGhost.parent) scene.add(studioGhost);
+  if (!lockerPawn.parent) scene.add(lockerPawn);
+  lockerPawn.visible = locker.on;
   for (const r of remotes.values()) {
     if (!r.root.parent) scene.add(r.root);
     r.root.visible = true;
@@ -682,6 +699,7 @@ function rebuildStudio() {
 }
 
 function enterStudio() {
+  if (locker.on) leaveLocker(false);
   studio.on = true;
   studio.walk = false;
   studio.drag = null;
@@ -720,6 +738,112 @@ function leaveStudio() {
   camera.fov = 90;
   camera.updateProjectionMatrix();
   loadMap(mapId, true);
+}
+
+function paintLocker() {
+  const panel = document.querySelector<HTMLElement>("#locker");
+  if (panel) panel.hidden = !locker.on;
+  const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
+  if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
+  const kits = document.querySelector("#locker-kits");
+  if (kits && !kits.childElementCount) {
+    for (const k of SKINS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.skin = k.id;
+      b.innerHTML = `<b>${k.label}</b><span>${k.blurb}</span>`;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        prefs.skin = k.id;
+        setNetSkin(k.id);
+        savePrefs();
+        dressLockerPawn();
+        paintLocker();
+      });
+      kits.append(b);
+    }
+  }
+  kits?.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", (b as HTMLButtonElement).dataset.skin === prefs.skin);
+  });
+  document.querySelectorAll<HTMLButtonElement>("#locker-sides button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.side === locker.team);
+  });
+  const title = document.querySelector("#start-title");
+  const blurb = document.querySelector("#start-blurb");
+  if (title) title.textContent = locker.on ? "Player" : "Servers";
+  if (blurb) {
+    blurb.textContent = locker.on
+      ? "Pick a kit. Ember and Stone colors apply when you join."
+      : "Pick a match. Ember plants the Wire. First to six.";
+  }
+}
+
+function dressLockerPawn() {
+  pawnStyle.current = "limbs";
+  buildPawn(lockerPawn, locker.team, 0, prefs.skin);
+  lockerPawn.visible = true;
+}
+
+function applyLockerCam() {
+  const { dist, theta, phi } = locker;
+  camera.position.set(
+    dist * Math.sin(theta) * Math.sin(phi),
+    1.05 + dist * Math.cos(theta),
+    dist * Math.sin(theta) * Math.cos(phi),
+  );
+  camera.lookAt(0, 1.05, 0);
+  camera.fov = 42;
+  camera.near = 0.12;
+  camera.far = 80;
+  camera.updateProjectionMatrix();
+}
+
+function rebuildLocker() {
+  wipeMapMeshes();
+  scene.background = new THREE.Color(0x121410);
+  scene.fog = null;
+  scene.add(new THREE.HemisphereLight(0xc8c0b4, 0x2a2824, 1));
+  const sun = new THREE.DirectionalLight(0xe8e0d4, 0.9);
+  sun.position.set(3.4, 9, 5);
+  sun.castShadow = true;
+  scene.add(sun);
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(7, 40),
+    new THREE.MeshStandardMaterial({ color: 0x1a1c16, roughness: 0.92, metalness: 0.04 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  if (!lockerPawn.parent) scene.add(lockerPawn);
+  dressLockerPawn();
+  applyLockerCam();
+}
+
+function enterLocker() {
+  if (studio.on) leaveStudio();
+  locker.on = true;
+  locker.dragging = false;
+  locker.team = prefs.team ?? "ember";
+  hideJoinTeam();
+  document.body.classList.add("locker");
+  document.body.classList.remove("settings");
+  rebuildLocker();
+  paintLocker();
+  document.exitPointerLock();
+}
+
+function leaveLocker(reload = true) {
+  locker.on = false;
+  locker.dragging = false;
+  lockerPawn.visible = false;
+  document.body.classList.remove("locker", "locker-drag");
+  paintLocker();
+  camera.near = 0.05;
+  camera.far = 85;
+  camera.fov = 90;
+  camera.updateProjectionMatrix();
+  if (reload && !studio.on) loadMap(mapId, true);
 }
 
 function walkSpawn() {
@@ -864,17 +988,18 @@ function rebuildPawns() {
   pawnStyle.current = rules.classicPawn ? "classic" : "limbs";
   for (const b of bots) refillBotPawn(b);
   const youTeam = slotById(match, playerId)?.team ?? "ember";
-  const gfig = buildPawn(ghost, youTeam);
+  const gfig = buildPawn(ghost, youTeam, playerId, prefs.skin);
   ghost.userData.body = gfig.body;
   ghost.userData.cloth = gfig.cloth;
   for (const r of remotes.values()) {
-    const fig = buildPawn(r.root, r.team, r.slotId);
+    const fig = buildPawn(r.root, r.team, r.slotId, r.skin);
     r.root.userData.body = fig.body;
     r.root.userData.cloth = fig.cloth;
   }
   for (const g of clientPawns.values()) {
     const team = (g.userData.team as "ember" | "stone") ?? "ember";
-    const fig = buildPawn(g, team, typeof g.userData.id === "number" ? g.userData.id : undefined);
+    const id = typeof g.userData.id === "number" ? g.userData.id : undefined;
+    const fig = buildPawn(g, team, id, g.userData.skin);
     g.userData.body = fig.body;
     g.userData.cloth = fig.cloth;
   }
@@ -927,6 +1052,34 @@ bindAdmin({
     e.stopPropagation();
     enterStudio();
   });
+  document.querySelector("#home-locker")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    enterLocker();
+  });
+  document.querySelector("#locker-back")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    leaveLocker();
+  });
+  document.querySelector("#locker-name")?.addEventListener("input", (e) => {
+    const el = e.currentTarget as HTMLInputElement;
+    prefs.name = el.value.slice(0, 18);
+    const you = humanSlot(match);
+    if (you) you.name = prefs.name.trim() || "You";
+    setNetName(prefs.name);
+    savePrefs();
+    const setName = document.querySelector<HTMLInputElement>("#set-name");
+    if (setName) setName.value = prefs.name;
+  });
+  document.querySelector("#locker-sides")?.addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement | null)?.closest("button");
+    const side = b?.dataset.side;
+    if (side !== "ember" && side !== "stone") return;
+    e.stopPropagation();
+    locker.team = side;
+    dressLockerPawn();
+    paintLocker();
+  });
+  document.querySelector("#locker")?.addEventListener("mousedown", (e) => e.stopPropagation());
   document.querySelector("#studio-turn")?.addEventListener("click", (e) => {
     e.stopPropagation();
     studio.faceYaw = turnYaw(studio.faceYaw);
@@ -1081,7 +1234,8 @@ function overlayOpen() {
     document.body.classList.contains("admin") ||
     document.body.classList.contains("settings") ||
     document.body.classList.contains("podium") ||
-    document.body.classList.contains("studio")
+    document.body.classList.contains("studio") ||
+    document.body.classList.contains("locker")
   );
 }
 
@@ -1227,6 +1381,8 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
     if (you) you.name = prefs.name.trim() || "You";
     setNetName(prefs.name);
     savePrefs();
+    const lockerName = document.querySelector<HTMLInputElement>("#locker-name");
+    if (lockerName) lockerName.value = prefs.name;
   });
   sensEl.addEventListener("input", () => {
     prefs.sens = Number(sensEl.value);
@@ -1243,7 +1399,7 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   panel.addEventListener("mousedown", (e) => e.stopPropagation());
 }
 addEventListener("contextmenu", (e) => {
-  if (studio.on) e.preventDefault();
+  if (studio.on || locker.on) e.preventDefault();
 });
 document.addEventListener("pointerlockchange", () => {
   locked = document.pointerLockElement === canvas;
@@ -1275,6 +1431,23 @@ addEventListener("keydown", (e) => {
     return;
   }
   keys.add(e.code);
+  if (locker.on) {
+    if (e.code === "Escape") leaveLocker();
+    const n = e.code === "Digit1" || e.code === "Numpad1" ? 0
+      : e.code === "Digit2" || e.code === "Numpad2" ? 1
+      : e.code === "Digit3" || e.code === "Numpad3" ? 2
+      : e.code === "Digit4" || e.code === "Numpad4" ? 3
+      : -1;
+    const pick = n >= 0 ? SKINS[n] : undefined;
+    if (pick) {
+      prefs.skin = pick.id;
+      setNetSkin(pick.id);
+      savePrefs();
+      dressLockerPawn();
+      paintLocker();
+    }
+    return;
+  }
   if (studio.on) {
     const moveKeys = studio.walk && ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "Space", "KeyF"].includes(e.code);
     const tool = moveKeys ? null : toolFromCode(e.code);
@@ -1344,6 +1517,13 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("mousedown", (e) => {
+  if (locker.on) {
+    if ((e.target as HTMLElement | null)?.closest("#start, #settings, #open-settings")) return;
+    e.preventDefault();
+    locker.dragging = true;
+    document.body.classList.add("locker-drag");
+    return;
+  }
   if (studio.on) {
     if ((e.target as HTMLElement | null)?.closest("#studio")) return;
     e.preventDefault();
@@ -1403,6 +1583,10 @@ addEventListener("mousedown", (e) => {
   }
 });
 addEventListener("mouseup", (e) => {
+  if (locker.on && e.button === 0) {
+    locker.dragging = false;
+    document.body.classList.remove("locker-drag");
+  }
   if (studio.on) {
     if (e.button === 0) {
       if (studio.drag) commitBuildDrag();
@@ -1423,6 +1607,13 @@ addEventListener("mouseup", (e) => {
   if (e.button === 2) ads = false;
 });
 addEventListener("wheel", (e) => {
+  if (locker.on) {
+    if ((e.target as HTMLElement | null)?.closest("#start, #settings")) return;
+    e.preventDefault();
+    const k = e.deltaY > 0 ? 1.08 : 1 / 1.08;
+    locker.dist = Math.max(2.6, Math.min(7.5, locker.dist * k));
+    return;
+  }
   if (studio.on) {
     if ((e.target as HTMLElement | null)?.closest("#studio")) return;
     if (studio.walk) return;
@@ -1435,6 +1626,13 @@ addEventListener("wheel", (e) => {
   cycleSpec(e.deltaY > 0 ? 1 : -1);
 }, { passive: false });
 addEventListener("mousemove", (e) => {
+  if (locker.on) {
+    if (locker.dragging) {
+      locker.phi -= e.movementX * 0.008;
+      locker.theta = Math.max(0.12, Math.min(1.2, locker.theta - e.movementY * 0.008));
+    }
+    return;
+  }
   if (studio.on) {
     studio.mx = e.clientX;
     studio.my = e.clientY;
@@ -3266,10 +3464,10 @@ function frame(now: number) {
   if (isClient && lastSnap && net.peerId != null) {
     applyMatchSnap(match, lastSnap);
     const snapMap = lastSnap.mapId;
-    if (!studio.on && snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
+    if (!studio.on && !locker.on && snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
       loadMap(snapMap as MapId);
     }
-    if (!reel && !studio.on) {
+    if (!reel && !studio.on && !locker.on) {
       syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt, {
         forceSnap: lastSnap.round !== seenRound,
       });
@@ -3634,6 +3832,7 @@ function frame(now: number) {
           kills: p.kills ?? line(p.id).kills,
           assists: p.assists ?? line(p.id).assists,
           deaths: p.deaths ?? line(p.id).deaths,
+          skin: "skin" in p ? p.skin : undefined,
         }))
         .sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)
         .slice(0, 3);
@@ -3718,6 +3917,7 @@ function frame(now: number) {
           assists: line(playerId).assists,
           deaths: line(playerId).deaths,
           ping: 0,
+          skin: prefs.skin,
         },
         bots,
         remotes,
@@ -3729,23 +3929,35 @@ function frame(now: number) {
   if (net.role === "client") {
     net.sendInput(
       collectInput({
-        keys: studio.on ? new Set() : keys,
+        keys: studio.on || locker.on ? new Set() : keys,
         yaw,
         pitch,
-        fire: studio.on ? false : wantShot,
-        ads: studio.on ? false : ads,
-        lean: studio.on ? 0 : lean,
+        fire: studio.on || locker.on ? false : wantShot,
+        ads: studio.on || locker.on ? false : ads,
+        lean: studio.on || locker.on ? 0 : lean,
         weapon: weapon === "rifle" ? rifleKind : weapon,
-        crouch: studio.on ? false : crouch,
-        prone: studio.on ? false : prone,
-        jump: studio.on ? false : keys.has("Space"),
-        use: studio.on ? false : keys.has("KeyF"),
+        crouch: studio.on || locker.on ? false : crouch,
+        prone: studio.on || locker.on ? false : prone,
+        jump: studio.on || locker.on ? false : keys.has("Space"),
+        use: studio.on || locker.on ? false : keys.has("KeyF"),
         ping: net.pingMs,
       }),
     );
   }
 
-  if (studio.on) {
+  if (locker.on) {
+    for (const g of clientPawns.values()) g.visible = false;
+    for (const b of bots) b.root.visible = false;
+    ghost.visible = false;
+    showRifle(rifleKind, false);
+    knife.visible = false;
+    nadeView.visible = false;
+    arm.root.visible = false;
+    studioGhost.visible = false;
+    lockerPawn.visible = true;
+    if (!locker.dragging) locker.phi += dt * 0.2;
+    applyLockerCam();
+  } else if (studio.on) {
     for (const g of clientPawns.values()) g.visible = false;
     for (const b of bots) b.root.visible = false;
     ghost.visible = false;
@@ -3872,6 +4084,7 @@ function frame(now: number) {
     }
   } else {
     studioGhost.visible = false;
+    lockerPawn.visible = false;
   }
 
   renderer.render(scene, camera);

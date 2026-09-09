@@ -33,7 +33,7 @@ import {
   type BotSkill,
 } from "./bots";
 import { pickBodyVictim, meleeTarget, remoteTargets, type LiveBody } from "./combat";
-import type { ClientEvent, KillFeedItem, KillWay, Pawn, PlayerInput, Snapshot } from "./net";
+import { parseSkin, type PawnSkin } from "./pawn";
 import {
   dropPeer,
   reseatPeer,
@@ -80,7 +80,7 @@ export type SimStatus = {
 
 export type Sim = {
   tick: (dt: number) => void;
-  join: (peerId: number, name: string, team?: Team) => void;
+  join: (peerId: number, name: string, team?: Team, skin?: PawnSkin) => void;
   leave: (peerId: number) => void;
   setInput: (peerId: number, input: PlayerInput) => void;
   event: (peerId: number, event: ClientEvent) => void;
@@ -472,8 +472,8 @@ export function createSim(opts?: {
     }
   }
 
-  function reseat(peerId: number, playerName: string, team: Team) {
-    reseatPeer(scene, world, match, bots, remotes, peerId, playerName, team);
+  function reseat(peerId: number, playerName: string, team: Team, skin?: PawnSkin) {
+    reseatPeer(scene, world, match, bots, remotes, peerId, playerName, team, skin);
   }
 
   return {
@@ -575,8 +575,8 @@ export function createSim(opts?: {
       syncWireCarry();
     },
 
-    join(peerId, playerName, team) {
-      seatPeer(scene, world, match, bots, remotes, peerId, playerName, team);
+    join(peerId, playerName, team, skin) {
+      seatPeer(scene, world, match, bots, remotes, peerId, playerName, team, parseSkin(skin));
     },
 
     leave(peerId) {
@@ -591,7 +591,7 @@ export function createSim(opts?: {
     event(peerId, event) {
       const r = remotes.get(peerId);
       if (event.kind === "joinTeam") {
-        reseat(peerId, event.name, event.team);
+        reseat(peerId, event.name, event.team, parseSkin(event.skin));
         return;
       }
       if (event.kind === "throwSmoke") {

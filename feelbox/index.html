@@ -95,7 +95,23 @@
         <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
       </div>
       <div id="server-list"></div>
-      <button type="button" id="home-studio">Map studio</button>
+      <div id="home-actions">
+        <button type="button" id="home-studio">Map studio</button>
+        <button type="button" id="home-locker">Player</button>
+      </div>
+      <div id="locker" hidden>
+        <p class="locker-kicker">Player</p>
+        <label class="locker-name"><span>Name</span><input id="locker-name" type="text" maxlength="18" /></label>
+        <p class="locker-label">Kit</p>
+        <div id="locker-kits"></div>
+        <p class="locker-label">Preview side</p>
+        <div id="locker-sides">
+          <button type="button" data-side="ember">Ember</button>
+          <button type="button" data-side="stone">Stone</button>
+        </div>
+        <p class="locker-hint">Drag to turn · colors follow the side you join</p>
+        <button type="button" id="locker-back">Back</button>
+      </div>
     </div>
 
     <div id="join-team" hidden>
