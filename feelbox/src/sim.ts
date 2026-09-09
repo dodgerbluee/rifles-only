@@ -16,7 +16,7 @@ import {
   tickMatch,
   type Team,
 } from "./match";
-import { inSite, rayShot, spawnYaw } from "./world";
+import { inSite, rayShot, rayWorld, spawnYaw } from "./world";
 import { buildMap, MAPS, type MapId } from "./maps";
 import {
   botTargets,
@@ -245,6 +245,59 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     shotPeople(from, dir, worldHit, shooterId);
   }
 
+  function remoteMeleeAt(r: Remote, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
+    if (time - r.lastMelee < 0.48) return false;
+    r.lastMelee = time;
+    const reach = tuning.melee;
+    const worldHit = rayWorld(origin, dir, reach, world.colliders);
+    const youTeam = slotById(match, r.slotId)?.team;
+    const skip = friendlyFire ? undefined : youTeam;
+    for (const b of bots) b.root.updateMatrixWorld(true);
+    for (const o of remotes.values()) o.root.updateMatrixWorld(true);
+    raycaster.set(origin, dir);
+    const meshHit = raycaster.intersectObjects(
+      [...botTargets(bots, skip, [r.slotId]), ...remoteTargets(remotes.values(), skip, [r.slotId])],
+      false,
+    )[0];
+    if (meshHit && meshHit.distance <= reach && !(worldHit && worldHit.dist < meshHit.distance - 0.04)) {
+      const hid = meshHit.object.userData.botId as number;
+      const bot = bots.find((b) => b.id === hid);
+      if (bot && bot.hp > 0 && (friendlyFire || bot.team !== youTeam)) {
+        noteHit(r.slotId, bot.id, time);
+        if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+        return true;
+      }
+      const remote = [...remotes.values()].find((x) => x.slotId === hid);
+      if (remote && remote.alive && (friendlyFire || remote.team !== youTeam)) {
+        hurtRemote(remote, 100, r.slotId);
+        return true;
+      }
+    }
+    const bodyHit = pickBodyVictim(
+      origin,
+      dir,
+      liveBodies(),
+      Math.min(reach, worldHit?.dist ?? reach),
+      youTeam,
+      friendlyFire,
+      [r.slotId],
+      crouchIds(),
+    );
+    if (!bodyHit || bodyHit.t > reach) return false;
+    const bot = bots.find((b) => b.id === bodyHit.body.id);
+    if (bot && bot.hp > 0) {
+      noteHit(r.slotId, bot.id, time);
+      if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+      return true;
+    }
+    const remote = [...remotes.values()].find((x) => x.slotId === bodyHit.body.id);
+    if (remote && remote.alive) {
+      hurtRemote(remote, 100, r.slotId);
+      return true;
+    }
+    return false;
+  }
+
   function remoteFireAt(r: Remote, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
     const kind: RifleId = r.weapon === "mosin" ? "mosin" : "kar";
     if (time - r.lastFire < RIFLES[kind].cycle) return false;
@@ -257,14 +310,18 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     return true;
   }
 
-  function applyNadePop(pop: { kind: NadeKind; x: number; y: number; z: number }) {
+  function applyNadePop(pop: { kind: NadeKind; x: number; y: number; z: number; throwerId?: number }) {
     if (pop.kind !== "frag") return;
+    const killer = pop.throwerId ?? -1;
     for (const b of bots) {
       if (b.hp <= 0) continue;
       const d = Math.hypot(b.x - pop.x, b.y - pop.y, b.z - pop.z);
       if (d < FRAG_R) {
         const fall = 1 - d / FRAG_R;
-        if (hurtBot(b, Math.round(30 + 90 * fall), time)) markDead(match, b.id, b.x, b.y, b.z);
+        if (hurtBot(b, Math.round(30 + 90 * fall), time)) {
+          if (killer >= 0) frag(killer, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z);
+          else markDead(match, b.id, b.x, b.y, b.z);
+        }
       }
     }
     for (const r of remotes.values()) {
@@ -272,7 +329,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       const d = Math.hypot(r.x - pop.x, r.y - pop.y, r.z - pop.z);
       if (d < FRAG_R) {
         const fall = 1 - d / FRAG_R;
-        hurtRemote(r, Math.round(20 + 80 * fall), r.slotId);
+        hurtRemote(r, Math.round(20 + 80 * fall), killer >= 0 ? killer : r.slotId);
       }
     }
   }
@@ -420,10 +477,12 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       }
       if (event.kind === "throwSmoke") {
         if (!r?.alive) return;
+        if (time - r.lastThrow < 0.45) return;
+        r.lastThrow = time;
         const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
         const kind = event.nade ?? "smoke";
-        if ((event.power ?? 0.55) <= 0) dropSmoke(scene, origin, kind);
-        else throwSmoke(scene, origin, new THREE.Vector3(event.dx, event.dy, event.dz), event.power, kind);
+        if ((event.power ?? 0.55) <= 0) dropSmoke(scene, origin, kind, r.slotId);
+        else throwSmoke(scene, origin, new THREE.Vector3(event.dx, event.dy, event.dz), event.power, kind, r.slotId);
         return;
       }
       if (event.kind === "changeMap") {
@@ -465,10 +524,28 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
         if (dir.lengthSq() < 1e-6) return;
         dir.normalize();
-        const eye = new THREE.Vector3(r.x, r.y + (r.crouch ? 1.1 : 1.64), r.z);
+        const eye = new THREE.Vector3(r.x, r.y + (r.prone ? 0.42 : r.crouch ? 1.1 : 1.64), r.z);
         const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
         if (!Number.isFinite(origin.x) || origin.distanceTo(eye) > 3) origin.copy(eye);
         remoteFireAt(r, origin, dir);
+        return;
+      }
+      if (event.kind === "melee") {
+        if (!r?.alive) return;
+        const froze =
+          match.phase === "freeze" ||
+          match.phase === "ending" ||
+          match.phase === "matchover" ||
+          match.phase === "bestplay" ||
+          match.phase === "settle";
+        if (froze) return;
+        const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
+        if (dir.lengthSq() < 1e-6) return;
+        dir.normalize();
+        const eye = new THREE.Vector3(r.x, r.y + (r.prone ? 0.42 : r.crouch ? 1.1 : 1.64), r.z);
+        const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
+        if (!Number.isFinite(origin.x) || origin.distanceTo(eye) > 3) origin.copy(eye);
+        remoteMeleeAt(r, origin, dir);
         return;
       }
       if (!r) return;

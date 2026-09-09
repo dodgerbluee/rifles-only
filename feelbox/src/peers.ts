@@ -28,8 +28,12 @@ export type Remote = {
   weapon: Weapon;
   ads: boolean;
   crouch: boolean;
+  prone: boolean;
   input: PlayerInput;
   lastFire: number;
+  lastMelee: number;
+  lastThrow: number;
+  jumpHeld: boolean;
   ping: number;
   fireQ: FireQueue;
   root: THREE.Group;
@@ -66,8 +70,12 @@ export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, t
     weapon: "kar",
     ads: false,
     crouch: false,
+    prone: false,
     input: emptyInput(),
     lastFire: -10,
+    lastMelee: -10,
+    lastThrow: -10,
+    jumpHeld: false,
     ping: 0,
     fireQ: emptyQueue(),
     root,
@@ -84,6 +92,7 @@ export function emptyInput(): PlayerInput {
     lean: 0,
     weapon: "kar",
     crouch: false,
+    prone: false,
     jump: false,
     use: false,
     mx: 0,
@@ -187,7 +196,8 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   r.yaw = inp.yaw;
   r.pitch = inp.pitch;
   r.ads = inp.ads;
-  r.crouch = inp.crouch;
+  r.crouch = inp.crouch && !inp.prone;
+  r.prone = !!inp.prone;
   r.weapon = inp.weapon;
   r.ping = inp.ping ?? r.ping;
   if (!r.alive || froze) {
@@ -196,9 +206,9 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
     stepWalkFromPos(r.root, r.x, r.z, false);
     return;
   }
-  const height = r.crouch ? 1.2 : 1.78;
+  const height = r.prone ? 0.55 : r.crouch ? 1.2 : 1.78;
   const knife = r.weapon === "knife" && !r.ads ? 1.25 : 1;
-  const speed = tuning.walk * (r.crouch ? 0.55 : 1) * (r.ads ? tuning.adsSlow : 1) * knife;
+  const speed = tuning.walk * (r.prone ? 0.36 : r.crouch ? 0.55 : 1) * (r.ads ? tuning.adsSlow : 1) * knife;
   const keys = new Set(inp.keys);
   const fx = -Math.sin(r.yaw);
   const fz = -Math.cos(r.yaw);
@@ -230,7 +240,8 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
     r.x = n.x;
     r.z = n.z;
   }
-  if (grounded && inp.jump) r.vy = Math.sqrt(2 * tuning.jumpH * tuning.gravity);
+  if (grounded && inp.jump && !r.jumpHeld) r.vy = Math.sqrt(2 * tuning.jumpH * tuning.gravity);
+  r.jumpHeld = !!inp.jump;
   if (grounded && r.vy <= 0) {
     r.y = gh;
     r.vy = 0;
@@ -369,6 +380,7 @@ export function collectInput(opts: {
   lean: number;
   weapon: Weapon;
   crouch: boolean;
+  prone?: boolean;
   jump: boolean;
   use: boolean;
   ping?: number;
@@ -382,6 +394,7 @@ export function collectInput(opts: {
     lean: opts.lean,
     weapon: opts.weapon,
     crouch: opts.crouch,
+    prone: opts.prone ?? false,
     jump: opts.jump,
     use: opts.use,
     mx: 0,

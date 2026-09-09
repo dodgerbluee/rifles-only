@@ -18,6 +18,7 @@ export type PlayerInput = {
   lean: number;
   weapon: Weapon;
   crouch: boolean;
+  prone?: boolean;
   jump: boolean;
   use: boolean;
   mx: number;
@@ -88,7 +89,8 @@ export type ClientEvent =
   | { kind: "removeBot"; team: Team }
   | { kind: "kick"; slotId: number }
   | { kind: "takeover"; slotId: number }
-  | { kind: "shot"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number };
+  | { kind: "shot"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number }
+  | { kind: "melee"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number; bash?: boolean };
 
 export type NetEvent = ClientEvent & { peerId?: number };
 

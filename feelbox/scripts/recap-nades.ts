@@ -57,6 +57,7 @@ sim.tick(1 / 30);
 const air = sim.snapshot();
 check("thrown smoke is in the snapshot", (air.nades?.length ?? 0) > 0, `nades=${air.nades?.length ?? 0}`);
 
+for (let i = 0; i < 16; i++) sim.tick(1 / 30);
 sim.event(1, {
   kind: "throwSmoke",
   ox: me.x + 1,

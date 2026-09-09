@@ -25,6 +25,7 @@ export type NadePop = {
   x: number;
   y: number;
   z: number;
+  throwerId?: number;
 };
 
 type Nade = {
@@ -35,6 +36,7 @@ type Nade = {
   kind: NadeKind;
   settled: boolean;
   air: number;
+  throwerId?: number;
 };
 
 type Cloud = {
@@ -127,6 +129,7 @@ export function throwSmoke(
   dir: THREE.Vector3,
   power = 0.55,
   kind: NadeKind = "smoke",
+  throwerId?: number,
 ) {
   const mesh = makeNadeMesh(kind);
   mesh.position.copy(origin);
@@ -135,10 +138,10 @@ export function throwSmoke(
   const vel = dir.clone().normalize();
   vel.multiplyScalar(7.5 + p * 16);
   vel.y += 1.8 + p * 4.4;
-  nades.push({ mesh, pos: origin.clone(), vel, fuse: 99, kind, settled: false, air: 0 });
+  nades.push({ mesh, pos: origin.clone(), vel, fuse: 99, kind, settled: false, air: 0, throwerId });
 }
 
-export function dropSmoke(scene: THREE.Scene, origin: THREE.Vector3, kind: NadeKind = "smoke") {
+export function dropSmoke(scene: THREE.Scene, origin: THREE.Vector3, kind: NadeKind = "smoke", throwerId?: number) {
   const mesh = makeNadeMesh(kind);
   mesh.position.copy(origin);
   scene.add(mesh);
@@ -150,6 +153,7 @@ export function dropSmoke(scene: THREE.Scene, origin: THREE.Vector3, kind: NadeK
     kind,
     settled: false,
     air: 0,
+    throwerId,
   });
 }
 
@@ -176,7 +180,7 @@ export function updateSmoke(
       (n.mesh.material as THREE.Material).dispose();
       nades.splice(i, 1);
       if (kind === "smoke") spawnCloud(scene, pos);
-      const pop: NadePop = { kind, x: pos.x, y: pos.y, z: pos.z };
+      const pop: NadePop = { kind, x: pos.x, y: pos.y, z: pos.z, throwerId: n.throwerId };
       pendingPops.push(pop);
       onPop?.(pop);
     }

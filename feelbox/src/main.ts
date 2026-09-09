@@ -1362,6 +1362,31 @@ function tryMelee(bash: boolean) {
   camera.getWorldPosition(origin);
   camera.getWorldDirection(dir);
   const youTeam = slotById(match, actorId())?.team;
+  if (net.role === "client") {
+    net.sendEvent({
+      kind: "melee",
+      ox: origin.x,
+      oy: origin.y,
+      oz: origin.z,
+      dx: dir.x,
+      dy: dir.y,
+      dz: dir.z,
+      bash,
+    });
+    for (const g of clientPawns.values()) g.updateMatrixWorld(true);
+    raycaster.set(origin, dir);
+    const hit = raycaster.intersectObjects(
+      [...clientPawns.values()].flatMap((g) => pawnHitMeshes(g)),
+      false,
+    )[0];
+    const worldHit = rayWorld(origin, dir, tuning.melee, world.colliders);
+    if (!hit || hit.distance > tuning.melee) return;
+    if (worldHit && worldHit.dist < hit.distance - 0.04) return;
+    lastHit = bash ? "bash" : "knife";
+    flashHit(false);
+    impact(hit.point, hit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, false);
+    return;
+  }
   raycaster.set(origin, dir);
   const skip = rules.friendlyFire ? undefined : youTeam;
   for (const b of bots) b.root.updateMatrixWorld(true);
@@ -2491,6 +2516,8 @@ function frame(now: number) {
       clearTape(tape);
       lastRecord = -1;
       nadeBag = { ...NADE_MAX };
+      killedBy = "";
+      lastDamage = "No damage taken";
     }
   }
   seenPhase = match.phase;
@@ -2535,6 +2562,17 @@ function frame(now: number) {
       ingestFeed(lastSnap.feed);
       for (const pop of lastSnap.pops ?? []) applyNadePop(pop, true);
       if (me) {
+        if (me.hp < hp) {
+          lastDamage = `−${Math.round(hp - me.hp)}`;
+          hurtEl.style.opacity = "0.55";
+          bang(70, 0.08, 0.05);
+        }
+        if (alive && !me.alive) {
+          const kill = [...lastSnap.feed].reverse().find((k) => k.victimId === me.id);
+          killedBy = kill?.killerName ?? "a rifleman";
+          lastDamage = `Killed · ${killedBy}`;
+          lastHit = "down";
+        }
         playerId = me.id;
         hp = me.hp;
         alive = me.alive;
@@ -2730,8 +2768,13 @@ function frame(now: number) {
     if (match.wire.carrierId === actorId()) {
       wirePack.position.set(px + Math.cos(yaw) * 0.25, py + 0.85, pz - Math.sin(yaw) * 0.05);
     } else {
+      const mesh = match.wire.carrierId != null ? clientPawns.get(match.wire.carrierId) : undefined;
+      const pawn = lastSnap?.pawns.find((p) => p.id === match.wire.carrierId);
       const carrier = bots.find((b) => b.id === match.wire.carrierId);
-      if (carrier) wirePack.position.set(carrier.x, carrier.y + 0.85, carrier.z);
+      if (mesh) wirePack.position.set(mesh.position.x, mesh.position.y + 0.85, mesh.position.z);
+      else if (pawn) wirePack.position.set(pawn.x, pawn.y + 0.85, pawn.z);
+      else if (carrier) wirePack.position.set(carrier.x, carrier.y + 0.85, carrier.z);
+      else wirePack.position.set(match.wire.x, match.wire.y + 0.85, match.wire.z);
     }
     wirePack.visible = match.wire.carrierId !== actorId();
   } else {
@@ -2909,6 +2952,7 @@ function frame(now: number) {
         lean,
         weapon: weapon === "rifle" ? rifleKind : weapon,
         crouch,
+        prone,
         jump: keys.has("Space"),
         use: keys.has("KeyF"),
         ping: net.pingMs,
