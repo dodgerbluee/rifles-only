@@ -47,6 +47,7 @@ export type Bot = {
   seeT: number;
   stuckT: number;
   nades: NadeBag;
+  stunUntil: number;
 };
 
 export type BotSkill = "easy" | "normal" | "hard";
@@ -133,6 +134,7 @@ function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bo
     seeT: 0,
     stuckT: 0,
     nades: fullNades(),
+    stunUntil: 0,
   };
 }
 
@@ -225,6 +227,17 @@ export function updateBots(
 
     b.flash = Math.max(0, b.flash - dt * 5);
     setPawnCloth(b.cloth, b.flash > 0 ? 0xdeece0 : teamCloth(b.team));
+
+    if (time < b.stunUntil) {
+      b.aim = false;
+      b.seeT = 0;
+      b.flash = Math.max(b.flash, 0.4);
+      setPawnCloth(b.cloth, 0xdeece0);
+      b.root.position.set(b.x, b.y, b.z);
+      b.root.rotation.y = b.yaw;
+      stepWalkFromPos(b.root, b.x, b.z, false);
+      continue;
+    }
 
     if (frozen || frozenIds.includes(b.id)) {
       b.root.position.set(b.x, b.y, b.z);
@@ -438,6 +451,7 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     b.lastZ = spawn.z;
     b.seeT = 0;
     b.stuckT = 0;
+    b.stunUntil = 0;
     setPawnCloth(b.cloth, teamCloth(b.team));
     b.nades = fullNades();
   }

@@ -7,6 +7,13 @@ export const NADE_ORDER: NadeKind[] = ["smoke", "frag", "stun", "flash"];
 
 export const NADE_MAX: Record<NadeKind, number> = { smoke: 2, frag: 1, stun: 1, flash: 1 };
 
+export const STUN_R = 11;
+
+export function stunDuration(dist: number) {
+  if (dist >= STUN_R) return 0;
+  return 1.6 + (1 - dist / STUN_R) * 2.2;
+}
+
 export type NadeBag = Record<NadeKind, number>;
 
 export function fullNades(): NadeBag {

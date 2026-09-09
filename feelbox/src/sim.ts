@@ -18,7 +18,7 @@ import {
   tickMatch,
   type Team,
 } from "./match";
-import { inSite, rayShot, spawnYaw } from "./world";
+import { inSite, rayShot, spawnYaw, hasLos } from "./world";
 import { buildMap, MAPS, type MapId } from "./maps";
 import {
   botTargets,
@@ -54,6 +54,8 @@ import {
   fullNades,
   smokeBlocksLos,
   spendNade,
+  stunDuration,
+  STUN_R,
   throwSmoke,
   updateSmoke,
   type NadeKind,
@@ -371,6 +373,20 @@ export function createSim(opts?: {
   }
 
   function applyNadePop(pop: { kind: NadeKind; x: number; y: number; z: number; throwerId?: number }) {
+    if (pop.kind === "stun") {
+      for (const b of bots) {
+        if (b.hp <= 0) continue;
+        const d = Math.hypot(b.x - pop.x, b.y - pop.y, b.z - pop.z);
+        if (d > STUN_R) continue;
+        if (!hasLos(pop.x, pop.y + 0.3, pop.z, b.x, b.y + 1.45, b.z, world.colliders)) continue;
+        const hold = stunDuration(d);
+        if (hold <= 0) continue;
+        b.stunUntil = Math.max(b.stunUntil, time + hold);
+        b.aim = false;
+        b.seeT = 0;
+      }
+      return;
+    }
     if (pop.kind !== "frag") return;
     const killer = pop.throwerId ?? -1;
     for (const b of bots) {
@@ -702,9 +718,10 @@ export function createSim(opts?: {
             hp: b.hp,
             alive: b.hp > 0,
             weapon: "kar",
-            ads: b.aim,
+            ads: b.aim && b.stunUntil <= time,
             crouch: false,
             prone: false,
+            stun: b.stunUntil > time,
             nades: { ...b.nades },
             kills: line(b.id).kills,
             assists: line(b.id).assists,

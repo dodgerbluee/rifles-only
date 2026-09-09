@@ -372,6 +372,7 @@ export function buildSnapshot(
   bots: Bot[],
   remotes: Map<number, Remote>,
   mapId?: string,
+  now = 0,
 ): Snapshot {
   const pawns: Pawn[] = [
     local,
@@ -415,9 +416,10 @@ export function buildSnapshot(
         hp: b.hp,
         alive: b.hp > 0,
         weapon: "kar",
-        ads: b.aim,
+        ads: b.aim && b.stunUntil <= now,
         crouch: false,
         prone: false,
+        stun: b.stunUntil > now,
         nades: { ...b.nades },
         kills: line(b.id).kills,
         assists: line(b.id).assists,

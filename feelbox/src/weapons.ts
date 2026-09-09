@@ -190,7 +190,7 @@ export function makeKar98(): RifleView {
   return { id: "kar", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
-/** Mosin-Nagant 91/30: barrel meets receiver, peep stacked on a hooded front globe. */
+/** Mosin-Nagant 91/30: barrel meets receiver, small peep you look through. */
 export function makeMosin(): RifleView {
   const root = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x22241e, roughness: 0.36, metalness: 0.62 });
@@ -211,26 +211,14 @@ export function makeMosin(): RifleView {
   place(bolt, cylX(0.005, 0.068, steel, 6), 0.04, 0.006, 0);
 
   const recTop = axisY + recR;
-  const ringR = 0.0044;
-  const tube = 0.00115;
-  const ringZ = -0.015;
+  const ringR = 0.0031;
+  const tube = 0.00028;
+  const ringZ = -0.04;
   const ringY = recTop + ringR;
-  const stem = place(root, cylY(0.0011, ringR + tube, steel, 6), 0, recTop + (ringR + tube) * 0.5, ringZ);
-  stem.renderOrder = 2;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, tube, 10, 24), steel);
+  place(root, cylY(0.0007, ringR + tube, steel, 6), 0, recTop + (ringR + tube) * 0.5, ringZ);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, tube, 8, 24), steel);
   ring.renderOrder = 3;
   place(root, ring, 0, ringY, ringZ);
-
-  const frontZ = -0.54;
-  const barTop = axisY + barR;
-  const rampH = ringY - barTop;
-  place(root, cylY(0.0024, rampH, steel, 6), 0, barTop + rampH * 0.5, frontZ);
-  const hood = new THREE.Mesh(new THREE.TorusGeometry(ringR, 0.0009, 8, 18, Math.PI), steel);
-  hood.rotation.z = Math.PI;
-  hood.renderOrder = 3;
-  place(root, hood, 0, ringY, frontZ);
-  const post = place(root, cylY(0.0011, ringR * 0.9, steel, 5), 0, ringY - ringR * 0.2, frontZ);
-  post.renderOrder = 3;
 
   const flash = flashMesh(0, axisY, -0.58);
   root.add(flash);

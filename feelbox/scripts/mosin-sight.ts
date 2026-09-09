@@ -1,6 +1,5 @@
 /**
- * Mosin ADS must look through a peep stacked on a front globe, with no
- * gap between receiver and barrel.
+ * Mosin ADS looks through the small peep, receiver still meets the barrel.
  */
 import { makeMosin } from "../src/weapons.ts";
 
@@ -27,12 +26,20 @@ for (let i = 0; i < zs.length - 1; i++) {
 }
 check("receiver and barrel overlap on Z", overlap || zs.length < 2, `parts=${zs.length}`);
 
+const rings = view.root.children.filter((c) => {
+  const mesh = c as { isMesh?: boolean; geometry?: { type?: string } };
+  return mesh.isMesh && mesh.geometry?.type === "TorusGeometry";
+});
+check("one peep ring, no front hood", rings.length === 1, `rings=${rings.length}`);
+
 const ads = view.adsPos;
+const peep = rings[0];
 check("ADS is centered on X", Math.abs(ads.x) < 1e-6);
-check("ADS sits behind the peep, not inside it", ads.z < -0.13);
+check("ADS sits on the peep height", peep ? Math.abs(ads.y + peep.position.y) < 1e-6 : false);
+check("ADS sits behind the peep, not inside it", ads.z < -0.13, `z=${ads.z}`);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\nmosin sight picture holds together");
+console.log("\nmosin peep is the old ring on the new aim line");

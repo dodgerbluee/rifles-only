@@ -49,6 +49,7 @@ export type Pawn = {
   assists?: number;
   deaths?: number;
   ping?: number;
+  stun?: boolean;
 };
 
 export type WireSnap = {
@@ -217,6 +218,12 @@ export type NetHandle = {
 };
 
 const BACKOFF = [400, 800, 1600, 3200, 5000];
+
+export const SERVER_GONE_MS = 30_000;
+
+export function serverGone(started: boolean, lastBeat: number, now: number, timeout = SERVER_GONE_MS) {
+  return started && lastBeat > 0 && now - lastBeat >= timeout;
+}
 
 export function defaultNetUrl(): string {
   return playWsUrl();

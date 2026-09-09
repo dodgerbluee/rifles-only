@@ -35,6 +35,8 @@ import {
   NADE_ORDER,
   smokeBlocksLos,
   smokeCoverage,
+  stunDuration,
+  STUN_R,
   throwSmoke,
   updateSmoke,
   type NadeKind,
@@ -120,7 +122,7 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { connectNet, fetchServers, playWsUrl, setNetName, type NetHandle, type Snapshot } from "./net";
+import { connectNet, fetchServers, playWsUrl, serverGone, setNetName, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -226,12 +228,17 @@ let lastSnap: Snapshot | null = null;
 let snapSeq = 0;
 let appliedSeq = -1;
 
+let lastBeat = 0;
+let refreshServers: () => Promise<void> = async () => {};
+
 function bindNet(handle: NetHandle) {
   handle.onSnapshot((snap) => {
     lastSnap = snap;
     snapSeq += 1;
+    lastBeat = performance.now();
   });
   handle.onRole((role) => {
+    if (role === "client") lastBeat = performance.now();
     if (role === "client" && prefs.team) {
       handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
     }
@@ -279,6 +286,7 @@ function joinGame(name?: string) {
   }
   if (name) joiningName = name;
   hideJoinTeam();
+  lastBeat = performance.now();
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
@@ -287,8 +295,28 @@ function joinGame(name?: string) {
 }
 
 function enterPlay() {
+  lastBeat = lastBeat || performance.now();
   document.body.classList.add("started");
   lock();
+}
+
+function leaveToLobby() {
+  if (studio.on) {
+    studio.on = false;
+    studioGhost.visible = false;
+    document.body.classList.remove("studio");
+  }
+  net.destroy();
+  net = idleNet();
+  bindNet(net);
+  lastSnap = null;
+  lastBeat = 0;
+  joiningName = "";
+  hideJoinTeam();
+  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "podium");
+  document.exitPointerLock();
+  paintJoin();
+  void refreshServers();
 }
 
 function paintJoin() {
@@ -936,6 +964,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
     paintJoin();
   };
   void paintServers();
+  refreshServers = paintServers;
   window.setInterval(() => {
     void paintServers();
   }, 2000);
@@ -2515,10 +2544,21 @@ function applyNadePop(pop: NadePop, fxOnly = false) {
   }
   if (pop.kind === "stun") {
     bang(180, 0.18, 0.1);
-    if (!alive) return;
-    const dist = Math.hypot(px - pop.x, py - pop.y, pz - pop.z);
-    if (dist > 11 || !nadeLos(pop.x, pop.y, pop.z)) return;
-    stunT = Math.max(stunT, 1.6 + (1 - dist / 11) * 2.2);
+    if (alive) {
+      const dist = Math.hypot(px - pop.x, py - pop.y, pz - pop.z);
+      const hold = dist > STUN_R || !nadeLos(pop.x, pop.y, pop.z) ? 0 : stunDuration(dist);
+      if (hold > 0) stunT = Math.max(stunT, hold);
+    }
+    if (fxOnly) return;
+    for (const b of bots) {
+      if (b.hp <= 0) continue;
+      const d = Math.hypot(b.x - pop.x, b.y - pop.y, b.z - pop.z);
+      const hold = stunDuration(d);
+      if (hold <= 0) continue;
+      b.stunUntil = Math.max(b.stunUntil, time + hold);
+      b.aim = false;
+      b.seeT = 0;
+    }
   }
 }
 
@@ -2633,6 +2673,9 @@ function nearestBot(from: THREE.Vector3): Bot | undefined {
 
 let last = performance.now();
 function frame(now: number) {
+  if (serverGone(document.body.classList.contains("started") && net.status !== "offline", lastBeat, now)) {
+    leaveToLobby();
+  }
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   time += dt;
@@ -3406,6 +3449,7 @@ function frame(now: number) {
         bots,
         remotes,
         mapId,
+        time,
       ),
     );
   }
