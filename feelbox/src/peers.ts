@@ -8,7 +8,7 @@ import { activeClouds } from "./smoke";
 import { line } from "./stats";
 import { tuning } from "./tuning";
 import { emptyQueue, type FireQueue } from "./fireQueue";
-import { buildPawn, stepWalkFromPos } from "./pawn";
+import { buildPawn, stepWalk, stepWalkFromPos } from "./pawn";
 
 const RADIUS = 0.32;
 
@@ -141,6 +141,45 @@ export function dropPeer(
     slot.name = r.name;
     bots.push(spawnBot(scene, world, match, slot));
   }
+}
+
+export function takeoverPeer(
+  scene: THREE.Scene,
+  match: Match,
+  bots: Bot[],
+  remotes: Map<number, Remote>,
+  peerId: number,
+  slotId: number,
+) {
+  const r = remotes.get(peerId);
+  if (!r || r.alive) return false;
+  const bot = bots.find((b) => b.id === slotId);
+  if (!bot || bot.hp <= 0 || bot.team !== r.team) return false;
+  const oldSlot = match.slots.find((s) => s.id === r.slotId);
+  const newSlot = match.slots.find((s) => s.id === bot.id);
+  if (!newSlot) return false;
+  despawnBot(scene, bots, bot.id);
+  if (oldSlot) {
+    oldSlot.kind = "bot";
+    oldSlot.alive = false;
+  }
+  newSlot.kind = "human";
+  newSlot.name = r.name;
+  newSlot.alive = true;
+  r.slotId = bot.id;
+  r.x = bot.x;
+  r.y = bot.y;
+  r.z = bot.z;
+  r.vy = 0;
+  r.hp = Math.max(1, bot.hp);
+  r.alive = true;
+  r.yaw = bot.yaw;
+  r.pitch = bot.lookPitch;
+  r.root.position.set(bot.x, bot.y, bot.z);
+  r.root.rotation.set(0, bot.yaw, 0);
+  r.root.visible = true;
+  match.lastJoin = `${r.name} took over ${bot.id}`;
+  return true;
 }
 
 export function tickRemote(r: Remote, dt: number, time: number, world: World, froze: boolean) {
@@ -349,6 +388,13 @@ const HARD_SNAP_XZ = 1.6;
 const HARD_SNAP_Y = 2.2;
 const SNAP_BLEND = 0.22;
 
+export function snapWalkSpeed(px: number, pz: number, x: number, z: number, interval: number) {
+  if (!(interval > 0) || interval > 0.4) return 0;
+  const d = Math.hypot(x - px, z - pz);
+  if (d < 0.03 || d > 1.2) return 0;
+  return Math.min(8, d / interval);
+}
+
 export function reconcilePos(
   x: number,
   y: number,
@@ -390,13 +436,14 @@ export function syncClientPawns(
       g = standIn(p.team, p.name, p.id);
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
+      g.userData.tx = p.x;
+      g.userData.tz = p.z;
+      g.userData.walkSpeed = 0;
       scene.add(g);
       store.set(p.id, g);
     }
     g.visible = true;
-    const ox = g.position.x;
-    const oz = g.position.z;
-    const err = Math.hypot(p.x - ox, p.z - oz);
+    const err = Math.hypot(p.x - g.position.x, p.z - g.position.z);
     if (err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
@@ -407,8 +454,15 @@ export function syncClientPawns(
       g.rotation.y = lerpAngle(g.rotation.y, p.yaw, a);
     }
     g.rotation.x = p.alive ? 0 : 1.25;
-    const moving = p.alive && Math.hypot(g.position.x - ox, g.position.z - oz) > 0.002;
-    stepWalkFromPos(g, g.position.x, g.position.z, moving);
+    const tx = typeof g.userData.tx === "number" ? g.userData.tx : p.x;
+    const tz = typeof g.userData.tz === "number" ? g.userData.tz : p.z;
+    if (Math.abs(p.x - tx) > 1e-4 || Math.abs(p.z - tz) > 1e-4) {
+      g.userData.walkSpeed = snapWalkSpeed(tx, tz, p.x, p.z, 1 / 30);
+      g.userData.tx = p.x;
+      g.userData.tz = p.z;
+    }
+    const speed = Number(g.userData.walkSpeed) || 0;
+    stepWalk(g, speed * dt, p.alive && speed > 0.4);
   }
   for (const [id, g] of store) {
     if (seen.has(id)) continue;

@@ -30,16 +30,11 @@ import {
   type Bot,
 } from "./bots";
 import { pickBodyVictim, remoteTargets, type LiveBody } from "./combat";
-import {
-  consumeFire,
-  fireWantsShot,
-  pressFire,
-  releaseFire,
-} from "./fireQueue";
 import type { ClientEvent, Pawn, PlayerInput, Snapshot } from "./net";
 import {
   dropPeer,
   seatPeer,
+  takeoverPeer,
   tickRemote,
   type Remote,
 } from "./peers";
@@ -241,19 +236,13 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     shotPeople(from, dir, worldHit, shooterId);
   }
 
-  function remoteFire(r: Remote): boolean {
+  function remoteFireAt(r: Remote, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
     const kind: RifleId = r.weapon === "mosin" ? "mosin" : "kar";
     if (time - r.lastFire < RIFLES[kind].cycle) return false;
     if (r.weapon === "knife" || r.weapon === "smoke" || r.weapon === "frag" || r.weapon === "stun" || r.weapon === "flash") {
       return false;
     }
     r.lastFire = time;
-    const origin = new THREE.Vector3(r.x, r.y + (r.crouch ? 1.1 : 1.64), r.z);
-    const dir = new THREE.Vector3(
-      -Math.sin(r.yaw) * Math.cos(r.pitch),
-      -Math.sin(r.pitch),
-      -Math.cos(r.yaw) * Math.cos(r.pitch),
-    ).normalize();
     const worldHit = rayShot(origin, dir, 120, world.colliders);
     shotPeople(origin, dir, worldHit, r.slotId);
     return true;
@@ -363,9 +352,6 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
 
       for (const r of remotes.values()) {
         tickRemote(r, dt, time, world, froze);
-        if (r.input.fire && !r.fireQ.held) pressFire(r.fireQ);
-        else if (!r.input.fire && r.fireQ.held) releaseFire(r.fireQ);
-        if (fireWantsShot(r.fireQ) && r.alive && !combatLock && remoteFire(r)) consumeFire(r.fireQ);
       }
 
       tickMatch(match, dt, {
@@ -394,6 +380,11 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         resetBots(bots, world, match);
         roundSpawnHumans();
         for (const s of match.slots) s.alive = true;
+        for (const s of match.slots) {
+          if (s.kind !== "bot") continue;
+          if (bots.some((b) => b.id === s.id)) continue;
+          bots.push(spawnBot(scene, world, match, s));
+        }
       }
 
       updateSmoke(scene, dt, world.colliders, applyNadePop);
@@ -447,6 +438,28 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       if (event.kind === "kick") {
         const remote = [...remotes.values()].find((x) => x.slotId === event.slotId);
         if (remote) dropPeer(scene, world, match, bots, remotes, remote.peerId);
+        return;
+      }
+      if (event.kind === "takeover") {
+        takeoverPeer(scene, match, bots, remotes, peerId, event.slotId);
+        return;
+      }
+      if (event.kind === "shot") {
+        if (!r?.alive) return;
+        const froze =
+          match.phase === "freeze" ||
+          match.phase === "ending" ||
+          match.phase === "matchover" ||
+          match.phase === "bestplay" ||
+          match.phase === "settle";
+        if (froze) return;
+        const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
+        if (dir.lengthSq() < 1e-6) return;
+        dir.normalize();
+        const eye = new THREE.Vector3(r.x, r.y + (r.crouch ? 1.1 : 1.64), r.z);
+        const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
+        if (!Number.isFinite(origin.x) || origin.distanceTo(eye) > 3) origin.copy(eye);
+        remoteFireAt(r, origin, dir);
         return;
       }
       if (!r) return;

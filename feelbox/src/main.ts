@@ -53,7 +53,7 @@ import {
 } from "./match";
 import { bindAdmin, rules } from "./admin";
 import { buildPawn, pawnStyle, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
-import { pickBodyVictim, remoteTargets, type LiveBody } from "./combat";
+import { pickBodyVictim, pawnHitMeshes, remoteTargets, type LiveBody } from "./combat";
 import {
   clearTape,
   createTape,
@@ -1176,6 +1176,26 @@ function shotPeople(
 type SpecT = { id: number; name: string; bot: boolean; x: number; y: number; z: number; yaw: number; pitch: number };
 
 function specRoster(): SpecT[] {
+  if (net.role === "client" && lastSnap) {
+    const me = lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId);
+    const team = me?.team;
+    if (!team) return [];
+    const out: SpecT[] = [];
+    for (const p of lastSnap.pawns) {
+      if (!p.alive || p.team !== team || (p.netId ?? 0) === net.peerId) continue;
+      out.push({
+        id: p.id,
+        name: p.name,
+        bot: (p.netId ?? 0) === 0,
+        x: p.x,
+        y: p.y + 1.52,
+        z: p.z,
+        yaw: p.yaw,
+        pitch: p.pitch,
+      });
+    }
+    return out;
+  }
   const team = slotById(match, playerId)?.team;
   if (!team) return [];
   const out: SpecT[] = [];
@@ -1230,6 +1250,10 @@ function cycleSpec(dir: number) {
 function tryTakeover() {
   const spec = specTarget();
   if (!spec?.bot) return;
+  if (net.role === "client") {
+    net.sendEvent({ kind: "takeover", slotId: spec.id });
+    return;
+  }
   const bot = bots.find((b) => b.id === spec.id);
   const team = slotById(match, playerId)?.team;
   if (!bot || bot.hp <= 0 || bot.team !== team) return;
@@ -1400,6 +1424,43 @@ function tryFire() {
 
   const worldHit = rayShot(origin, dir, 120, world.colliders);
   const floorHit = rayWorld(origin, dir, 120, world.colliders);
+  if (net.role === "client") {
+    net.sendEvent({
+      kind: "shot",
+      ox: origin.x,
+      oy: origin.y,
+      oz: origin.z,
+      dx: dir.x,
+      dy: dir.y,
+      dz: dir.z,
+    });
+    for (const g of clientPawns.values()) g.updateMatrixWorld(true);
+    raycaster.set(origin, dir);
+    const meshHit = raycaster.intersectObjects(
+      [...clientPawns.values()].flatMap((g) => pawnHitMeshes(g)),
+      false,
+    )[0];
+    if (meshHit && (!worldHit || meshHit.distance < worldHit.dist - 0.02)) {
+      const head = meshHit.object.userData.part === "head";
+      lastHit = head ? "HEADSHOT" : "hit";
+      flashHit(!!head);
+      bang(head ? 520 : 280, 0.06, 0.05);
+      tracer(muzzle, meshHit.point);
+    } else if (worldHit) {
+      lastHit = "world";
+      impact(worldHit.point, worldHit.normal, false, false);
+      tracer(muzzle, worldHit.point);
+    } else if (floorHit) {
+      lastHit = "world";
+      impact(floorHit.point, floorHit.normal, false, false);
+      tracer(muzzle, floorHit.point);
+    } else {
+      lastHit = "miss";
+      tracer(muzzle, origin.clone().addScaledVector(dir, 80));
+    }
+    if (mag === 0) startReload();
+    return;
+  }
   if (shotPeople(origin, dir, worldHit, actorId(), muzzle, { hitmark: true })) {
     if (mag === 0) startReload();
     return;
@@ -2114,7 +2175,7 @@ function frame(now: number) {
   if (weapon !== "rifle") clearFire(fireQ);
   else if (mouseDown && !fireQ.held) pressFire(fireQ);
   const wantShot = weapon === "rifle" && fireWantsShot(fireQ);
-  if (!isClient && locked && alive && wantShot && !combatLock && bashT <= 0) tryFire();
+  if (locked && alive && wantShot && !combatLock && bashT <= 0) tryFire();
 
   crouch = locked && alive && !prone && keys.has("KeyC");
   leanInput = 0;
@@ -2376,7 +2437,9 @@ function frame(now: number) {
     roundSpawn();
   }
 
-  if (!alive && match.phase !== "bestplay" && match.phase !== "matchover" && match.phase !== "settle") {
+  if (alive || match.phase === "bestplay" || match.phase === "matchover" || match.phase === "settle") {
+    hideDeath();
+  } else {
     showDeath({
       killer: killedBy || "a rifleman",
       place: placeName(px, pz, py),
