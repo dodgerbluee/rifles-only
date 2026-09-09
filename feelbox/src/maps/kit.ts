@@ -186,7 +186,7 @@ export function sky(scene: THREE.Scene, horizon: string, zenith: string) {
 export function finish(
   kit: Kit,
   opts: {
-    id: MapId;
+    id: string;
     title: string;
     blurb: string;
     plantSpawns: THREE.Vector3[];

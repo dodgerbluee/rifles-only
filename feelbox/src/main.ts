@@ -216,15 +216,25 @@ function bindNet(handle: NetHandle) {
 let joiningName = "";
 
 function joinGame(name?: string) {
-  if (net.role === "client" || net.status === "connecting") {
+  if (net.status === "connecting") {
     paintJoin();
+    return;
+  }
+  if (net.role === "client") {
+    enterPlay();
     return;
   }
   if (name) joiningName = name;
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
+  enterPlay();
   paintJoin();
+}
+
+function enterPlay() {
+  document.body.classList.add("started");
+  lock();
 }
 
 function paintJoin() {
@@ -237,10 +247,6 @@ function paintJoin() {
     const tryN = net.attempt > 1 ? ` · try ${net.attempt}` : "";
     el.textContent = `Connecting to ${who}${tryN}`;
     el.classList.add("busy");
-    el.hidden = false;
-  } else if (net.role === "client") {
-    el.textContent = "Joined · click to play";
-    el.classList.add("ok");
     el.hidden = false;
   } else {
     el.textContent = "";
@@ -374,10 +380,6 @@ function restartRoom() {
 }
 
 function paintMapPick() {
-  const title = document.querySelector("#start-title");
-  const blurb = document.querySelector("#start-blurb");
-  if (title) title.textContent = world.title ?? "Wharf";
-  if (blurb) blurb.textContent = world.blurb ?? "";
   const key = document.querySelector(".map-key");
   if (key && world.sites[0] && world.sites[1]) {
     key.textContent = `you · ember · stone · A / B`;
@@ -523,8 +525,8 @@ bindAdmin({
     if (slot.id === playerId) return;
     net.sendEvent({ kind: "kick", slotId: slot.id });
   },
-  onCow: () => {
-    /* dedicated match does not cow */
+  onCow: (slot) => {
+    net.sendEvent({ kind: "cow", slotId: slot.id });
   },
   onPawnStyle: (classic) => {
     rules.classicPawn = classic;
@@ -674,10 +676,8 @@ function overlayOpen() {
 
 function lock() {
   if (overlayOpen()) return;
-  if (net.role !== "client") return;
   canvas.requestPointerLock();
 }
-startEl.addEventListener("click", lock);
 document.querySelector("#join-status")?.addEventListener("click", (e) => {
   if (net.status === "connecting") e.stopPropagation();
 });
@@ -706,9 +706,22 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
         row.disabled = true;
         row.dataset.offline = "1";
       }
-      row.textContent = s.online
-        ? `${s.name} · ${s.mapTitle} · ${s.players}/${s.max}`
-        : `${s.name} · offline`;
+      const name = document.createElement("span");
+      name.className = "s-name";
+      name.textContent = s.name;
+      const map = document.createElement("span");
+      map.className = "s-map";
+      map.textContent = s.mapTitle;
+      const pop = document.createElement("span");
+      pop.className = "s-pop";
+      pop.textContent = `${s.players}/${s.max}`;
+      const phase = document.createElement("span");
+      phase.className = "s-phase";
+      phase.textContent = s.online ? s.phase : "offline";
+      const join = document.createElement("span");
+      join.className = "s-join";
+      join.textContent = s.online ? "Join" : "Offline";
+      row.append(name, map, pop, phase, join);
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
         joinGame(s.name);
@@ -2997,15 +3010,19 @@ function frame(now: number) {
   } else if (match.phase === "planted") {
     prompt = "Wire live";
   }
-  updateMatchHud(match, prompt);
+  const nextId = lastSnap?.nextMap;
+  updateMatchHud(match, prompt, {
+    nextMap: nextId ? MAPS.find((m) => m.id === nextId)?.title ?? nextId : undefined,
+  });
   syncKillFeed(lastSnap?.feed, lastSnap?.time ?? time);
   const shiftBoard =
     (keys.has("ShiftLeft") || keys.has("ShiftRight")) &&
     !document.body.classList.contains("settings") &&
     !document.body.classList.contains("admin") &&
     !document.body.classList.contains("podium");
+  const showBoard = shiftBoard || match.phase === "matchover";
   document.body.classList.toggle("board", shiftBoard);
-  if (shiftBoard) {
+  if (showBoard) {
     renderScoreboard(match, viewId, (id) => {
       if (id === viewId) return net.role === "client" ? net.pingMs : 0;
       const remote = [...remotes.values()].find((x) => x.slotId === id);

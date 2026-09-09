@@ -33,7 +33,7 @@ import {
   type BotSkill,
 } from "./bots";
 import { pickBodyVictim, meleeTarget, remoteTargets, type LiveBody } from "./combat";
-import type { ClientEvent, KillFeedItem, Pawn, PlayerInput, Snapshot } from "./net";
+import type { ClientEvent, KillFeedItem, KillWay, Pawn, PlayerInput, Snapshot } from "./net";
 import {
   dropPeer,
   reseatPeer,
@@ -86,24 +86,54 @@ export type Sim = {
   status: () => SimStatus;
 };
 
-export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }): Sim {
+export function createSim(opts?: {
+  mapId?: MapId;
+  name?: string;
+  id?: string;
+  perTeam?: number;
+  rotation?: MapId[];
+  firstTo?: number;
+  swapAfter?: number;
+  freezeTime?: number;
+  championsHold?: number;
+  botSkill?: BotSkill;
+  highlights?: boolean;
+  friendlyFire?: boolean;
+  oneShot?: boolean;
+}): Sim {
   const id = opts?.id ?? "default";
   const name = opts?.name ?? "Last Wire";
   const scene = new THREE.Scene();
-  let mapId: MapId = opts?.mapId ?? "wharf";
+  const rotation = (opts?.rotation?.filter((m) => MAPS.some((x) => x.id === m)) ?? MAPS.map((m) => m.id)) as MapId[];
+  let mapId: MapId = opts?.mapId && MAPS.some((m) => m.id === opts.mapId) ? opts.mapId : (rotation[0] ?? "wharf");
+  let rotAt = Math.max(0, rotation.indexOf(mapId));
   let world = buildMap(scene, mapId);
-  const match = createMatch({ claimLocal: false });
+  const match = createMatch({
+    claimLocal: false,
+    perTeam: opts?.perTeam,
+    firstTo: opts?.firstTo,
+    swapAfter: opts?.swapAfter,
+    freezeTime: opts?.freezeTime,
+    championsHold: opts?.championsHold,
+    mapTitle: world.title ?? MAPS.find((m) => m.id === mapId)?.title,
+  });
   const bots: Bot[] = createBots(scene, world, match);
   const remotes = new Map<number, Remote>();
   const raycaster = new THREE.Raycaster();
   let time = 0;
   let seenRound = match.round;
-  let friendlyFire = false;
-  let oneShot = false;
-  let skipRecap = false;
-  let botSkill: BotSkill = "normal";
+  let friendlyFire = !!opts?.friendlyFire;
+  let oneShot = !!opts?.oneShot;
+  let skipRecap = opts?.highlights === false;
+  let botSkill: BotSkill = opts?.botSkill ?? "normal";
   const roundKills: KillFeedItem[] = [];
   const pendingHeads: number[] = [];
+  const cows: { id: number; until: number }[] = [];
+
+  function nextMapId() {
+    if (!rotation.length) return mapId;
+    return rotation[(rotAt + 1) % rotation.length]!;
+  }
 
   function spawnList(team: Team) {
     const planter = plantingTeam(match);
@@ -148,7 +178,9 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       if (!keep.has(c)) scene.remove(c);
     }
     mapId = next;
+    rotAt = Math.max(0, rotation.indexOf(next));
     world = buildMap(scene, next);
+    match.mapTitle = world.title ?? MAPS.find((m) => m.id === next)?.title ?? next;
     for (const r of remotes.values()) {
       if (!r.root.parent) scene.add(r.root);
     }
@@ -195,32 +227,51 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     return slotTag(slot, slot?.occupant ?? (remote && remote.slotId === id ? remote.name : undefined)) || fallback;
   }
 
-  function frag(killerId: number, victimId: number, victimName: string, x: number, y: number, z: number) {
+  function frag(
+    killerId: number,
+    victimId: number,
+    victimName: string,
+    x: number,
+    y: number,
+    z: number,
+    way: KillWay = "noscope",
+  ) {
     const killer = credit(killerId);
     const victim = credit(victimId);
-    noteKill(killer, victim, time);
+    if (killerId >= 0) noteKill(killer, victim, time);
+    else line(victim).deaths += 1;
     markDead(match, victimId, x, y, z);
     if (victim !== victimId) markDead(match, victim, x, y, z);
+    const bomb = way === "bomb";
+    const cowed = way === "cow";
     roundKills.push({
       t: time,
       killerId: killer,
-      killerName: actorName(killerId),
-      killerTeam: slotById(match, killerId)?.team ?? slotById(match, killer)?.team,
+      killerName: bomb ? "Wire" : cowed ? "Cow" : actorName(killerId),
+      killerTeam: bomb || cowed ? undefined : slotById(match, killerId)?.team ?? slotById(match, killer)?.team,
       victimId: victim,
       victimName: actorName(victimId, victimName),
       victimTeam: slotById(match, victimId)?.team ?? slotById(match, victim)?.team,
+      way,
     });
   }
 
-  function hurtRemote(r: Remote, dmg: number, killerId: number) {
+  function shotWay(shooterId: number): KillWay {
+    const r = [...remotes.values()].find((x) => x.slotId === shooterId);
+    if (!r) return "noscope";
+    if (r.weapon === "knife") return "knife";
+    return r.ads ? "aimed" : "noscope";
+  }
+
+  function hurtRemote(r: Remote, dmg: number, killerId: number, way?: KillWay) {
     if (!r.alive) return false;
     const amount = oneShot ? Math.max(dmg, 200) : dmg;
-    noteHit(credit(killerId), credit(r.slotId), time);
+    if (killerId >= 0) noteHit(credit(killerId), credit(r.slotId), time);
     r.hp = Math.max(0, r.hp - amount);
     if (r.hp <= 0) {
       r.alive = false;
       r.root.rotation.x = 1.25;
-      frag(killerId, r.slotId, r.name, r.x, r.y, r.z);
+      frag(killerId, r.slotId, r.name, r.x, r.y, r.z, way ?? shotWay(killerId));
       return true;
     }
     return false;
@@ -249,7 +300,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         noteHit(credit(shooterId), bot.id, time);
         const killed = hurtBot(bot, dmg, time);
         if (head && killed) pendingHeads.push(bot.id);
-        if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+        if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, shotWay(shooterId));
         return true;
       }
       const remote = [...remotes.values()].find((x) => x.slotId === hid || x.homeId === hid);
@@ -266,7 +317,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     const bot = bots.find((b) => b.id === bodyHit.body.id);
     if (bot && bot.hp > 0) {
       noteHit(credit(shooterId), bot.id, time);
-      if (hurtBot(bot, gunDmg(false), time)) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+      if (hurtBot(bot, gunDmg(false), time)) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, shotWay(shooterId));
       return true;
     }
     const remote = [...remotes.values()].find((x) => x.slotId === bodyHit.body.id);
@@ -290,12 +341,12 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     const bot = bots.find((b) => b.id === body.id);
     if (bot && bot.hp > 0) {
       noteHit(credit(r.slotId), bot.id, time);
-      if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
+      if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, "knife");
       return true;
     }
     const remote = [...remotes.values()].find((x) => x.slotId === body.id);
     if (remote && remote.alive) {
-      hurtRemote(remote, 100, r.slotId);
+      hurtRemote(remote, 100, r.slotId, "knife");
       return true;
     }
     return false;
@@ -322,7 +373,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       if (d < FRAG_R) {
         const fall = 1 - d / FRAG_R;
         if (hurtBot(b, Math.round(30 + 90 * fall), time)) {
-          if (killer >= 0) frag(killer, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z);
+          if (killer >= 0) frag(killer, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z, "nade");
           else markDead(match, b.id, b.x, b.y, b.z);
         }
       }
@@ -332,7 +383,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       const d = Math.hypot(r.x - pop.x, r.y - pop.y, r.z - pop.z);
       if (d < FRAG_R) {
         const fall = 1 - d / FRAG_R;
-        hurtRemote(r, Math.round(20 + 80 * fall), killer >= 0 ? killer : r.slotId);
+        hurtRemote(r, Math.round(20 + 80 * fall), killer >= 0 ? killer : r.slotId, "nade");
       }
     }
   }
@@ -342,12 +393,30 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     for (const b of bots) {
       if (b.hp <= 0 || b.team === plant) continue;
       if (Math.hypot(b.x - x, b.y - y, b.z - z) < tuning.blastR && hurtBot(b, 200, time)) {
-        markDead(match, b.id, b.x, b.y, b.z);
+        frag(-1, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z, "bomb");
       }
     }
     for (const r of remotes.values()) {
       if (!r.alive || r.team === plant) continue;
-      if (Math.hypot(r.x - x, r.y - y, r.z - z) < tuning.blastR) hurtRemote(r, 200, r.slotId);
+      if (Math.hypot(r.x - x, r.y - y, r.z - z) < tuning.blastR) hurtRemote(r, 200, -1, "bomb");
+    }
+  }
+
+  function explodeCow(id: number) {
+    const bot = bots.find((b) => b.id === id);
+    const remote = [...remotes.values()].find((x) => x.slotId === id);
+    const x = bot?.x ?? remote?.x ?? 0;
+    const y = bot?.y ?? remote?.y ?? 0;
+    const z = bot?.z ?? remote?.z ?? 0;
+    for (const b of bots) {
+      if (b.hp <= 0) continue;
+      if (Math.hypot(b.x - x, b.y - y, b.z - z) < 6.5 && hurtBot(b, 400, time)) {
+        frag(-1, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z, "cow");
+      }
+    }
+    for (const r of remotes.values()) {
+      if (!r.alive) continue;
+      if (Math.hypot(r.x - x, r.y - y, r.z - z) < 6.5) hurtRemote(r, 400, -1, "cow");
     }
   }
 
@@ -439,7 +508,18 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         onDetonate: detonateWire,
         botCutting,
         skipRecap,
+        onRotate: () => {
+          const nxt = nextMapId();
+          if (nxt === mapId) restartRoom();
+          else loadMap(nxt);
+        },
       });
+
+      for (let i = cows.length - 1; i >= 0; i--) {
+        if (time < cows[i]!.until) continue;
+        explodeCow(cows[i]!.id);
+        cows.splice(i, 1);
+      }
 
       if (match.round !== seenRound) {
         seenRound = match.round;
@@ -515,6 +595,10 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       }
       if (event.kind === "takeover") {
         takeoverPeer(scene, match, bots, remotes, peerId, event.slotId);
+        return;
+      }
+      if (event.kind === "cow") {
+        if (!cows.some((c) => c.id === event.slotId)) cows.push({ id: event.slotId, until: time + 5 });
         return;
       }
       if (event.kind === "rules") {
@@ -629,7 +713,15 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         emberScore: match.emberScore,
         stoneScore: match.stoneScore,
         swapped: match.swapped,
-        clock: match.phase === "planted" ? match.bombTime : match.timeLeft,
+        clock:
+          match.phase === "planted"
+            ? match.bombTime
+            : match.phase === "matchover" ||
+                match.phase === "ending" ||
+                match.phase === "settle" ||
+                match.phase === "bestplay"
+              ? match.endT
+              : match.timeLeft,
         time,
         wireTime: match.bombTime,
         wire: {
@@ -652,6 +744,8 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         endText: match.endText,
         lastWinner: match.lastWinner,
         mapId,
+        nextMap: nextMapId(),
+        endT: match.endT,
       };
     },
 
@@ -663,7 +757,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         mapTitle: world.title ?? MAPS.find((m) => m.id === mapId)?.title ?? mapId,
         phase: match.phase,
         players: remotes.size,
-        max: 10,
+        max: match.perTeam * 2,
         online: true as const,
       };
     },

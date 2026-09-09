@@ -3,7 +3,7 @@ import { actorTag, formatTime, plantedTag, plantingTeam, type Match } from "./ma
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { kd, line, topThree } from "./stats";
-import type { KillFeedItem } from "./net";
+import { killWayLabel, type KillFeedItem } from "./net";
 
 const deathEl = document.querySelector<HTMLElement>("#death")!;
 const deathBy = document.querySelector("#death-by")!;
@@ -306,7 +306,7 @@ function drawMinimap(
   mapCtx.strokeRect(0.5, 0.5, MAP_W - 1, MAP_H - 1);
 }
 
-export function updateMatchHud(m: Match, prompt: string) {
+export function updateMatchHud(m: Match, prompt: string, extra?: { nextMap?: string }) {
   emberScoreEl.textContent = String(m.emberScore);
   stoneScoreEl.textContent = String(m.stoneScore);
   const timed =
@@ -326,7 +326,11 @@ export function updateMatchHud(m: Match, prompt: string) {
       ? plantedTag(m)
       : m.phase === "bestplay"
       ? "Best play"
-      : m.phase === "matchover" || m.phase === "ending" || m.phase === "settle"
+      : m.phase === "matchover"
+        ? extra?.nextMap
+          ? `${m.endText} · ${extra.nextMap} in ${Math.max(0, Math.ceil(m.endT))}s`
+          : m.endText
+      : m.phase === "ending" || m.phase === "settle"
         ? m.endText
         : `Round ${m.round} · ${plant === "ember" ? "Ember plants" : "Stone plants"}`;
   promptEl.textContent = prompt;
@@ -415,13 +419,13 @@ export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {
     const killer = document.createElement("span");
     killer.className = `who${k.killerTeam ? ` ${k.killerTeam}` : ""}`;
     killer.textContent = k.killerName;
-    const sep = document.createElement("span");
-    sep.className = "sep";
-    sep.textContent = "▸";
+    const way = document.createElement("span");
+    way.className = `sep way${k.way ? ` ${k.way}` : ""}`;
+    way.textContent = killWayLabel(k.way);
     const victim = document.createElement("span");
     victim.className = `who${k.victimTeam ? ` ${k.victimTeam}` : ""}`;
     victim.textContent = k.victimName;
-    row.append(killer, sep, victim);
+    row.append(killer, way, victim);
     killFeedEl.append(row);
   }
 }

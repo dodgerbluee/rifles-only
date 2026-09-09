@@ -3,6 +3,7 @@
  */
 import * as THREE from "three";
 import { actorTag, createMatch, formatTime, plantedTag, plantWire, slotById } from "../src/match.ts";
+import { killWayLabel } from "../src/net.ts";
 import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
 import { reseatPeer, seatPeer } from "../src/peers.ts";
@@ -15,6 +16,12 @@ function check(name: string, ok: boolean, extra = "") {
 }
 
 check("plain names stay plain", actorTag("Reed") === "Reed");
+check("aimed kill is labeled aimed", killWayLabel("aimed") === "aimed");
+check("hip fire is labeled no scope", killWayLabel("noscope") === "no scope");
+check("frag is labeled nade", killWayLabel("nade") === "nade");
+check("melee is labeled knife", killWayLabel("knife") === "knife");
+check("detonation is labeled wire", killWayLabel("bomb") === "wire");
+check("admin cow is labeled cow'd", killWayLabel("cow") === "cow'd");
 check(
   "taken bot shows bot then player",
   actorTag("Cal", "Reed") === "Cal (Reed)",

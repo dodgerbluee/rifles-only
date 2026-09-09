@@ -15,4 +15,8 @@ if (!st.map) {
   console.error("missing map");
   process.exit(1);
 }
-console.log("ok", st.map, "pawns", snap.pawns.length, "phase", snap.phase);
+if (snap.nextMap !== "cove") {
+  console.error("default rotation should queue cove after wharf, got", snap.nextMap);
+  process.exit(1);
+}
+console.log("ok", st.map, "pawns", snap.pawns.length, "phase", snap.phase, "next", snap.nextMap);

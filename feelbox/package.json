@@ -10,7 +10,8 @@
     "lobby": "node server/lobby.mjs",
     "game": "npx tsx server/game.ts",
     "build": "tsc --noEmit && vite build && vite build --config vite.game.config.ts",
-    "docker": "docker compose up --build"
+    "docker": "docker compose up --build",
+    "map-check": "npx tsx scripts/map-check.ts"
   },
   "dependencies": {
     "three": "^0.170.0",

@@ -5,12 +5,14 @@
 import http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { createSim } from "../src/sim";
+import { loadServerConfig } from "./config";
 
 const HOST = process.env.HOST ?? "0.0.0.0";
 const PORT = Number(process.env.PORT ?? 8081);
 const LOBBY_URL = process.env.LOBBY_URL ?? "";
 const GAME_ID = process.env.GAME_ID ?? "default";
-const GAME_NAME = process.env.GAME_NAME ?? "Last Wire";
+const cfg = loadServerConfig();
+const GAME_NAME = process.env.GAME_NAME ?? cfg.name;
 const HEARTBEAT_MS = 15_000;
 const DEAD_MS = 45_000;
 const HELLO_MS = 5_000;
@@ -21,7 +23,21 @@ const MAX_NAME = 24;
 
 /** @typedef {{ id: number, name: string, ws: import("ws").WebSocket, helloed: boolean, lastSeen: number }} Peer */
 
-const sim = createSim({ id: GAME_ID, name: GAME_NAME });
+const sim = createSim({
+  id: GAME_ID,
+  name: GAME_NAME,
+  mapId: cfg.map,
+  perTeam: cfg.perTeam,
+  rotation: cfg.rotation,
+  firstTo: cfg.firstTo,
+  swapAfter: cfg.swapAfter,
+  freezeTime: cfg.freezeTime,
+  championsHold: cfg.championsHold,
+  botSkill: cfg.botSkill,
+  highlights: cfg.highlights,
+  friendlyFire: cfg.friendlyFire,
+  oneShot: cfg.oneShot,
+});
 /** @type {Map<number, any>} */
 const peers = new Map();
 let nextId = 1;

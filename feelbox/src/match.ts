@@ -39,6 +39,12 @@ export type Match = {
   lastJoin: string;
   matchOverPending: boolean;
   lastWinner: Team | null;
+  mapTitle: string;
+  firstTo: number;
+  swapAfter: number;
+  freezeTime: number;
+  championsHold: number;
+  perTeam: number;
 };
 
 export const FREEZE_TIME = 2.8;
@@ -46,17 +52,30 @@ export const END_HOLD = 4.2;
 export const BESTPLAY_HOLD = 10;
 export const FIRST_TO = 6;
 export const SWAP_AFTER = 5;
+export const CHAMPIONS_HOLD = 20;
 
-const EMBER_NAMES = ["Reed", "Cal", "Ivo", "Nesh", "Bram"];
-const STONE_NAMES = ["Osa", "Pell", "Kade", "Wren", "Sol"];
+const EMBER_NAMES = ["Reed", "Cal", "Ivo", "Nesh", "Bram", "Holt", "Venn", "Mira"];
+const STONE_NAMES = ["Osa", "Pell", "Kade", "Wren", "Sol", "Nash", "Sal", "Quin"];
 
-export function createMatch(opts?: { claimLocal?: boolean }): Match {
+export function createMatch(opts?: {
+  claimLocal?: boolean;
+  perTeam?: number;
+  firstTo?: number;
+  swapAfter?: number;
+  freezeTime?: number;
+  championsHold?: number;
+  mapTitle?: string;
+}): Match {
+  const per = Math.max(1, Math.min(8, opts?.perTeam ?? 5));
+  nextSlotId = per * 2;
+  nameSeq.ember = per;
+  nameSeq.stone = per;
   const slots: Slot[] = [];
-  for (let i = 0; i < 5; i++) {
-    slots.push({ id: i, team: "ember", kind: "bot", name: EMBER_NAMES[i]!, alive: true });
+  for (let i = 0; i < per; i++) {
+    slots.push({ id: i, team: "ember", kind: "bot", name: botName("ember", i), alive: true });
   }
-  for (let i = 0; i < 5; i++) {
-    slots.push({ id: 5 + i, team: "stone", kind: "bot", name: STONE_NAMES[i]!, alive: true });
+  for (let i = 0; i < per; i++) {
+    slots.push({ id: per + i, team: "stone", kind: "bot", name: botName("stone", i), alive: true });
   }
   const m: Match = {
     phase: "freeze",
@@ -64,7 +83,7 @@ export function createMatch(opts?: { claimLocal?: boolean }): Match {
     emberScore: 0,
     stoneScore: 0,
     swapped: false,
-    timeLeft: FREEZE_TIME,
+    timeLeft: opts?.freezeTime ?? FREEZE_TIME,
     bombTime: tuning.fuse,
     slots,
     wire: groundWire(-22, 0.2, 0),
@@ -73,6 +92,12 @@ export function createMatch(opts?: { claimLocal?: boolean }): Match {
     lastJoin: "",
     matchOverPending: false,
     lastWinner: null,
+    mapTitle: opts?.mapTitle ?? "Wharf",
+    firstTo: opts?.firstTo ?? FIRST_TO,
+    swapAfter: opts?.swapAfter ?? SWAP_AFTER,
+    freezeTime: opts?.freezeTime ?? FREEZE_TIME,
+    championsHold: opts?.championsHold ?? CHAMPIONS_HOLD,
+    perTeam: per,
   };
   if (opts?.claimLocal !== false) claimSlot(m, "ember", "You");
   giveWireToPlanter(m);
@@ -90,23 +115,23 @@ export function watchingTeam(m: Match): Team {
 export function claimSlot(m: Match, team: Team, name: string): Slot | null {
   const bot = m.slots.find((s) => s.team === team && s.kind === "bot");
   if (!bot) return null;
+  const left = bot.name;
   bot.kind = "human";
   bot.name = name;
   bot.occupant = undefined;
-  m.lastJoin = `${name} took ${team === "ember" ? "Ember" : "Stone"} · ${bot.id < 5 ? EMBER_NAMES[bot.id] : STONE_NAMES[bot.id - 5]} left`;
+  m.lastJoin = `${name} took ${team === "ember" ? "Ember" : "Stone"} · ${left} left`;
   return bot;
 }
 
 export function vacateSlot(m: Match, slot: Slot) {
   slot.kind = "bot";
   slot.occupant = undefined;
-  slot.name = restBotName(slot);
+  slot.name = restBotName(slot, m.perTeam);
 }
 
-function restBotName(slot: Slot) {
-  if (slot.team === "ember" && slot.id >= 0 && slot.id < 5) return EMBER_NAMES[slot.id]!;
-  if (slot.team === "stone" && slot.id >= 5 && slot.id < 10) return STONE_NAMES[slot.id - 5]!;
-  return botName(slot.team, slot.id);
+function restBotName(slot: Slot, perTeam = 5) {
+  const i = slot.team === "ember" ? slot.id : slot.id - perTeam;
+  return botName(slot.team, Math.max(0, i));
 }
 
 export function actorTag(name: string | undefined | null, occupant?: string | null) {
@@ -250,6 +275,7 @@ export function tickMatch(
     onDetonate?: (x: number, y: number, z: number) => void;
     botCutting?: boolean;
     skipRecap?: boolean;
+    onRotate?: () => void;
   },
 ) {
   if (m.phase === "settle") {
@@ -272,7 +298,11 @@ export function tickMatch(
     return;
   }
 
-  if (m.phase === "matchover") return;
+  if (m.phase === "matchover") {
+    m.endT -= dt;
+    if (m.endT <= 0) ctx.onRotate?.();
+    return;
+  }
 
   if (m.phase === "ending") {
     m.endT -= dt;
@@ -359,15 +389,15 @@ function finish(m: Match, winner: Team, text: string) {
   m.endText = text;
   m.endT = 1;
   m.lastWinner = winner;
-  m.matchOverPending = m.emberScore >= FIRST_TO || m.stoneScore >= FIRST_TO;
+  m.matchOverPending = m.emberScore >= m.firstTo || m.stoneScore >= m.firstTo;
   m.phase = "settle";
 }
 
 function nextRound(m: Match, spawn: { x: number; y: number; z: number }) {
-  if (m.round === SWAP_AFTER) m.swapped = true;
+  if (m.round === m.swapAfter) m.swapped = true;
   m.round += 1;
   m.phase = "freeze";
-  m.timeLeft = FREEZE_TIME;
+  m.timeLeft = m.freezeTime;
   m.bombTime = tuning.fuse;
   m.endText = "";
   m.matchOverPending = false;
@@ -382,7 +412,7 @@ export function restartMatch(m: Match, spawn: { x: number; y: number; z: number 
   m.stoneScore = 0;
   m.swapped = false;
   m.phase = "freeze";
-  m.timeLeft = FREEZE_TIME;
+  m.timeLeft = m.freezeTime;
   m.bombTime = tuning.fuse;
   m.endText = "";
   m.endT = 0;
@@ -398,8 +428,8 @@ export function concludeBestPlay(m: Match) {
   if (m.phase !== "bestplay") return;
   if (m.matchOverPending) {
     m.phase = "matchover";
-    m.endText = m.emberScore > m.stoneScore ? "Ember takes Wharf" : "Stone takes Wharf";
-    m.endT = 14;
+    m.endText = m.emberScore > m.stoneScore ? `Ember takes ${m.mapTitle}` : `Stone takes ${m.mapTitle}`;
+    m.endT = m.championsHold;
     return;
   }
   m.phase = "ending";

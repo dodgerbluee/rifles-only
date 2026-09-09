@@ -24,3 +24,4 @@ export function buildMap(scene: THREE.Scene, id: MapId): World {
 export { buildCove } from "./cove";
 export { buildParish } from "./parish";
 export { buildCut } from "./cut";
+export { compileLayout, YARD_SPEC, type LayoutSpec } from "./layout";

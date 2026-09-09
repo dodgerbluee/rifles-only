@@ -1,0 +1,14 @@
+{
+  "name": "Last Wire",
+  "map": "wharf",
+  "perTeam": 5,
+  "rotation": ["wharf", "cove", "parish", "cut"],
+  "championsHold": 20,
+  "firstTo": 6,
+  "swapAfter": 5,
+  "freezeTime": 2.8,
+  "botSkill": "normal",
+  "highlights": true,
+  "friendlyFire": false,
+  "oneShot": false
+}

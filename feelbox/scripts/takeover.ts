@@ -48,8 +48,8 @@ check("player seat stays the player's", slotById(match, oldSlot)?.kind === "huma
 check("old seat still has the player name", slotById(match, oldSlot)?.name === "Reed");
 
 noteKill(creditId(remotes, r.slotId), 99, 1);
-check("takeover kills credit the player", line(oldSlot).kills === 1);
-check("bot line does not take those kills", line(bot.id).kills === 0);
+check("takeover kills credit the bot", line(bot.id).kills === 1);
+check("player line does not take those kills", line(oldSlot).kills === 0);
 
 const snap = buildSnapshot(
   match,
@@ -74,8 +74,8 @@ const snap = buildSnapshot(
 );
 const mine = snap.pawns.find((p) => p.netId === 1);
 check("snapshot keeps the player's seat id", mine?.id === oldSlot);
-check("snapshot kill line is the player's", mine?.kills === 1);
-check("snapshot does not publish the player as the bot", !snap.pawns.some((p) => p.netId === 1 && p.id === bot.id));
+check("snapshot kill line is the player's home seat", mine?.kills === 0);
+check("snapshot publishes the occupied bot's kills", snap.pawns.find((p) => p.id === bot.id)?.kills === 1);
 
 restoreHomeSeat(match, r);
 check("next round puts the player back on their seat", r.slotId === oldSlot);
@@ -83,8 +83,8 @@ check("taken bot seat is a bot again", slotById(match, bot.id)?.kind === "bot");
 check("taken bot is no longer occupied", slotById(match, bot.id)?.occupant == null);
 
 noteKill(creditId(remotes, r.slotId), 98, 2);
-check("respawn kills still credit the player", line(oldSlot).kills === 2);
-check("bot still has none of the player's kills", line(bot.id).kills === 0);
+check("respawn kills still credit the player", line(oldSlot).kills === 1);
+check("bot keeps the takeover kills", line(bot.id).kills === 1);
 
 check("still walk is zero speed", snapWalkSpeed(0, 0, 0, 0, 1 / 30) === 0);
 check("walk speed follows snapshot delta", Math.abs(snapWalkSpeed(0, 0, 0.195, 0, 1 / 30) - 5.85) < 0.2);

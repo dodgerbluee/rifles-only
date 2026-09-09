@@ -26,6 +26,9 @@ services:
       LOBBY_URL: http://lobby:8080
       GAME_NAME: Last Wire
       GAME_ID: default
+      # Optional: SERVER_CONFIG=/app/server.json
+      GAME_MAP: wharf
+      GAME_PER_TEAM: "5"
     expose:
       - "8081"
     depends_on:

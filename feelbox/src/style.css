@@ -224,6 +224,20 @@ body.started #killfeed {
   font-size: 11px;
 }
 
+.kill-row .way {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: #c8b888;
+}
+
+.kill-row .way.aimed { color: #e8d9a8; }
+.kill-row .way.noscope { color: #a8c4d8; }
+.kill-row .way.nade { color: #c4844a; }
+.kill-row .way.knife { color: #d8dce0; }
+.kill-row .way.bomb { color: #e07040; }
+.kill-row .way.cow { color: #e8c878; }
+
 #round-result {
   position: fixed;
   left: 50%;
@@ -688,12 +702,17 @@ body.dead:not(.bestplay) #hitmark {
   inset: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  gap: 8px;
-  background: #161712;
-  text-align: center;
-  padding: 24px;
+  gap: 12px;
+  background: #121410;
+  text-align: left;
+  padding: 36px 28px 28px;
+  overflow: auto;
+}
+
+#start > * {
+  width: min(720px, 100%);
 }
 
 #start .kicker {
@@ -705,21 +724,30 @@ body.dead:not(.bestplay) #hitmark {
 }
 
 #start .title {
-  font-size: 42px;
+  font-size: 32px;
   font-weight: 650;
   margin: 0;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 #start p {
   margin: 0;
-  max-width: 28em;
+  max-width: none;
   color: #cfc6b2;
+}
+
+.start-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
 }
 
 .bind {
   color: #8d8676 !important;
-  margin-top: 12px !important;
+  margin-top: 8px !important;
+  font-size: 12px;
 }
 
 body.started #start {
@@ -983,19 +1011,47 @@ body.settings #settings {
 #server-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  justify-content: center;
-  max-width: 560px;
-  margin: 8px auto 4px;
+  gap: 6px;
+  justify-content: flex-start;
+  max-width: none;
+  margin: 12px 0 4px;
+  width: 100%;
 }
 
 #server-list .server-row {
-  background: #2a2c24;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 70px 80px auto;
+  align-items: center;
+  gap: 12px;
+  background: #1c1e18;
   color: #e6dfd0;
-  border: 1px solid rgba(232, 217, 168, 0.35);
-  padding: 10px 18px;
+  border: 1px solid rgba(232, 217, 168, 0.22);
+  padding: 12px 14px;
   cursor: pointer;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
+  text-align: left;
+  width: 100%;
+}
+
+#server-list .server-row .s-name {
+  font-weight: 650;
+}
+
+#server-list .server-row .s-map,
+#server-list .server-row .s-pop,
+#server-list .server-row .s-phase {
+  color: #b8b09a;
+  font-size: 13px;
+}
+
+#server-list .server-row:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#server-list .server-empty {
+  color: #8d8676;
+  padding: 18px 4px;
 }
 
 #server-list .server-row:hover:not(:disabled) {
@@ -1119,8 +1175,19 @@ body.settings #settings {
   gap: 18px;
 }
 
-body.board #scoreboard {
+body.board #scoreboard,
+body.podium #scoreboard {
   display: grid;
+}
+
+body.podium #scoreboard {
+  left: auto;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(360px, 38vw);
+  grid-template-columns: 1fr;
+  z-index: 26;
 }
 
 .board-col {
@@ -1173,9 +1240,10 @@ body.board #scoreboard {
   inset: 0;
   z-index: 24;
   background:
-    linear-gradient(to top, rgba(12, 13, 10, 0.72) 0%, rgba(12, 13, 10, 0.12) 28%, transparent 52%);
+    linear-gradient(to right, transparent 0%, transparent 58%, rgba(12, 13, 10, 0.28) 100%),
+    linear-gradient(to top, rgba(12, 13, 10, 0.62) 0%, rgba(12, 13, 10, 0.08) 28%, transparent 48%);
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
   padding: 0 24px 36px;
   pointer-events: none;

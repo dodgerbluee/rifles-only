@@ -16,6 +16,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-game ./dist-game
+COPY --from=build /app/server.json ./server.json
 COPY server ./server
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=4s --start-period=10s --retries=3 \

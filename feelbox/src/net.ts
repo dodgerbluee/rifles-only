@@ -62,6 +62,18 @@ export type WireSnap = {
   cutHold: number;
 };
 
+export type KillWay = "aimed" | "noscope" | "nade" | "knife" | "bomb" | "cow";
+
+export function killWayLabel(way?: KillWay) {
+  if (way === "aimed") return "aimed";
+  if (way === "noscope") return "no scope";
+  if (way === "nade") return "nade";
+  if (way === "knife") return "knife";
+  if (way === "bomb") return "wire";
+  if (way === "cow") return "cow'd";
+  return "▸";
+}
+
 export type KillFeedItem = {
   t?: number;
   killerId: number;
@@ -70,6 +82,7 @@ export type KillFeedItem = {
   victimId: number;
   victimName: string;
   victimTeam?: Team;
+  way?: KillWay;
 };
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */
@@ -96,6 +109,7 @@ export type ClientEvent =
   | { kind: "removeBot"; team: Team }
   | { kind: "kick"; slotId: number }
   | { kind: "takeover"; slotId: number }
+  | { kind: "cow"; slotId: number }
   | {
       kind: "rules";
       highlights?: boolean;
@@ -128,6 +142,8 @@ export type Snapshot = {
   endText?: string;
   lastWinner?: Team | null;
   mapId?: string;
+  nextMap?: string;
+  endT?: number;
 };
 
 export type NetHandle = {

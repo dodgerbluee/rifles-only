@@ -157,11 +157,8 @@ export function reseatPeer(
   return seated;
 }
 
-export function creditId(remotes: Map<number, Remote> | Iterable<Remote>, slotId: number) {
-  const list = remotes instanceof Map ? remotes.values() : remotes;
-  for (const r of list) {
-    if (r.slotId === slotId || r.homeId === slotId) return r.homeId;
-  }
+/** Credit the body that did the work. Takeover kills stay on the bot. */
+export function creditId(_remotes: Map<number, Remote> | Iterable<Remote>, slotId: number) {
   return slotId;
 }
 
@@ -334,32 +331,34 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
 
 export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<number, Remote>) {
   const have = new Set(pawns.map((p) => p.id));
-  const occupied = new Set(
-    remotes
-      ? [...remotes.values()].filter((r) => r.slotId !== r.homeId).map((r) => r.slotId)
-      : [],
-  );
+  const body = remotes
+    ? [...remotes.values()].reduce((m, r) => {
+        if (r.slotId !== r.homeId) m.set(r.slotId, r);
+        return m;
+      }, new Map<number, Remote>())
+    : new Map<number, Remote>();
   for (const s of match.slots) {
-    if (have.has(s.id) || occupied.has(s.id)) continue;
+    if (have.has(s.id)) continue;
+    const occ = body.get(s.id);
     pawns.push({
       id: s.id,
       netId: 0,
       name: s.name,
-      occupant: s.occupant,
+      occupant: s.occupant ?? occ?.name,
       team: s.team,
-      x: 0,
-      y: 0,
-      z: 0,
-      yaw: 0,
-      pitch: 0,
-      hp: 0,
-      alive: false,
-      weapon: "kar",
-      ads: false,
-      crouch: false,
-      prone: false,
+      x: occ?.x ?? 0,
+      y: occ?.y ?? 0,
+      z: occ?.z ?? 0,
+      yaw: occ?.yaw ?? 0,
+      pitch: occ?.pitch ?? 0,
+      hp: occ ? occ.hp : 0,
+      alive: occ ? occ.alive : false,
+      weapon: occ?.weapon ?? "kar",
+      ads: occ?.ads ?? false,
+      crouch: occ?.crouch ?? false,
+      prone: occ?.prone ?? false,
       absent: true,
-      nades: { smoke: 0, frag: 0, stun: 0, flash: 0 },
+      nades: occ ? { ...occ.nades } : { smoke: 0, frag: 0, stun: 0, flash: 0 },
       kills: line(s.id).kills,
       assists: line(s.id).assists,
       deaths: line(s.id).deaths,
@@ -478,6 +477,7 @@ export function applyMatchSnap(match: Match, snap: Snapshot) {
   match.wire.cutHold = snap.wire.cutHold;
   if (snap.endText != null) match.endText = snap.endText;
   if (snap.lastWinner !== undefined) match.lastWinner = snap.lastWinner;
+  if (snap.endT != null) match.endT = snap.endT;
   if (snap.pawns.length) {
     match.slots = snap.pawns.map((p) => ({
       id: p.id,
