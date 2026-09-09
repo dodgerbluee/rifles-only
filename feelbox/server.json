@@ -2,7 +2,7 @@
   "name": "Last Wire",
   "map": "wharf",
   "perTeam": 5,
-  "rotation": ["wharf", "cove", "parish", "cut"],
+  "rotation": ["wharf", "cove", "parish", "cut", "siding"],
   "championsHold": 20,
   "firstTo": 6,
   "swapAfter": 5,
