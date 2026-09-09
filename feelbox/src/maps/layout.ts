@@ -34,10 +34,36 @@ export type SlabSpec = {
   y: number;
 };
 
+export type CoverKind = "crate" | "jumpCrate" | "fullCrate" | "low" | "high" | "truck";
+
 export type CoverSpec = {
   x: number;
   z: number;
-  kind: "crate" | "low" | "high" | "truck";
+  kind: CoverKind;
+};
+
+/**
+ * Cover extents [w, h, d]. Player stand eye 1.64, crouch eye 1.1, stand body 1.78.
+ * Jump apex is tuning.jumpH (1.05). Capsule clears a lip at py+0.08, so jump-on
+ * needs height under ~0.97 and walk:true so groundHeight will land you.
+ */
+export const COVER_SIZE: Record<CoverKind, [number, number, number]> = {
+  crate: [1.4, 1.1, 1.4], // legacy mid box; stand-peek (eye 1.64), not a jump-on
+  jumpCrate: [1.4, 0.9, 1.4], // jump-on + rim peek (crouch eye 1.1 still clears)
+  fullCrate: [1.4, 2.2, 1.4], // taller than stand body 1.78 / eye 1.64
+  low: [2.4, 0.9, 0.7],
+  high: [0.7, 2.1, 2.6],
+  truck: [5.2, 1.4, 2.1],
+};
+
+/** Only jump crates are walk tops. Legacy crate stays a block so old maps play the same. */
+export const COVER_WALK: Record<CoverKind, boolean> = {
+  crate: false,
+  jumpCrate: true,
+  fullCrate: false,
+  low: false,
+  high: false,
+  truck: false,
 };
 
 export type ClimbDir = "+x" | "-x" | "+z" | "-z";
@@ -206,15 +232,22 @@ function buildStorey(kit: Kit, b: BuildingSpec, h: number, mat: THREE.Material, 
   }
 }
 
+function coverMat(kit: Kit, kind: CoverKind, h: number) {
+  if (kind === "low") return kit.mat("brick", 2, 0.6);
+  if (kind === "high") return kit.mat("brick", 0.6, 2);
+  if (kind === "truck") return kit.mat("metal", 4, 1.4);
+  return kit.mat("wood", 1, h > 1.6 ? 2 : 1);
+}
+
 function coverAt(kit: Kit, c: CoverSpec) {
-  if (c.kind === "crate") kit.box(c.x, 0.55, c.z, 1.4, 1.1, 1.4, kit.mat("wood", 1, 1));
-  else if (c.kind === "low") kit.box(c.x, 0.45, c.z, 2.4, 0.9, 0.7, kit.mat("brick", 2, 0.6));
-  else if (c.kind === "high") kit.box(c.x, 1.05, c.z, 0.7, 2.1, 2.6, kit.mat("brick", 0.6, 2));
-  else {
+  if (c.kind === "truck") {
     kit.box(c.x, 0.7, c.z, 5.2, 1.4, 2.1, kit.mat("metal", 4, 1.4));
     kit.box(c.x - 1.6, 0.42, c.z, 0.7, 0.84, 0.7, kit.mat("metal", 0.6, 0.6));
     kit.box(c.x + 1.6, 0.42, c.z, 0.7, 0.84, 0.7, kit.mat("metal", 0.6, 0.6));
+    return;
   }
+  const [sx, sy, sz] = COVER_SIZE[c.kind];
+  kit.box(c.x, sy / 2, c.z, sx, sy, sz, coverMat(kit, c.kind, sy), true, COVER_WALK[c.kind]);
 }
 
 export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { clay?: boolean }): World {
@@ -379,6 +412,8 @@ export const YARD_SPEC: LayoutSpec = {
   ],
   cover: [
     { x: 0, z: 2, kind: "crate" },
+    { x: 2, z: 4, kind: "jumpCrate" },
+    { x: -2, z: 4, kind: "fullCrate" },
     { x: -4, z: -2, kind: "low" },
     { x: 5, z: 6, kind: "high" },
     { x: 0, z: -10, kind: "truck" },

@@ -2,9 +2,10 @@
  * Studio stamps must round-trip through compileLayout.
  */
 import * as THREE from "three";
-import { compileLayout, STOREY } from "../src/maps/layout.ts";
+import { compileLayout, COVER_SIZE, COVER_WALK, STOREY } from "../src/maps/layout.ts";
 import {
   blankSpec,
+  ghostSize,
   place,
   eraseNear,
   addOpening,
@@ -26,6 +27,8 @@ function check(name: string, ok: boolean, extra = "") {
 let spec = blankSpec();
 spec = place(spec, "building", 1.2, -0.4);
 spec = place(spec, "crate", 4, 4);
+spec = place(spec, "jumpCrate", 6, 4);
+spec = place(spec, "fullCrate", 8, 4);
 spec = place(spec, "climb", 0, 8, { yaw: 0 });
 spec = place(spec, "siteA", -10, 10);
 
@@ -33,6 +36,8 @@ check("building snapped to grid", spec.buildings?.[0]?.x === 2 && spec.buildings
 check("building has no default door", (spec.buildings?.[0]?.doors?.length ?? 0) === 0);
 check("studio building is one storey", spec.buildings?.[0]?.h === STOREY);
 check("cover stamped", spec.cover?.some((c) => c.kind === "crate") === true);
+check("jump crate stamped", spec.cover?.some((c) => c.kind === "jumpCrate" && c.x === 6 && c.z === 4) === true);
+check("full crate stamped", spec.cover?.some((c) => c.kind === "fullCrate" && c.x === 8 && c.z === 4) === true);
 check("climb faces -z when looking north", spec.climbs?.[0]?.dir === "-z");
 check("site A moved", spec.sites.find((s) => s.id === "loft")?.x === -10);
 
@@ -70,6 +75,25 @@ const world = compileLayout(new THREE.Scene(), spec);
 check("compiled draft has colliders", world.colliders.length > 8);
 check("compiled title", world.title === "Draft");
 check("stacked walk slabs exist", world.colliders.some((c) => c.walk && c.max.y > 2));
+
+function coverHit(x: number, z: number) {
+  return world.colliders.filter(
+    (c) => c.max.y > 0.2 && c.min.x < x && c.max.x > x && c.min.z < z && c.max.z > z,
+  );
+}
+const jumpHits = coverHit(6, 4);
+const fullHits = coverHit(8, 4);
+const midHits = coverHit(10, 6);
+const jumpBox = jumpHits.find((c) => Math.abs(c.max.y - COVER_SIZE.jumpCrate[1]) < 0.02);
+const fullBox = fullHits.find((c) => Math.abs(c.max.y - COVER_SIZE.fullCrate[1]) < 0.02);
+const midBox = midHits.find((c) => Math.abs(c.max.y - COVER_SIZE.crate[1]) < 0.02);
+check("jump crate is 0.9m and walkable", !!jumpBox && jumpBox.walk === COVER_WALK.jumpCrate && jumpBox.max.y === 0.9);
+check("full crate is 2.2m over stand eye", !!fullBox && fullBox.max.y === 2.2 && fullBox.max.y > 1.64);
+check("legacy crate stays 1.1m", !!midBox && midBox.max.y === 1.1 && midBox.walk === false);
+check("ghost matches compiler jump crate", ghostSize("jumpCrate", 12, 10).join() === COVER_SIZE.jumpCrate.join());
+check("ghost matches compiler full crate", ghostSize("fullCrate", 12, 10).join() === COVER_SIZE.fullCrate.join());
+check("jump crate is under jump lip", COVER_SIZE.jumpCrate[1] < 0.97);
+check("full crate is over stand body", COVER_SIZE.fullCrate[1] > 1.78);
 
 const groundB = spec.buildings?.find((b) => (b.y ?? 0) === 0);
 check("ground building still there", !!groundB);

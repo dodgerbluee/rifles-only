@@ -4,12 +4,14 @@
  */
 import * as THREE from "three";
 import {
+  COVER_SIZE,
   STOREY,
   YARD_SPEC,
   buildingBase,
   buildingFloors,
   buildingHeight,
   type ClimbDir,
+  type CoverKind,
   type CoverSpec,
   type DoorWall,
   type LayoutSpec,
@@ -29,6 +31,8 @@ export type ToolId =
   | "door"
   | "window"
   | "crate"
+  | "jumpCrate"
+  | "fullCrate"
   | "low"
   | "high"
   | "truck"
@@ -53,7 +57,9 @@ export const BUILD_TOOLS: ToolDef[] = [
 ];
 
 export const KIT_TOOLS: ToolDef[] = [
+  { id: "jumpCrate", key: "J", label: "Jump crate" },
   { id: "crate", key: "3", label: "Crate" },
+  { id: "fullCrate", key: "K", label: "Full crate" },
   { id: "low", key: "4", label: "Low" },
   { id: "high", key: "5", label: "High" },
   { id: "truck", key: "6", label: "Truck" },
@@ -178,7 +184,7 @@ export function aimGround(origin: THREE.Vector3, dir: THREE.Vector3) {
   return origin.clone().addScaledVector(dir, t);
 }
 
-const COVER: CoverSpec["kind"][] = ["crate", "low", "high", "truck"];
+const COVER: CoverKind[] = ["crate", "jumpCrate", "fullCrate", "low", "high", "truck"];
 
 export function place(
   spec: LayoutSpec,
@@ -615,10 +621,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool === "floor") return [bw, 0.16, bd];
   if (tool === "door") return [2.4, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];
-  if (tool === "crate") return [1.4, 1.1, 1.4];
-  if (tool === "low") return [2.4, 0.9, 0.7];
-  if (tool === "high") return [0.7, 2.1, 2.6];
-  if (tool === "truck") return [5.2, 1.4, 2.1];
+  if (tool in COVER_SIZE) return COVER_SIZE[tool as CoverKind];
   if (tool === "climb") return [2.2, 0.4, 7];
   if (tool === "siteA" || tool === "siteB") return [3, 0.12, 3];
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
@@ -736,6 +739,8 @@ export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId
   if (code === "KeyO" || code === "KeyD") return "door";
   if (code === "KeyV") return "window";
   if (code === "Digit3" || code === "Numpad3") return "crate";
+  if (code === "KeyJ") return "jumpCrate";
+  if (code === "KeyK") return "fullCrate";
   if (code === "Digit4" || code === "Numpad4") return "low";
   if (code === "Digit5" || code === "Numpad5") return "high";
   if (code === "Digit6" || code === "Numpad6") return "truck";
