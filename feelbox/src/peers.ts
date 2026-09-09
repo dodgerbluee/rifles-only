@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { collideXZ, groundHeight, type World } from "./world";
-import { addBotSlot, claimSlot, plantingTeam, type Match, type Team } from "./match";
+import { addBotSlot, claimSlot, plantingTeam, slotById, type Match, type Team } from "./match";
 import { despawnBot, spawnBot, type Bot } from "./bots";
 import type { NetHandle, Pawn, PlayerInput, Snapshot, Weapon } from "./net";
 import { activeClouds, activeNades, drainPops } from "./smoke";
@@ -173,7 +173,6 @@ export function takeoverPeer(
     oldSlot.alive = false;
   }
   newSlot.kind = "human";
-  newSlot.name = r.name;
   newSlot.alive = true;
   r.slotId = bot.id;
   r.x = bot.x;
@@ -260,6 +259,31 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   stepWalkFromPos(r.root, r.x, r.z, grounded && len > 0);
 }
 
+export function fillAbsentSlots(match: Match, pawns: Pawn[]) {
+  const have = new Set(pawns.map((p) => p.id));
+  for (const s of match.slots) {
+    if (have.has(s.id)) continue;
+    pawns.push({
+      id: s.id,
+      netId: 0,
+      name: s.name,
+      team: s.team,
+      x: 0,
+      y: 0,
+      z: 0,
+      yaw: 0,
+      pitch: 0,
+      hp: 0,
+      alive: false,
+      weapon: "kar",
+      ads: false,
+      kills: line(s.id).kills,
+      assists: line(s.id).assists,
+      deaths: line(s.id).deaths,
+    });
+  }
+}
+
 export function buildSnapshot(
   match: Match,
   local: Pawn,
@@ -273,7 +297,7 @@ export function buildSnapshot(
       (r): Pawn => ({
         id: r.slotId,
         netId: r.peerId,
-        name: r.name,
+        name: slotById(match, r.slotId)?.name ?? r.name,
         team: r.team,
         x: r.x,
         y: r.y,
@@ -312,6 +336,7 @@ export function buildSnapshot(
       }),
     ),
   ];
+  fillAbsentSlots(match, pawns);
   return {
     phase: match.phase,
     round: match.round,

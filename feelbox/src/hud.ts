@@ -1,5 +1,6 @@
 import type { World } from "./world";
-import { formatTime, plantingTeam, type Match } from "./match";
+import { formatTime, plantedTag, plantingTeam, type Match } from "./match";
+import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { kd, line, topThree } from "./stats";
 
@@ -214,18 +215,7 @@ function drawMinimap(
     mapCanvas.style.height = `${MAP_H}px`;
   }
   mapCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const { minX, maxX, minZ, maxZ } = world.bounds;
-  // Ember looks +X. Put that at the top of the radar so left/right lanes
-  // match the 3D view (cave left, beach right) instead of a north-up flip.
-  const worldW = maxZ - minZ;
-  const worldH = maxX - minX;
-  const scale = Math.min(MAP_W / worldW, MAP_H / worldH);
-  const ox = (MAP_W - worldW * scale) / 2;
-  const oy = (MAP_H - worldH * scale) / 2;
-  const to = (x: number, z: number) => ({
-    x: ox + (maxZ - z) * scale,
-    y: oy + (maxX - x) * scale,
-  });
+  const to = (x: number, z: number) => worldToRadar(x, z, world.bounds, MAP_W, MAP_H);
 
   mapCtx.clearRect(0, 0, MAP_W, MAP_H);
   mapCtx.fillStyle = "#2a2e30";
@@ -266,7 +256,7 @@ function drawMinimap(
 
   for (const cloud of clouds) {
     const p = to(cloud.x, cloud.z);
-    const r = Math.max(4, cloud.radius * scale);
+    const r = Math.max(4, cloud.radius * to(cloud.x, cloud.z).scale);
     mapCtx.beginPath();
     mapCtx.arc(p.x, p.y, r, 0, Math.PI * 2);
     mapCtx.fillStyle = `rgba(200, 194, 176, ${0.18 + cloud.opacity * 0.28})`;
@@ -291,8 +281,7 @@ function drawMinimap(
   const me = to(px, pz);
   mapCtx.save();
   mapCtx.translate(me.x, me.y);
-  // East-up radar: negate yaw so look-left is chevron-left (yaw+π/2 is mirrored).
-  mapCtx.rotate(-(yaw + Math.PI / 2));
+  mapCtx.rotate(radarHeading(yaw));
   mapCtx.beginPath();
   mapCtx.moveTo(0, -7);
   mapCtx.lineTo(5, 6);
@@ -319,11 +308,14 @@ export function updateMatchHud(m: Match, prompt: string) {
         : m.timeLeft;
   if (m.phase === "freeze") clockEl.textContent = `IN ${Math.max(0, Math.ceil(m.timeLeft))}`;
   else if (m.phase === "bestplay") clockEl.textContent = "REEL";
+  else if (m.phase === "planted") clockEl.textContent = formatTime(m.bombTime);
   else clockEl.textContent = formatTime(timed);
   clockEl.classList.toggle("bomb", m.phase === "planted");
   const plant = plantingTeam(m);
   roundTag.textContent =
-    m.phase === "bestplay"
+    m.phase === "planted"
+      ? plantedTag(m)
+      : m.phase === "bestplay"
       ? "Best play"
       : m.phase === "matchover" || m.phase === "ending" || m.phase === "settle"
         ? m.endText

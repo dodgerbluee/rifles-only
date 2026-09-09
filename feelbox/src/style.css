@@ -155,6 +155,8 @@ body.started #match-bar {
 
 #clock.bomb {
   color: #e07050;
+  font-size: 28px;
+  letter-spacing: 0.16em;
 }
 
 #round-tag,

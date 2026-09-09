@@ -386,3 +386,13 @@ export function formatTime(seconds: number) {
   const ss = s % 60;
   return `${mm}:${ss.toString().padStart(2, "0")}`;
 }
+
+export function siteCall(site: SiteId | "ice" | "slip" | null | undefined) {
+  if (site === "loft" || site === "ice") return "Ice";
+  if (site === "well" || site === "slip") return "Slip";
+  return "site";
+}
+
+export function plantedTag(m: Match) {
+  return `Wire live · ${siteCall(m.wire.site)} · ${formatTime(m.bombTime)}`;
+}

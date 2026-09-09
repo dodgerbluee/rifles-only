@@ -49,6 +49,7 @@ import {
   plantingTeam,
   plantWire,
   slotById,
+  siteCall,
   tickMatch,
   watchingTeam,
   type Slot,
@@ -1470,6 +1471,7 @@ function slashSound() {
 
 function bang(freq: number, dur: number, gain = 0.07) {
   audio ??= new AudioContext();
+  if (audio.state === "suspended") void audio.resume();
   const ctx = audio;
   const o = ctx.createOscillator();
   const g = ctx.createGain();
@@ -1492,16 +1494,33 @@ function bang(freq: number, dur: number, gain = 0.07) {
 }
 
 let plantCue = false;
+let holdTick = 0;
+let plantBannerUntil = 0;
+let lastBombSec = -1;
 
 function playPlantStart() {
-  bang(180, 0.12, 0.08);
-  window.setTimeout(() => bang(240, 0.18, 0.07), 90);
+  bang(180, 0.14, 0.11);
+  window.setTimeout(() => bang(240, 0.2, 0.1), 90);
+}
+
+function playCutStart() {
+  bang(140, 0.12, 0.1);
+  window.setTimeout(() => bang(190, 0.16, 0.09), 80);
 }
 
 function playPlanted() {
-  bang(392, 0.14, 0.1);
-  window.setTimeout(() => bang(523, 0.16, 0.1), 120);
-  window.setTimeout(() => bang(659, 0.4, 0.12), 280);
+  bang(392, 0.16, 0.14);
+  window.setTimeout(() => bang(523, 0.18, 0.13), 120);
+  window.setTimeout(() => bang(659, 0.45, 0.16), 280);
+}
+
+function playHoldTick(cutting: boolean) {
+  bang(cutting ? 210 : 170, 0.08, cutting ? 0.09 : 0.08);
+}
+
+function playBombTick(sec: number) {
+  const low = sec <= 10;
+  bang(low ? 920 : 440, low ? 0.07 : 0.05, low ? 0.12 : 0.07);
 }
 
 function tryFire() {
@@ -2570,12 +2589,41 @@ function frame(now: number) {
     setRoundResult(null);
     reelPlayed = false;
   }
-  if (match.phase === "planted" && seenPhase !== "planted") playPlanted();
-  if (match.wire.plantHold > 0.05 && !plantCue) {
-    plantCue = true;
-    playPlantStart();
+  if (match.phase === "planted" && seenPhase !== "planted") {
+    playPlanted();
+    const site = siteCall(match.wire.site);
+    const you = slotById(match, playerId);
+    const win = !!you && you.team === plantingTeam(match);
+    setRoundResult(`Wire planted · ${site}`, win);
+    plantBannerUntil = time + 3.4;
   }
-  if (match.wire.plantHold <= 0.02) plantCue = false;
+  const holdingPlant = match.wire.plantHold > 0.02;
+  const holdingCut = match.wire.cutHold > 0.02;
+  if (holdingPlant || holdingCut) {
+    if (!plantCue) {
+      plantCue = true;
+      if (holdingCut) playCutStart();
+      else playPlantStart();
+    }
+    holdTick += dt;
+    const period = holdingCut ? 0.26 : 0.36;
+    if (holdTick >= period) {
+      holdTick = 0;
+      playHoldTick(holdingCut);
+    }
+  } else {
+    plantCue = false;
+    holdTick = 0;
+  }
+  if (match.phase === "planted") {
+    const sec = Math.max(0, Math.ceil(match.bombTime));
+    if (lastBombSec >= 0 && sec < lastBombSec) playBombTick(sec);
+    lastBombSec = sec;
+  } else lastBombSec = -1;
+  if (plantBannerUntil && time > plantBannerUntil) {
+    if (match.phase === "planted") setRoundResult(null);
+    plantBannerUntil = 0;
+  }
   if (match.phase === "freeze" && seenPhase !== "freeze") {
     setRoundResult(null);
     if (isClient) {
@@ -2585,6 +2633,8 @@ function frame(now: number) {
       killedBy = "";
       lastDamage = "No damage taken";
       for (const g of clientPawns.values()) restorePawnHead(g);
+      plantBannerUntil = 0;
+      lastBombSec = -1;
     }
   }
   seenPhase = match.phase;

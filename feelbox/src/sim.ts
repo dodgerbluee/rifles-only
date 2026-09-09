@@ -36,6 +36,7 @@ import {
   seatPeer,
   takeoverPeer,
   tickRemote,
+  fillAbsentSlots,
   type Remote,
 } from "./peers";
 import {
@@ -539,7 +540,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
           (r): Pawn => ({
             id: r.slotId,
             netId: r.peerId,
-            name: r.name,
+            name: slotById(match, r.slotId)?.name ?? r.name,
             team: r.team,
             x: r.x,
             y: r.y,
@@ -577,6 +578,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
           }),
         ),
       ];
+      fillAbsentSlots(match, pawns);
       return {
         phase: match.phase,
         round: match.round,
