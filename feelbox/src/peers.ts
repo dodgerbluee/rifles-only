@@ -599,7 +599,7 @@ export function syncClientPawns(
       continue;
     }
     let g = store.get(p.id);
-    const look = parseSkin(p.skin) ?? (typeof g?.userData.skin === "string" ? g.userData.skin : undefined);
+    const look = parseSkin(p.skin) ?? parseSkin(g?.userData.skin);
     if (!g) {
       g = standIn(p.team, p.name, p.id, look);
       g.position.set(p.x, p.y, p.z);
