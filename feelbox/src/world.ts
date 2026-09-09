@@ -110,8 +110,8 @@ export function buildWorld(scene: THREE.Scene): World {
   siteMarker(scene, new THREE.Vector3(10, 3.35, -16), "B");
   siteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
 
-  const plantSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
-  const watchSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
+  const plantSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
+  const watchSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
 
   return {
     id: "wharf",
@@ -138,10 +138,10 @@ function v(x: number, z: number, y = 0) {
 
 function wharfWays() {
   return [
-    [v(-26, 6), v(-18, 12), v(-12, 13.2), v(-10.5, 17, 3.35), v(-9, 20.5, 3.35)],
-    [v(-26, 4), v(-20, -4), v(-8, -8), v(4, -12), v(10, -16)],
-    [v(26, 4), v(14, 4), v(12, 13), v(-2, 13), v(-9, 20.5, 3.35)],
-    [v(26, 4), v(20, 2), v(14, -6), v(10, -14), v(10, -16)],
+    [v(-34, 6), v(-18, 12), v(-12, 13.2), v(-10.5, 17, 3.35), v(-9, 20.5, 3.35)],
+    [v(-34, 4), v(-20, -4), v(-8, -8), v(4, -12), v(10, -16)],
+    [v(34, 4), v(14, 4), v(12, 13), v(-2, 13), v(-9, 20.5, 3.35)],
+    [v(34, 4), v(20, 2), v(14, -6), v(10, -14), v(10, -16)],
     [v(-22, 4), v(-8, 6), v(2, 8), v(12, 8), v(20, 8)],
     [v(-16, 2), v(-8, -4), v(2, -8), v(12, -10)],
     [v(8, 16, 3.35), v(-2, 16, 3.35), v(-9, 20.5, 3.35)],
@@ -561,12 +561,23 @@ function subtract1d(a: number, b: number, holes: [number, number][]) {
   return spans;
 }
 
+/** Max height you can step onto. Stair treads are shorter than this. */
+export const STEP_UP = 0.52;
+/** Thin walk volumes are floors and stair treads, not walls. */
+const WALK_SLAB = 0.4;
+
+function blocksXZ(b: Aabb, y0: number, y1: number) {
+  if (y1 < b.min.y || y0 > b.max.y) return false;
+  if (b.walk && b.max.y - b.min.y <= WALK_SLAB) return false;
+  return true;
+}
+
 export function collideXZ(colliders: Aabb[], x: number, z: number, radius: number, y0: number, y1: number) {
   let cx = x;
   let cz = z;
   for (let pass = 0; pass < 4; pass++) {
     for (const b of colliders) {
-      if (y1 < b.min.y || y0 > b.max.y) continue;
+      if (!blocksXZ(b, y0, y1)) continue;
       const closestX = Math.max(b.min.x, Math.min(cx, b.max.x));
       const closestZ = Math.max(b.min.z, Math.min(cz, b.max.z));
       let dx = cx - closestX;
@@ -595,7 +606,6 @@ export function collideXZ(colliders: Aabb[], x: number, z: number, radius: numbe
 }
 
 export function groundHeight(colliders: Aabb[], x: number, z: number, radius: number, fromY: number) {
-  const step = 0.52;
   let on = -Infinity;
   let below = -Infinity;
   for (const b of colliders) {
@@ -603,7 +613,7 @@ export function groundHeight(colliders: Aabb[], x: number, z: number, radius: nu
     if (x + radius < b.min.x || x - radius > b.max.x || z + radius < b.min.z || z - radius > b.max.z)
       continue;
     const top = b.max.y;
-    if (top <= fromY + step && top > fromY - 0.28) on = Math.max(on, top);
+    if (top <= fromY + STEP_UP && top > fromY - 0.28) on = Math.max(on, top);
     else if (top < fromY - 0.28) below = Math.max(below, top);
   }
   if (on > -Infinity) return on;

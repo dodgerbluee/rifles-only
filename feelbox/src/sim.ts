@@ -235,6 +235,7 @@ export function createSim(opts?: {
     y: number,
     z: number,
     way: KillWay = "noscope",
+    head = false,
   ) {
     const killer = credit(killerId);
     const victim = credit(victimId);
@@ -253,17 +254,22 @@ export function createSim(opts?: {
       victimName: actorName(victimId, victimName),
       victimTeam: slotById(match, victimId)?.team ?? slotById(match, victim)?.team,
       way,
+      head,
     });
   }
 
   function shotWay(shooterId: number): KillWay {
     const r = [...remotes.values()].find((x) => x.slotId === shooterId);
-    if (!r) return "noscope";
-    if (r.weapon === "knife") return "knife";
-    return r.ads ? "aimed" : "noscope";
+    if (r) {
+      if (r.weapon === "knife") return "knife";
+      return r.ads ? "aimed" : "noscope";
+    }
+    const bot = bots.find((b) => b.id === shooterId);
+    if (bot?.aim) return "aimed";
+    return "noscope";
   }
 
-  function hurtRemote(r: Remote, dmg: number, killerId: number, way?: KillWay) {
+  function hurtRemote(r: Remote, dmg: number, killerId: number, way?: KillWay, head = false) {
     if (!r.alive) return false;
     const amount = oneShot ? Math.max(dmg, 200) : dmg;
     if (killerId >= 0) noteHit(credit(killerId), credit(r.slotId), time);
@@ -271,7 +277,7 @@ export function createSim(opts?: {
     if (r.hp <= 0) {
       r.alive = false;
       r.root.rotation.x = 1.25;
-      frag(killerId, r.slotId, r.name, r.x, r.y, r.z, way ?? shotWay(killerId));
+      frag(killerId, r.slotId, r.name, r.x, r.y, r.z, way ?? shotWay(killerId), head);
       return true;
     }
     return false;
@@ -300,12 +306,12 @@ export function createSim(opts?: {
         noteHit(credit(shooterId), bot.id, time);
         const killed = hurtBot(bot, dmg, time);
         if (head && killed) pendingHeads.push(bot.id);
-        if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, shotWay(shooterId));
+        if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, shotWay(shooterId), head);
         return true;
       }
       const remote = [...remotes.values()].find((x) => x.slotId === hid || x.homeId === hid);
       if (remote && remote.alive && (friendlyFire || remote.team !== youTeam)) {
-        const killed = hurtRemote(remote, dmg, shooterId);
+        const killed = hurtRemote(remote, dmg, shooterId, shotWay(shooterId), head);
         if (head && killed) pendingHeads.push(remote.homeId);
         return true;
       }

@@ -1,31 +1,40 @@
 ---
 name: design-map
-description: Design and implement Rifles Only maps through a compact LayoutSpec and compiler. Use when the user wants a new map, a map redesign, layout, bombsite, spawn, rotation map, or says maps are bad / look like box piles.
+description: Design and implement Rifles Only maps through a compact LayoutSpec and compiler. Use when the user wants a new map, a map redesign, layout, bombsite, spawn, rotation map, or says maps are bad / look like box piles. Also use when they saved a Map studio draft or ask you to finalize a sketch.
 ---
 
 # Design a map
 
-Hand-placed `box()` piles are the failure mode. The human sketches; you write a **LayoutSpec**; `compileLayout` builds it; `map-check` gates it.
+The human **builds in-game**. You **finalize**. Do not start from a pile of `box()` calls.
+
+## In-game studio
+
+Admin (` or F10) → **Map studio**. Walk the empty lot, stamp buildings/cover/sites/spawns, **Save for agent**.
+
+That writes `feelbox/studio-draft.json` (and a download + localStorage). If that file exists, skip ASCII and start at **Finalize**.
 
 ## Steps
 
-1. **Intake** — get four facts before any geometry. Done when you can fill this card:
+1. **Intake** — get four facts before any geometry (skip if the studio draft already has them):
    - Planting side enters from where (compass + one landmark)
    - A and B are what (one-word names)
    - One mid fight
    - Mood in one clause (winter dock, limestone pit, …) plus at most one real reference
-   If the ask is “make a cool map”, ask for the card. Do not invent a 200-prop theme.
+   If the ask is “make a cool map” and there is no draft, ask for the card.
 
-2. **ASCII** — one 12–16 column grid, then stop for approval if the human is in the loop.
-   - `E` planter spawn  `S` watcher spawn  `A`/`B` sites  `#` building  `=` cover  `.` open
-   - Two flanks plus mid. Spawns in the open, not in a U of walls.
-   Done when A/B are split, E and S are opposite, and you can walk E→A, E→B, S→A, S→B on the grid.
+2. **Studio or ASCII**
+   - Prefer `feelbox/studio-draft.json`. The human already placed the lot.
+   - Only draw ASCII (12–16 columns) if there is no draft and they are not in studio.
+     `E` planter  `S` watcher  `A`/`B` sites  `#` building  `=` cover  `.` open
 
-3. **Spec** — translate the grid into one `LayoutSpec` in `feelbox/src/maps/<id>.ts`. The map file is the spec plus `return compileLayout(scene, SPEC);`. Recipes live in `feelbox/src/maps/layout.ts` (`buildings`, `cover`, `sites`, `spawns`, `routes`).
+3. **Finalize** — write `feelbox/src/maps/<id>.ts` as a `LayoutSpec` plus `return compileLayout(scene, SPEC);`.
+   - Start from the studio spec (or the ASCII). Do not invent a crate maze.
+   - Give the map a real `id` / `title` / `blurb` (not `draft`).
+   - Site names from the intake card. Keep two sites `loft` (A) and `well` (B).
    - 5 planter + 5 watcher spawns, open to mid
-   - sites `loft` (A) and `well` (B)
-   - ≥3 bot routes; at least one starts near each spawn side
-   - 2F only where the ASCII showed a climb
+   - ≥3 bot `routes`; at least one starts near each spawn side. You write routes — studio does not.
+   - 2F only where they stamped a loft or the ASCII showed a climb
+   - Recipes live in `feelbox/src/maps/layout.ts` (`buildings`, `cover`, `climbs`, `sites`, `spawns`, `routes`).
    Done when the file has no raw `box()` / `climb()` except what `compileLayout` emits.
 
 4. **Register** — add the id to `MapId` in `kit.ts`, `MAPS` + `buildMap` in `maps/index.ts`, and `rotation` in `feelbox/server.json`.
@@ -42,4 +51,4 @@ Hand-placed `box()` piles are the failure mode. The human sketches; you write a 
 
 ## LayoutSpec
 
-See `feelbox/src/maps/layout.ts` (`LayoutSpec`, `YARD_SPEC`). Copy `YARD_SPEC` and rename — do not start from Cove.
+See `feelbox/src/maps/layout.ts` (`LayoutSpec`, `YARD_SPEC`) and `feelbox/src/maps/studio.ts` (`blankSpec`). Copy the studio draft or `YARD_SPEC` — do not start from Cove.

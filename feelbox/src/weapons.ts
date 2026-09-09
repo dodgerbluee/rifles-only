@@ -190,39 +190,53 @@ export function makeKar98(): RifleView {
   return { id: "kar", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
-/** Mosin-Nagant 91/30: longer barrel, small circular peep you look through. */
+/** Mosin-Nagant 91/30: barrel meets receiver, peep stacked on a hooded front globe. */
 export function makeMosin(): RifleView {
   const root = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x22241e, roughness: 0.36, metalness: 0.62 });
   const wood = new THREE.MeshStandardMaterial({ color: 0x3d2816, roughness: 0.88, metalness: 0.02 });
 
   const axisY = 0.034;
-  const recR = 0.014;
-  const barR = 0.0068;
+  const recR = 0.013;
+  const barR = 0.0074;
   place(root, capZ(0.026, 0.14, wood), 0, 0.004, 0.2);
   place(root, capZ(0.018, 0.12, wood), 0, 0.012, 0.06);
   place(root, capZ(0.015, 0.34, wood), 0, 0.014, -0.16);
-  place(root, cylZ(recR, 0.14, steel), 0, axisY, 0.02);
-  place(root, cylZ(barR, 0.48, steel, 8), 0, axisY, -0.32);
+  place(root, cylZ(recR, 0.18, steel), 0, axisY, 0.02);
+  place(root, cylZ((recR + barR) * 0.5, 0.05, steel, 8), 0, axisY, -0.08);
+  place(root, cylZ(barR, 0.5, steel, 8), 0, axisY, -0.32);
   place(root, new THREE.Mesh(new THREE.CapsuleGeometry(0.015, 0.026, 4, 8), wood), 0, -0.014, 0.04);
 
   const bolt = makeBolt(root, new THREE.Vector3(0, axisY, 0.04), new THREE.Vector3(0.074, 0.006, 0));
   place(bolt, cylX(0.005, 0.068, steel, 6), 0.04, 0.006, 0);
 
-  const ringR = 0.0031;
-  const tube = 0.00028;
   const recTop = axisY + recR;
-  const ringZ = -0.04;
+  const ringR = 0.0044;
+  const tube = 0.00115;
+  const ringZ = -0.015;
   const ringY = recTop + ringR;
-  place(root, cylY(0.0007, ringR + tube, steel, 6), 0, recTop + (ringR + tube) * 0.5, ringZ);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, tube, 8, 24), steel);
+  const stem = place(root, cylY(0.0011, ringR + tube, steel, 6), 0, recTop + (ringR + tube) * 0.5, ringZ);
+  stem.renderOrder = 2;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, tube, 10, 24), steel);
+  ring.renderOrder = 3;
   place(root, ring, 0, ringY, ringZ);
 
-  const flash = flashMesh(0, axisY, -0.57);
+  const frontZ = -0.54;
+  const barTop = axisY + barR;
+  const rampH = ringY - barTop;
+  place(root, cylY(0.0024, rampH, steel, 6), 0, barTop + rampH * 0.5, frontZ);
+  const hood = new THREE.Mesh(new THREE.TorusGeometry(ringR, 0.0009, 8, 18, Math.PI), steel);
+  hood.rotation.z = Math.PI;
+  hood.renderOrder = 3;
+  place(root, hood, 0, ringY, frontZ);
+  const post = place(root, cylY(0.0011, ringR * 0.9, steel, 5), 0, ringY - ringR * 0.2, frontZ);
+  post.renderOrder = 3;
+
+  const flash = flashMesh(0, axisY, -0.58);
   root.add(flash);
   const { rounds, clip } = makeAmmoKit(root, axisY, "mosin", steel);
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
-  const adsPos = new THREE.Vector3(0, -ringY, -0.12);
+  const adsPos = new THREE.Vector3(0, -ringY, -0.16);
   root.position.copy(hipPos);
   return { id: "mosin", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }

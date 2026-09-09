@@ -4,7 +4,7 @@
 import "./style.css";
 import * as THREE from "three";
 import { collideXZ, groundHeight, inSite, rayShot, rayWorld, spawnYaw } from "./world";
-import { buildMap, MAPS, type MapId } from "./maps";
+import { buildMap, MAPS, compileLayout, type MapId } from "./maps";
 import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, popPawnHead, refillBotPawn, resetBots, restoreHead, restorePawnHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
 import {
   hideDeath,
@@ -59,6 +59,20 @@ import {
   type Team,
 } from "./match";
 import { bindAdmin, rules } from "./admin";
+import {
+  TOOLS,
+  aimGround,
+  blankSpec,
+  downloadSpec,
+  ghostSize,
+  loadStored,
+  place,
+  postDraft,
+  saveStored,
+  snap,
+  toolFromCode,
+  type ToolId,
+} from "./maps/studio";
 import { buildPawn, pawnStyle, poseStance, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
 import { clearPodium, mountPodium, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
@@ -151,6 +165,21 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 let mapId: MapId = "wharf";
 let world = buildMap(scene, mapId);
+const studioGhost = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshBasicMaterial({ color: 0xe8d9a8, transparent: true, opacity: 0.32, depthWrite: false }),
+);
+studioGhost.visible = false;
+studioGhost.frustumCulled = false;
+scene.add(studioGhost);
+const studio = {
+  on: false,
+  spec: blankSpec(),
+  tool: "building" as ToolId,
+  fly: false,
+  bw: 12,
+  bd: 10,
+};
 const match = createMatch();
 {
   const you = humanSlot(match);
@@ -214,6 +243,30 @@ function bindNet(handle: NetHandle) {
 }
 
 let joiningName = "";
+let pendingJoin = "";
+
+function joinPanel() {
+  return document.querySelector<HTMLElement>("#join-team");
+}
+
+function showJoinTeam(name: string) {
+  pendingJoin = name;
+  joiningName = name;
+  const who = document.querySelector("#join-who");
+  if (who) who.textContent = name;
+  const panel = joinPanel();
+  if (panel) panel.hidden = false;
+  const list = document.querySelector<HTMLElement>("#server-list");
+  if (list) list.hidden = true;
+}
+
+function hideJoinTeam() {
+  pendingJoin = "";
+  const panel = joinPanel();
+  if (panel) panel.hidden = true;
+  const list = document.querySelector<HTMLElement>("#server-list");
+  if (list) list.hidden = false;
+}
 
 function joinGame(name?: string) {
   if (net.status === "connecting") {
@@ -225,6 +278,7 @@ function joinGame(name?: string) {
     return;
   }
   if (name) joiningName = name;
+  hideJoinTeam();
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
@@ -405,7 +459,7 @@ function paintTeamPick() {
   } else {
     team = slotById(match, playerId)?.team ?? prefs.team ?? "ember";
   }
-  document.querySelectorAll("#team-pick button, #set-team button").forEach((b) => {
+  document.querySelectorAll("#join-team-pick button, #set-team button").forEach((b) => {
     b.classList.toggle("on", (b as HTMLButtonElement).dataset.team === team);
   });
 }
@@ -448,8 +502,8 @@ function switchLocalTeam(team: Team) {
   paintTeamPick();
 }
 
-function loadMap(id: MapId) {
-  if (id === mapId && net.role !== "client") {
+function loadMap(id: MapId, force = false) {
+  if (!force && id === mapId && net.role !== "client") {
     paintMapPick();
     return;
   }
@@ -458,10 +512,25 @@ function loadMap(id: MapId) {
   if (net.role !== "client") {
     for (const b of [...bots]) despawnBot(scene, bots, b.id);
   }
+  wipeMapMeshes();
+  world = buildMap(scene, id);
+  afterMapLoad();
+  if (net.role === "client") {
+    for (const b of bots) b.root.visible = false;
+    paintMapPick();
+    return;
+  }
+  bots.push(...createBots(scene, world, match));
+  restartRoom();
+  paintMapPick();
+}
+
+function wipeMapMeshes() {
   const keep = new Set<THREE.Object3D>([
     camera,
     ghost,
     wirePack,
+    studioGhost,
     ...[...remotes.values()].map((r) => r.root),
     ...clientPawns.values(),
   ]);
@@ -473,7 +542,10 @@ function loadMap(id: MapId) {
   sparks.length = 0;
   for (const b of blasts) scene.remove(b.mesh, b.light);
   blasts.length = 0;
-  world = buildMap(scene, id);
+}
+
+function afterMapLoad() {
+  if (!studioGhost.parent) scene.add(studioGhost);
   for (const r of remotes.values()) {
     if (!r.root.parent) scene.add(r.root);
     r.root.visible = true;
@@ -482,14 +554,113 @@ function loadMap(id: MapId) {
     if (!g.parent) scene.add(g);
     g.visible = true;
   }
-  if (net.role === "client") {
-    for (const b of bots) b.root.visible = false;
-    paintMapPick();
-    return;
+}
+
+function paintStudio() {
+  document.body.classList.toggle("studio", studio.on);
+  const tools = document.querySelector("#studio-tools")!;
+  if (!tools.childElementCount) {
+    for (const t of TOOLS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.tool = t.id;
+      b.textContent = `${t.key} ${t.label}`;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        studio.tool = t.id;
+        paintStudio();
+      });
+      tools.append(b);
+    }
   }
-  bots.push(...createBots(scene, world, match));
-  restartRoom();
-  paintMapPick();
+  tools.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", (b as HTMLButtonElement).dataset.tool === studio.tool);
+  });
+  const fly = document.querySelector("#studio-fly");
+  if (fly) fly.textContent = studio.fly ? "Fly" : "Walk";
+  const status = document.querySelector("#studio-status");
+  if (status && !status.textContent) {
+    status.textContent = `${studio.spec.title} · ${studio.bw}×${studio.bd}`;
+  }
+}
+
+function rebuildStudio() {
+  wipeMapMeshes();
+  world = compileLayout(scene, studio.spec);
+  afterMapLoad();
+  studioGhost.visible = true;
+  const mapTitle = document.querySelector(".map-head span");
+  if (mapTitle) mapTitle.textContent = studio.spec.title || "Studio";
+}
+
+function enterStudio() {
+  studio.on = true;
+  studio.spec = loadStored() ?? blankSpec();
+  const titleEl = document.querySelector<HTMLInputElement>("#studio-title")!;
+  const themeEl = document.querySelector<HTMLSelectElement>("#studio-theme")!;
+  titleEl.value = studio.spec.title;
+  themeEl.value = studio.spec.theme;
+  rebuildStudio();
+  const spawn = world.plantSpawns[2] ?? world.plantSpawns[0] ?? world.playerSpawn;
+  px = spawn.x;
+  py = spawn.y;
+  pz = spawn.z;
+  vy = 0;
+  paintStudio();
+  document.body.classList.add("started");
+  document.exitPointerLock();
+}
+
+function leaveStudio() {
+  studio.on = false;
+  studioGhost.visible = false;
+  document.body.classList.remove("studio");
+  loadMap(mapId, true);
+  const me = lastSnap?.pawns.find((p) => (p.netId ?? 0) === net.peerId);
+  if (me) {
+    px = me.x;
+    py = me.y;
+    pz = me.z;
+  }
+}
+
+function studioAim() {
+  const origin = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+  camera.getWorldPosition(origin);
+  camera.getWorldDirection(dir);
+  return aimGround(origin, dir);
+}
+
+function stampStudio(erase = false) {
+  const hit = studioAim();
+  if (!hit) return;
+  studio.spec = place(studio.spec, erase ? "erase" : studio.tool, hit.x, hit.z, {
+    yaw,
+    bw: studio.bw,
+    bd: studio.bd,
+  });
+  saveStored(studio.spec);
+  const keep = { x: px, y: py, z: pz };
+  rebuildStudio();
+  px = keep.x;
+  py = keep.y;
+  pz = keep.z;
+  const status = document.querySelector("#studio-status");
+  if (status) status.textContent = erase ? "erased" : `placed ${studio.tool}`;
+  paintStudio();
+}
+
+async function saveStudio() {
+  saveStored(studio.spec);
+  downloadSpec(studio.spec);
+  const status = document.querySelector("#studio-status")!;
+  try {
+    await postDraft(studio.spec);
+    status.textContent = "Saved studio-draft.json — ask the agent to finalize";
+  } catch {
+    status.textContent = "Downloaded spec · lobby save failed, paste the JSON if needed";
+  }
 }
 
 function rebuildPawns() {
@@ -542,7 +713,41 @@ bindAdmin({
       botSkill: rules.botSkill,
     });
   },
+  onStudio: () => enterStudio(),
 });
+
+{
+  const titleEl = document.querySelector<HTMLInputElement>("#studio-title")!;
+  const themeEl = document.querySelector<HTMLSelectElement>("#studio-theme")!;
+  titleEl.addEventListener("input", () => {
+    studio.spec.title = titleEl.value.slice(0, 24) || "Draft";
+    studio.spec.id = studio.spec.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "draft";
+  });
+  themeEl.addEventListener("change", () => {
+    studio.spec.theme = themeEl.value as typeof studio.spec.theme;
+    if (studio.on) {
+      const keep = { x: px, y: py, z: pz };
+      rebuildStudio();
+      px = keep.x;
+      py = keep.y;
+      pz = keep.z;
+    }
+  });
+  document.querySelector("#studio-fly")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    studio.fly = !studio.fly;
+    paintStudio();
+  });
+  document.querySelector("#studio-save")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void saveStudio();
+  });
+  document.querySelector("#studio-leave")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    leaveStudio();
+  });
+  document.querySelector("#studio")?.addEventListener("mousedown", (e) => e.stopPropagation());
+}
 
 const camera = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 85);
 camera.rotation.order = "YXZ";
@@ -724,7 +929,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
       row.append(name, map, pop, phase, join);
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        joinGame(s.name);
+        showJoinTeam(s.name);
       });
       list.append(row);
     }
@@ -735,7 +940,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
     void paintServers();
   }, 2000);
 
-  const fillTeams = (root: Element) => {
+  const fillTeams = (root: Element, onPick?: (team: Team) => void) => {
     root.addEventListener("click", (e) => e.stopPropagation());
     for (const [id, label] of [
       ["ember", "Ember"],
@@ -745,13 +950,20 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
       b.type = "button";
       b.dataset.team = id;
       b.textContent = label;
-      b.addEventListener("click", () => pickTeam(id));
+      b.addEventListener("click", () => (onPick ? onPick(id) : pickTeam(id)));
       root.append(b);
     }
   };
-  fillTeams(document.querySelector("#team-pick")!);
+  fillTeams(document.querySelector("#join-team-pick")!, (team) => {
+    pickTeam(team);
+    joinGame(pendingJoin || joiningName);
+  });
   const setTeam = document.querySelector("#set-team");
   if (setTeam) fillTeams(setTeam);
+  document.querySelector("#join-cancel")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    hideJoinTeam();
+  });
   const adminMap = document.querySelector<HTMLSelectElement>("#admin-map")!;
   for (const m of MAPS) {
     const o = document.createElement("option");
@@ -808,6 +1020,9 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   });
   panel.addEventListener("mousedown", (e) => e.stopPropagation());
 }
+addEventListener("contextmenu", (e) => {
+  if (studio.on) e.preventDefault();
+});
 document.addEventListener("pointerlockchange", () => {
   locked = document.pointerLockElement === canvas;
   document.body.classList.toggle("started", locked || document.body.classList.contains("started"));
@@ -838,6 +1053,31 @@ addEventListener("keydown", (e) => {
     return;
   }
   keys.add(e.code);
+  if (studio.on) {
+    const tool = toolFromCode(e.code);
+    if (tool) {
+      studio.tool = tool;
+      paintStudio();
+    }
+    if (e.code === "KeyF" && !e.repeat) {
+      studio.fly = !studio.fly;
+      paintStudio();
+    }
+    if (e.code === "BracketLeft") {
+      studio.bw = Math.max(6, studio.bw - 2);
+      studio.bd = Math.max(6, studio.bd - 2);
+      paintStudio();
+    }
+    if (e.code === "BracketRight") {
+      studio.bw = Math.min(24, studio.bw + 2);
+      studio.bd = Math.min(20, studio.bd + 2);
+      paintStudio();
+    }
+    if (e.code === "Escape") {
+      if (locked) document.exitPointerLock();
+    }
+    return;
+  }
   if (e.code === "KeyR" && locked) startReload();
   if (e.code === "KeyG" && locked && !e.repeat) tryThrowSmoke();
   if (e.code === "KeyJ" && locked && !e.repeat) tryJoin();
@@ -868,6 +1108,13 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("mousedown", (e) => {
+  if (studio.on) {
+    if (!locked) return;
+    e.preventDefault();
+    if (e.button === 0) stampStudio(false);
+    if (e.button === 2) stampStudio(true);
+    return;
+  }
   if (!locked) return;
   if (!alive) {
     if (e.button === 0 || e.button === 2) cycleSpec(e.button === 2 ? -1 : 1);
@@ -900,11 +1147,19 @@ addEventListener("mouseup", (e) => {
   if (e.button === 2) ads = false;
 });
 addEventListener("wheel", (e) => {
+  if (studio.on && locked) {
+    e.preventDefault();
+    const d = e.deltaY > 0 ? -2 : 2;
+    studio.bw = Math.max(6, Math.min(24, studio.bw + d));
+    studio.bd = Math.max(6, Math.min(20, studio.bd + d));
+    paintStudio();
+    return;
+  }
   if (!locked || alive) return;
   cycleSpec(e.deltaY > 0 ? 1 : -1);
 });
 addEventListener("mousemove", (e) => {
-  if (!locked || !alive) return;
+  if (!locked || (!alive && !studio.on)) return;
   const scale = (ads ? 0.42 : 1) * MOUSE * prefs.sens * (stunT > 0 ? 0.28 : 1);
   yaw -= e.movementX * scale;
   pitch -= e.movementY * scale;
@@ -1977,7 +2232,7 @@ function applyReelHands(cam: Pose) {
   const g = kind === "mosin" ? mosin.root : kar.root;
   g.position.copy(rest);
   g.position.z += cam.kick;
-  g.rotation.x = (cam.ads ? 0.018 : 0.1) - cam.punchP * 0.04;
+  g.rotation.x = (cam.ads ? (kind === "mosin" ? 0 : 0.018) : 0.1) - cam.punchP * 0.04;
   g.rotation.y = cam.ads ? 0 : 0.22;
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
   const hold = liveRifleFor(kind);
@@ -2417,10 +2672,10 @@ function frame(now: number) {
 
   if (weapon !== "rifle") clearFire(fireQ);
   else if (mouseDown && !fireQ.held) pressFire(fireQ);
-  const wantShot = weapon === "rifle" && fireWantsShot(fireQ);
+  const wantShot = !studio.on && weapon === "rifle" && fireWantsShot(fireQ);
   if (locked && alive && wantShot && !combatLock && bashT <= 0) tryFire();
 
-  crouch = locked && alive && !prone && keys.has("KeyC");
+  crouch = !studio.on && locked && alive && !prone && keys.has("KeyC");
   leanInput = 0;
   if (locked && alive && keys.has("KeyQ")) leanInput -= 1;
   if (locked && alive && keys.has("KeyE")) leanInput += 1;
@@ -2450,7 +2705,7 @@ function frame(now: number) {
   const gh = groundHeight(world.colliders, px, pz, RADIUS, py);
   grounded = py <= gh + 0.06 && vy <= 0.2;
 
-  if (alive && locked && !froze && net.role !== "offline" && !isCow(playerId)) {
+  if ((studio.on || (alive && !froze && net.role !== "offline" && !isCow(playerId))) && locked) {
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     const rightX = Math.cos(yaw);
@@ -2476,8 +2731,8 @@ function frame(now: number) {
       }
     }
     const len = Math.hypot(wx, wz);
-    walking = len > 0 && alive;
-    if (len > 0 && alive) {
+    walking = len > 0 && (alive || studio.on);
+    if (len > 0 && (alive || studio.on)) {
       const n = collideXZ(
         world.colliders,
         px + (wx / len) * speed * dt,
@@ -2504,25 +2759,32 @@ function frame(now: number) {
       diveVx += (0 - diveVx) * Math.min(1, dt * damp);
       diveVz += (0 - diveVz) * Math.min(1, dt * damp);
     }
-    if (locked && alive && grounded && keys.has("Space") && !jumpHeld) {
-      if (prone) {
-        prone = false;
-        vy = jumpSpeed() * 0.82;
-      } else vy = jumpSpeed();
-      grounded = false;
-    }
-    jumpHeld = keys.has("Space");
-    if (grounded && vy <= 0) {
-      py = gh;
+    if (studio.on && studio.fly) {
+      const up = (keys.has("Space") ? 1 : 0) - (keys.has("ControlLeft") || keys.has("ControlRight") ? 1 : 0);
+      py += up * speed * dt;
       vy = 0;
+      jumpHeld = keys.has("Space");
     } else {
-      vy += -tuning.gravity * dt;
-      py += vy * dt;
-      const g2 = groundHeight(world.colliders, px, pz, RADIUS, py);
-      if (py < g2) {
-        py = g2;
+      if (locked && (alive || studio.on) && grounded && keys.has("Space") && !jumpHeld) {
+        if (prone) {
+          prone = false;
+          vy = jumpSpeed() * 0.82;
+        } else vy = jumpSpeed();
+        grounded = false;
+      }
+      jumpHeld = keys.has("Space");
+      if (grounded && vy <= 0) {
+        py = gh;
         vy = 0;
-        grounded = true;
+      } else {
+        vy += -tuning.gravity * dt;
+        py += vy * dt;
+        const g2 = groundHeight(world.colliders, px, pz, RADIUS, py);
+        if (py < g2) {
+          py = g2;
+          vy = 0;
+          grounded = true;
+        }
       }
     }
     if (py < -3.2) {
@@ -2690,10 +2952,10 @@ function frame(now: number) {
   if (isClient && lastSnap && net.peerId != null) {
     applyMatchSnap(match, lastSnap);
     const snapMap = lastSnap.mapId;
-    if (snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
+    if (!studio.on && snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
       loadMap(snapMap as MapId);
     }
-    if (!reel) {
+    if (!reel && !studio.on) {
       syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt, {
         forceSnap: lastSnap.round !== seenRound,
       });
@@ -2745,16 +3007,18 @@ function frame(now: number) {
         }
         playerId = me.id;
         hp = me.hp;
-        alive = me.alive;
-        if (!me.alive) {
-          px = me.x;
-          py = me.y;
-          pz = me.z;
-        } else {
-          const n = reconcilePos(px, py, pz, me.x, me.y, me.z);
-          px = n.x;
-          py = n.y;
-          pz = n.z;
+        if (!studio.on) {
+          alive = me.alive;
+          if (!me.alive) {
+            px = me.x;
+            py = me.y;
+            pz = me.z;
+          } else {
+            const n = reconcilePos(px, py, pz, me.x, me.y, me.z);
+            px = n.x;
+            py = n.y;
+            pz = n.z;
+          }
         }
       }
       appliedSeq = snapSeq;
@@ -2762,7 +3026,7 @@ function frame(now: number) {
     if (me) {
       playerId = me.id;
       hp = me.hp;
-      alive = me.alive;
+      if (!studio.on) alive = me.alive;
       if (me.kills != null) {
         kills = me.kills;
         deaths = me.deaths ?? deaths;
@@ -2855,7 +3119,7 @@ function frame(now: number) {
         for (const r of remotes.values()) r.root.visible = true;
       }
     } else {
-      const spec = !alive ? specTarget() : undefined;
+      const spec = !alive && !studio.on ? specTarget() : undefined;
       if (spec) {
         camera.position.set(spec.x, spec.y, spec.z);
         camera.rotation.y = spec.yaw;
@@ -2885,9 +3149,9 @@ function frame(now: number) {
         const throwing = throwT > 0;
         const boltK = boltT > 0 ? 1 - boltT / boltDur : 0;
         const throwK = throwing ? 1 - throwT / throwDur : 0;
-        showRifle(rifleKind, alive && weapon === "rifle" && !bashing && !throwing);
-        knife.visible = alive && (weapon === "knife" || bashing) && !throwing;
-        nadeView.visible = alive && !bashing && (isNade(weapon) || throwing);
+        showRifle(rifleKind, !studio.on && alive && weapon === "rifle" && !bashing && !throwing);
+        knife.visible = !studio.on && alive && (weapon === "knife" || bashing) && !throwing;
+        nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing);
         if (bashing) poseKnifeSlash(knife, 1 - bashT / 0.42);
         else poseKnifeRest(knife);
         if (throwing) poseThrow(nadeView, throwK, throwDrop);
@@ -2900,7 +3164,7 @@ function frame(now: number) {
         const g = hold.root;
         g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
-        g.rotation.x = (ads ? 0.018 : 0.1) - punchP * 0.04;
+        g.rotation.x = (ads ? (rifleKind === "mosin" ? 0 : 0.018) : 0.1) - punchP * 0.04;
         g.rotation.y = ads ? 0 : 0.22;
         g.rotation.z = (ads ? 0 : 0.06) + punchY * 0.05;
         const reloadK = reloading > 0 ? 1 - reloading / RELOAD : 0;
@@ -3148,20 +3412,35 @@ function frame(now: number) {
   if (net.role === "client") {
     net.sendInput(
       collectInput({
-        keys,
+        keys: studio.on ? new Set() : keys,
         yaw,
         pitch,
-        fire: wantShot,
-        ads,
-        lean,
+        fire: studio.on ? false : wantShot,
+        ads: studio.on ? false : ads,
+        lean: studio.on ? 0 : lean,
         weapon: weapon === "rifle" ? rifleKind : weapon,
-        crouch,
-        prone,
-        jump: keys.has("Space"),
-        use: keys.has("KeyF"),
+        crouch: studio.on ? false : crouch,
+        prone: studio.on ? false : prone,
+        jump: studio.on ? false : keys.has("Space"),
+        use: studio.on ? false : keys.has("KeyF"),
         ping: net.pingMs,
       }),
     );
+  }
+
+  if (studio.on) {
+    for (const g of clientPawns.values()) g.visible = false;
+    ghost.visible = false;
+    const hit = studioAim();
+    const show = !!hit && studio.tool !== "erase";
+    studioGhost.visible = show;
+    if (hit && show) {
+      const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
+      studioGhost.scale.set(sx, sy, sz);
+      studioGhost.position.set(snap(hit.x), sy / 2, snap(hit.z));
+    }
+  } else {
+    studioGhost.visible = false;
   }
 
   renderer.render(scene, camera);

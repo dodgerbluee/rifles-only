@@ -225,10 +225,16 @@ body.started #killfeed {
 }
 
 .kill-row .way {
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: #c8b888;
+}
+
+.kill-row .way svg {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .kill-row .way.aimed { color: #e8d9a8; }
@@ -237,6 +243,7 @@ body.started #killfeed {
 .kill-row .way.knife { color: #d8dce0; }
 .kill-row .way.bomb { color: #e07040; }
 .kill-row .way.cow { color: #e8c878; }
+.kill-row .way.head { color: #e8d9a8; }
 
 #round-result {
   position: fixed;
@@ -703,16 +710,18 @@ body.dead:not(.bestplay) #hitmark {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   background: #121410;
   text-align: left;
-  padding: 36px 28px 28px;
+  padding: 28px 28px 28px 32px;
   overflow: auto;
 }
 
-#start > * {
-  width: min(720px, 100%);
+#start > *:not(#open-settings) {
+  width: min(760px, 100%);
+  margin-left: 0;
+  margin-right: auto;
 }
 
 #start .kicker {
@@ -736,12 +745,72 @@ body.dead:not(.bestplay) #hitmark {
   color: #cfc6b2;
 }
 
-.start-foot {
+.start-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+#open-settings {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 23;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 8px;
+  justify-content: center;
+  background: #1c1e18;
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  cursor: pointer;
+}
+
+#open-settings:hover {
+  border-color: #e8d9a8;
+}
+
+#server-list[hidden],
+#join-team[hidden],
+#join-status[hidden] {
+  display: none !important;
+}
+
+#join-team {
+  margin-top: auto;
+  padding: 12px 0 8px;
+}
+
+#join-team .join-kicker {
+  color: #e6dfd0;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+#join-team .join-ask {
+  color: #8d8676;
+  font-size: 13px;
+  margin: 4px 0 10px !important;
+}
+
+#join-cancel {
+  margin-top: 10px;
+  background: transparent;
+  color: #8d8676;
+  border: 0;
+  padding: 6px 0;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+
+#join-team-pick {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
 }
 
 .bind {
@@ -945,7 +1014,7 @@ body.admin #admin {
 
 #admin-player,
 .admin-row button,
-#open-settings,
+#admin-studio,
 #settings input[type="text"] {
   width: 100%;
   margin: 6px 0 0;
@@ -987,8 +1056,9 @@ body.admin #admin {
 #settings {
   display: none;
   position: fixed;
-  top: 72px;
-  left: 16px;
+  top: 68px;
+  right: 16px;
+  left: auto;
   width: 280px;
   padding: 14px;
   background: rgba(16, 17, 12, 0.94);
@@ -1123,20 +1193,19 @@ body.settings #settings {
   color: #e8d9a8;
 }
 
-#team-pick,
+#join-team-pick,
 #set-team {
   display: flex;
   gap: 8px;
-  justify-content: center;
+  justify-content: flex-start;
   margin: 4px 0 8px;
 }
 
 #set-team {
-  justify-content: flex-start;
   margin: 0;
 }
 
-#team-pick button,
+#join-team-pick button,
 #set-team button {
   background: #2a2c24;
   color: #e6dfd0;
@@ -1146,13 +1215,13 @@ body.settings #settings {
   letter-spacing: 0.08em;
 }
 
-#team-pick button[data-team="ember"].on,
+#join-team-pick button[data-team="ember"].on,
 #set-team button[data-team="ember"].on {
   border-color: #c45a3a;
   color: #f0a090;
 }
 
-#team-pick button[data-team="stone"].on,
+#join-team-pick button[data-team="stone"].on,
 #set-team button[data-team="stone"].on {
   border-color: #6a90b4;
   color: #a8c8e0;
@@ -1320,4 +1389,87 @@ body.podium #death {
   flex-wrap: wrap;
   max-width: 78vw;
   justify-content: center;
+}
+
+#studio {
+  display: none;
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 18px;
+  z-index: 18;
+  pointer-events: none;
+  color: #e6dfd0;
+  text-shadow: 0 1px 8px rgba(8, 8, 6, 0.7);
+}
+
+body.studio #studio {
+  display: block;
+}
+
+body.studio #match-bar,
+body.studio #round-tag,
+body.studio #killfeed,
+body.studio #hud-right,
+body.studio #crosshair,
+body.studio #death,
+body.studio #prompt,
+body.studio #use-bar,
+body.studio #cook-bar,
+body.studio #spec,
+body.studio #round-result,
+body.studio #start,
+body.studio #roster,
+body.studio #join-note,
+body.studio #vitals {
+  display: none !important;
+}
+
+#studio-bar,
+#studio-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+
+#studio-bar {
+  margin-bottom: 8px;
+}
+
+.studio-kicker {
+  margin: 0 8px 0 0;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: #e8d9a8;
+}
+
+#studio input,
+#studio select,
+#studio button {
+  background: rgba(16, 17, 12, 0.88);
+  color: #e8e4d4;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+#studio-tools button.on {
+  border-color: #e8d9a8;
+  color: #e8d9a8;
+}
+
+#studio-hint,
+#studio-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #c4bca8;
+  pointer-events: none;
+}
+
+#studio-status {
+  color: #e8d9a8;
 }

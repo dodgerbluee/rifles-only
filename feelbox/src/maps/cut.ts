@@ -50,8 +50,8 @@ export function buildCut(scene: THREE.Scene): World {
     id: "cut",
     title: "The Cut",
     blurb: "Limestone quarry at last light. Plant the Wire at A or B.",
-    plantSpawns: [v(-38, 8, 6.4), v(-38, 10, 6.4), v(-38, 12, 6.4), v(-36, 9, 6.4), v(-36, 11, 6.4)],
-    watchSpawns: [v(34, 6), v(36, 8), v(36, 10), v(34, 8), v(32, 11)],
+    plantSpawns: [v(34, 6), v(36, 8), v(36, 10), v(34, 8), v(32, 11)],
+    watchSpawns: [v(-38, 8, 6.4), v(-38, 10, 6.4), v(-38, 12, 6.4), v(-36, 9, 6.4), v(-36, 11, 6.4)],
     waypoints: [
       [v(-30, 10, 6.4), v(-20, 16, 6.4), v(-8, 16, 6.4)],
       [v(-30, 10, 6.4), v(-32, 8, 6.4), v(-22, 4, 3.2), v(-12, 4, 0), v(4, -2, 0), v(12, -6, 0)],

@@ -3,7 +3,7 @@ import { actorTag, formatTime, plantedTag, plantingTeam, type Match } from "./ma
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { kd, line, topThree } from "./stats";
-import { killWayLabel, type KillFeedItem } from "./net";
+import { killWayIcons, type KillFeedItem } from "./net";
 
 const deathEl = document.querySelector<HTMLElement>("#death")!;
 const deathBy = document.querySelector("#death-by")!;
@@ -420,8 +420,11 @@ export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {
     killer.className = `who${k.killerTeam ? ` ${k.killerTeam}` : ""}`;
     killer.textContent = k.killerName;
     const way = document.createElement("span");
-    way.className = `sep way${k.way ? ` ${k.way}` : ""}`;
-    way.textContent = killWayLabel(k.way);
+    const mark = killWayIcons(k.way, k.head);
+    way.className = `sep way${k.way ? ` ${k.way}` : ""}${k.head ? " head" : ""}`;
+    way.setAttribute("aria-label", mark.label);
+    way.title = mark.label;
+    way.innerHTML = mark.html;
     const victim = document.createElement("span");
     victim.className = `who${k.victimTeam ? ` ${k.victimTeam}` : ""}`;
     victim.textContent = k.victimName;

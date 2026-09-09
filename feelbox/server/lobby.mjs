@@ -2,7 +2,7 @@
  * Master lobby: static client, server list, and a WebSocket proxy onto the
  * dedicated game process. Never simulates the match.
  */
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,7 @@ const STATIC_DIR = STATIC_ENV === ""
   : path.resolve(ROOT, STATIC_ENV || "dist");
 const GAME_WS = process.env.GAME_WS ?? "ws://127.0.0.1:8081/ws";
 const STALE_MS = 5000;
+const DRAFT_PATH = path.join(ROOT, "studio-draft.json");
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
@@ -82,6 +83,43 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname === "/api/servers" && req.method === "GET") {
     json(res, 200, listServers());
+    return;
+  }
+
+  if (url.pathname === "/api/studio-draft" && req.method === "GET") {
+    if (!existsSync(DRAFT_PATH)) {
+      json(res, 404, { ok: false });
+      return;
+    }
+    try {
+      json(res, 200, JSON.parse(readFileSync(DRAFT_PATH, "utf8")));
+    } catch {
+      json(res, 400, { ok: false });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/studio-draft" && req.method === "POST") {
+    const chunks = [];
+    let n = 0;
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > 256 * 1024) req.destroy();
+      else chunks.push(c);
+    });
+    req.on("end", () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (!body || typeof body.id !== "string" || !body.bounds) {
+          json(res, 400, { ok: false });
+          return;
+        }
+        writeFileSync(DRAFT_PATH, `${JSON.stringify(body, null, 2)}\n`);
+        json(res, 200, { ok: true, path: "studio-draft.json" });
+      } catch {
+        json(res, 400, { ok: false });
+      }
+    });
     return;
   }
 

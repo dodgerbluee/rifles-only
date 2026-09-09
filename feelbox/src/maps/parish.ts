@@ -52,8 +52,8 @@ export function buildParish(scene: THREE.Scene): World {
     id: "parish",
     title: "Parish",
     blurb: "Norman streets. Plant the Wire at A or B.",
-    plantSpawns: [v(-6, -20), v(-4, -20), v(-2, -20), v(-6, -18), v(0, -18)],
-    watchSpawns: [v(8, 28), v(10, 28), v(12, 28), v(8, 26), v(12, 26)],
+    plantSpawns: [v(8, 28), v(8, 26), v(12, 26), v(10, 26), v(11, 27)],
+    watchSpawns: [v(-6, -20), v(-4, -20), v(-2, -20), v(-6, -18), v(0, -18)],
     waypoints: [
       [v(-4, -14), v(-12, -10), v(-16, -8)],
       [v(-4, -14), v(2, -6), v(2, 4), v(2, 12), v(8, 18), v(8, 22)],
@@ -71,7 +71,7 @@ export function buildParish(scene: THREE.Scene): World {
       { id: "well", call: "B", name: "Gardens", x: -16, y: 0, z: -8, r: 3.2 },
     ],
     placeName: (x, z, y = 0) => {
-      if (z < -16 && x > -12 && x < 8) return "Ember yard";
+      if (z < -16 && x > -12 && x < 8) return "South yard";
       if (z > 26 && x > 2 && x < 18) return "Chapel yard";
       if (x > 1 && x < 15 && z > 16 && z < 27) return "Chapel";
       if (x > -22 && x < -10 && z > -15 && z < -1) return "Gardens";

@@ -204,7 +204,7 @@ export function finish(
     root: kit.root,
     colliders: kit.colliders,
     shootables: kit.shootables,
-    playerSpawn: opts.plantSpawns[2]!,
+    playerSpawn: opts.plantSpawns[2] ?? opts.plantSpawns[0] ?? new THREE.Vector3(),
     plantSpawns: opts.plantSpawns,
     watchSpawns: opts.watchSpawns,
     botSpawns: [...opts.plantSpawns, ...opts.watchSpawns],

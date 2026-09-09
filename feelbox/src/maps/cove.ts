@@ -5,7 +5,7 @@ import type { World } from "../world";
 
 type Kind = "plaster" | "brick" | "wood" | "metal";
 
-/** Industrial quay: watchers west (A Yard), planters east lot. Police + Garage 2F. */
+/** Industrial quay: planters west (A Yard), watchers east lot. Police + Garage 2F. */
 export function buildCove(scene: THREE.Scene): World {
   const kit = makeKit(scene);
   const { box, mat, v, siteMarker, lamp, pad, climb } = kit;
@@ -57,9 +57,9 @@ export function buildCove(scene: THREE.Scene): World {
   return finish(kit, {
     id: "cove",
     title: "Harbor",
-    blurb: "Watchers hold A and B. Planters walk in from the east lot.",
-    plantSpawns: [v(40, 4), v(40, 8), v(38, 6), v(41, 2), v(39, 10)],
-    watchSpawns: [v(-36, -12), v(-36, -8), v(-34, -10), v(-32, -14), v(-32, -6)],
+    blurb: "Watchers hold the east lot. Planters walk in from A Yard.",
+    plantSpawns: [v(-36, -12), v(-36, -8), v(-34, -10), v(-32, -14), v(-32, -6)],
+    watchSpawns: [v(40, 8), v(40, 6), v(38, 6), v(39, 10), v(37, 10)],
     waypoints: [
       [v(-34, -10), v(-28, -2), v(-23, 8)],
       [v(-34, -10), v(-20, -18), v(-8, -18), v(4, -18), v(6, -10)],

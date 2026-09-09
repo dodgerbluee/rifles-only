@@ -64,14 +64,64 @@ export type WireSnap = {
 
 export type KillWay = "aimed" | "noscope" | "nade" | "knife" | "bomb" | "cow";
 
-export function killWayLabel(way?: KillWay) {
+export function killWayLabel(way?: KillWay, head = false) {
+  if (head) return way === "aimed" ? "aimed headshot" : "headshot";
   if (way === "aimed") return "aimed";
   if (way === "noscope") return "no scope";
   if (way === "nade") return "nade";
   if (way === "knife") return "knife";
   if (way === "bomb") return "wire";
   if (way === "cow") return "cow'd";
-  return "▸";
+  return "kill";
+}
+
+function svg(body: string) {
+  return `<svg viewBox="0 0 20 20" aria-hidden="true">${body}</svg>`;
+}
+
+const ICONS: Record<KillWay, string> = {
+  aimed: svg(
+    `<circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+      `<circle cx="10" cy="10" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3"/>` +
+      `<path d="M10 2.2v2.4M10 15.4v2.4M2.2 10h2.4M15.4 10h2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+  ),
+  noscope: svg(
+    `<path d="M6 16.5V8.5L10 5.5 14 8.5v8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
+      `<circle cx="10" cy="11" r="1.2" fill="currentColor"/>`,
+  ),
+  nade: svg(
+    `<rect x="7.2" y="8" width="5.6" height="8.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+      `<path d="M10 8V5.6M10 5.6c0-1.4 1.6-2.2 2.8-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+  ),
+  knife: svg(
+    `<path d="M4 14.5l9.5-9.5 2.2 2.2-9.5 9.5H4v-2.2Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>` +
+      `<path d="M11.2 6.8l2.4-2.4 2 2-2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.3"/>`,
+  ),
+  bomb: svg(
+    `<path d="M10 4.2 12.2 9h4.3L13.2 12.2 14.8 17 10 14.2 5.2 17l1.6-4.8L3.5 9h4.3Z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/>`,
+  ),
+  cow: svg(
+    `<path d="M5 8.5 3.2 5.2 6.4 6.8h7.2L16.8 5.2 15 8.5v5.2H5V8.5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>` +
+      `<circle cx="8" cy="10.4" r="0.8" fill="currentColor"/>` +
+      `<circle cx="12" cy="10.4" r="0.8" fill="currentColor"/>`,
+  ),
+};
+
+const HEAD_ICON = svg(
+  `<circle cx="7.2" cy="8.2" r="3.1" fill="none" stroke="currentColor" stroke-width="1.45"/>` +
+    `<path d="M4.4 12.6c.6-1.5 1.6-2.2 2.8-2.2s2.2.7 2.8 2.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>` +
+    `<path d="M18 6.2l-5.6 3.1 1.1 1.1 1.5-.4" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<circle cx="12.6" cy="9.2" r="0.7" fill="currentColor"/>`,
+);
+
+export function killWayIcons(way?: KillWay, head = false) {
+  const parts: string[] = [];
+  if (way === "aimed") parts.push(ICONS.aimed);
+  else if (way === "noscope" && !head) parts.push(ICONS.noscope);
+  else if (way && way !== "noscope") parts.push(ICONS[way]);
+  if (head) parts.push(HEAD_ICON);
+  if (!parts.length) parts.push(ICONS.noscope);
+  return { html: parts.join(""), label: killWayLabel(way, head) };
 }
 
 export type KillFeedItem = {
@@ -83,6 +133,7 @@ export type KillFeedItem = {
   victimName: string;
   victimTeam?: Team;
   way?: KillWay;
+  head?: boolean;
 };
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */

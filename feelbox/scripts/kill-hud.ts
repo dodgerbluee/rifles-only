@@ -3,7 +3,7 @@
  */
 import * as THREE from "three";
 import { actorTag, createMatch, formatTime, plantedTag, plantWire, slotById } from "../src/match.ts";
-import { killWayLabel } from "../src/net.ts";
+import { killWayIcons, killWayLabel } from "../src/net.ts";
 import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
 import { reseatPeer, seatPeer } from "../src/peers.ts";
@@ -22,6 +22,10 @@ check("frag is labeled nade", killWayLabel("nade") === "nade");
 check("melee is labeled knife", killWayLabel("knife") === "knife");
 check("detonation is labeled wire", killWayLabel("bomb") === "wire");
 check("admin cow is labeled cow'd", killWayLabel("cow") === "cow'd");
+check("aimed headshot names both", killWayLabel("aimed", true) === "aimed headshot");
+check("aimed icon is a scope ring", killWayIcons("aimed").html.includes("circle"));
+check("headshot icon includes a bullet path", killWayIcons("noscope", true).html.includes("M18 6.2"));
+check("nade icon is not text", !killWayIcons("nade").html.includes("nade"));
 check(
   "taken bot shows bot then player",
   actorTag("Cal", "Reed") === "Cal (Reed)",

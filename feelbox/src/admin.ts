@@ -26,6 +26,7 @@ export function bindAdmin(opts: {
   onCow: (slot: Slot) => void;
   onPawnStyle?: (classic: boolean) => void;
   onRules?: () => void;
+  onStudio?: () => void;
 }) {
   const panel = document.querySelector<HTMLElement>("#admin")!;
   const god = document.querySelector<HTMLInputElement>("#admin-god")!;
@@ -136,6 +137,11 @@ export function bindAdmin(opts: {
   document.querySelector("#admin-cow")!.addEventListener("click", () => {
     const s = selected();
     if (s) opts.onCow(s);
+  });
+  document.querySelector("#admin-studio")?.addEventListener("click", () => {
+    document.body.classList.remove("admin");
+    panel.classList.remove("on");
+    opts.onStudio?.();
   });
 
   addEventListener("keydown", (e) => {

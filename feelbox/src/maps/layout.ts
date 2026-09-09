@@ -26,6 +26,17 @@ export type CoverSpec = {
   kind: "crate" | "low" | "high" | "truck";
 };
 
+export type ClimbDir = "+x" | "-x" | "+z" | "-z";
+
+export type ClimbSpec = {
+  x: number;
+  z: number;
+  dir: ClimbDir;
+  height?: number;
+  width?: number;
+  startY?: number;
+};
+
 export type LayoutSpec = {
   id: string;
   title: string;
@@ -35,6 +46,7 @@ export type LayoutSpec = {
   wallH?: number;
   buildings?: BuildingSpec[];
   cover?: CoverSpec[];
+  climbs?: ClimbSpec[];
   sites: { id: Site["id"]; call: string; name: string; x: number; z: number; y?: number; r?: number }[];
   plantSpawns: [number, number][];
   watchSpawns: [number, number][];
@@ -180,6 +192,9 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec): World {
   }
 
   for (const c of spec.cover ?? []) coverAt(kit, c);
+  for (const c of spec.climbs ?? []) {
+    kit.climb(c.x, c.z, c.dir, c.height ?? 2.8, c.width ?? 2.2, c.startY ?? 0);
+  }
 
   for (const s of spec.sites) {
     kit.pad(s.x, s.y ?? 0, s.z);

@@ -84,16 +84,24 @@
     </div>
 
     <div id="start">
-      <p class="kicker">Rifles Only</p>
-      <p class="title" id="start-title">Servers</p>
-      <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
+      <button type="button" id="open-settings" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.81 8.48a.5.5 0 0 0 .12.64L4.96 10.7c-.04.31-.06.63-.06.94s.02.63.06.94L2.93 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.6.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.23.1.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
+        </svg>
+      </button>
+      <div class="start-top">
+        <p class="kicker">Rifles Only</p>
+        <p class="title" id="start-title">Servers</p>
+        <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
+      </div>
       <div id="server-list"></div>
       <p id="join-status" hidden></p>
-      <div class="start-foot">
-        <div id="team-pick"></div>
-        <button type="button" id="open-settings">Settings</button>
+      <div id="join-team" hidden>
+        <p class="join-kicker">Join <span id="join-who">the match</span></p>
+        <p class="join-ask">Pick a side</p>
+        <div id="join-team-pick"></div>
+        <button type="button" id="join-cancel">Back</button>
       </div>
-      <p class="bind">WASD · Space · Ctrl prone · C crouch · Q/E peek · Shift board · Esc settings · 1 Kar98k · 2 Mosin · 3 knife · 4 nade · V melee · F plant/cut · ` admin</p>
     </div>
 
     <div id="settings">
@@ -102,6 +110,7 @@
       <label class="admin-knob"><span>Mouse sens</span><input id="set-sens" type="range" min="0.15" max="4" step="0.05" /><b id="set-sens-v">1.00</b></label>
       <label class="admin-knob"><span>Sound</span><input id="set-vol" type="range" min="0" max="1" step="0.01" /><b id="set-vol-v">70%</b></label>
       <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>
+      <p class="admin-hint">WASD · Space · Ctrl prone · C crouch · Q/E peek · Shift board · Esc settings · 1 Kar98k · 2 Mosin · 3 knife · 4 nade · V melee · F plant/cut · ` admin</p>
       <p class="admin-hint">Esc closes. Click the game to lock the mouse.</p>
     </div>
 
@@ -148,6 +157,24 @@
     </div>
 
     <div id="letterbox"></div>
+    <div id="studio">
+      <div id="studio-bar">
+        <p class="studio-kicker">Map studio</p>
+        <input id="studio-title" type="text" maxlength="24" placeholder="Title" />
+        <select id="studio-theme">
+          <option value="dust">Dust</option>
+          <option value="winter">Winter</option>
+          <option value="harbor">Harbor</option>
+          <option value="stone">Stone</option>
+        </select>
+        <button type="button" id="studio-fly">Walk</button>
+        <button type="button" id="studio-save">Save for agent</button>
+        <button type="button" id="studio-leave">Leave</button>
+      </div>
+      <div id="studio-tools"></div>
+      <p id="studio-hint">LMB place · RMB erase · [ ] size · F fly · look and stamp the lot, then Save</p>
+      <p id="studio-status"></p>
+    </div>
     <div id="bestplay">
       <p class="kicker" id="bestplay-kicker">Watching</p>
       <p id="bestplay-name">—</p>
@@ -191,6 +218,7 @@
         <button type="button" id="admin-kick">Kick</button>
         <button type="button" id="admin-cow">Cow</button>
       </div>
+      <button type="button" id="admin-studio">Map studio</button>
 
       <p class="admin-kicker sub">Feel</p>
       <div id="admin-knobs"></div>
