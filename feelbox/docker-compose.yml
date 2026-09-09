@@ -1,0 +1,15 @@
+name: rifles-feelbox
+
+# One container: built client + WebSocket match server on a single play port.
+#   docker compose up --build
+#   LAN: http://HOST_IP:8080
+#   FEELBOX_PORT=9090 docker compose up --build
+services:
+  feelbox:
+    build: .
+    ports:
+      - "0.0.0.0:${FEELBOX_PORT:-8080}:8080"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8080"
+    restart: unless-stopped

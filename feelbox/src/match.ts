@@ -1,0 +1,358 @@
+import { tuning } from "./tuning";
+
+export type Team = "ember" | "stone";
+export type Phase = "freeze" | "live" | "planted" | "settle" | "bestplay" | "ending" | "matchover";
+export type SiteId = "loft" | "well";
+
+export type Slot = {
+  id: number;
+  team: Team;
+  kind: "human" | "bot";
+  name: string;
+  alive: boolean;
+};
+
+export type WireState = {
+  mode: "carried" | "ground" | "planted";
+  carrierId: number | null;
+  site: SiteId | null;
+  x: number;
+  y: number;
+  z: number;
+  plantHold: number;
+  cutHold: number;
+};
+
+export type Match = {
+  phase: Phase;
+  round: number;
+  emberScore: number;
+  stoneScore: number;
+  swapped: boolean;
+  timeLeft: number;
+  bombTime: number;
+  slots: Slot[];
+  wire: WireState;
+  endText: string;
+  endT: number;
+  lastJoin: string;
+  matchOverPending: boolean;
+  lastWinner: Team | null;
+};
+
+export const FREEZE_TIME = 2.8;
+export const END_HOLD = 4.2;
+export const FIRST_TO = 6;
+export const SWAP_AFTER = 5;
+
+const EMBER_NAMES = ["Reed", "Cal", "Ivo", "Nesh", "Bram"];
+const STONE_NAMES = ["Osa", "Pell", "Kade", "Wren", "Sol"];
+
+export function createMatch(): Match {
+  const slots: Slot[] = [];
+  for (let i = 0; i < 5; i++) {
+    slots.push({ id: i, team: "ember", kind: "bot", name: EMBER_NAMES[i]!, alive: true });
+  }
+  for (let i = 0; i < 5; i++) {
+    slots.push({ id: 5 + i, team: "stone", kind: "bot", name: STONE_NAMES[i]!, alive: true });
+  }
+  const m: Match = {
+    phase: "freeze",
+    round: 1,
+    emberScore: 0,
+    stoneScore: 0,
+    swapped: false,
+    timeLeft: FREEZE_TIME,
+    bombTime: tuning.fuse,
+    slots,
+    wire: groundWire(-22, 0.2, 0),
+    endText: "",
+    endT: 0,
+    lastJoin: "",
+    matchOverPending: false,
+    lastWinner: null,
+  };
+  claimSlot(m, "ember", "You");
+  giveWireToPlanter(m);
+  return m;
+}
+
+export function plantingTeam(m: Match): Team {
+  return m.swapped ? "stone" : "ember";
+}
+
+export function watchingTeam(m: Match): Team {
+  return plantingTeam(m) === "ember" ? "stone" : "ember";
+}
+
+export function claimSlot(m: Match, team: Team, name: string): Slot | null {
+  const bot = m.slots.find((s) => s.team === team && s.kind === "bot");
+  if (!bot) return null;
+  bot.kind = "human";
+  bot.name = name;
+  m.lastJoin = `${name} took ${team === "ember" ? "Ember" : "Stone"} · ${bot.id < 5 ? EMBER_NAMES[bot.id] : STONE_NAMES[bot.id - 5]} left`;
+  return bot;
+}
+
+export function humanSlot(m: Match): Slot | undefined {
+  return m.slots.find((s) => s.kind === "human");
+}
+
+export function slotById(m: Match, id: number): Slot | undefined {
+  return m.slots.find((s) => s.id === id);
+}
+
+let nextSlotId = 10;
+const nameSeq = { ember: 5, stone: 5 };
+
+function botName(team: Team, n: number) {
+  const pool = team === "ember" ? EMBER_NAMES : STONE_NAMES;
+  const base = pool[n % pool.length]!;
+  const gen = Math.floor(n / pool.length);
+  return gen === 0 ? base : `${base} ${gen + 1}`;
+}
+
+export function addBotSlot(m: Match, team: Team): Slot {
+  const n = nameSeq[team]++;
+  const slot: Slot = {
+    id: nextSlotId++,
+    team,
+    kind: "bot",
+    name: botName(team, n),
+    alive: m.phase === "freeze" || m.phase === "live" || m.phase === "planted",
+  };
+  m.slots.push(slot);
+  m.lastJoin = `Added ${slot.name} to ${team === "ember" ? "Ember" : "Stone"}`;
+  return slot;
+}
+
+export function removeBotSlot(m: Match, team: Team): Slot | null {
+  for (let i = m.slots.length - 1; i >= 0; i--) {
+    const s = m.slots[i]!;
+    if (s.team === team && s.kind === "bot") {
+      m.slots.splice(i, 1);
+      m.lastJoin = `Removed ${s.name} from ${team === "ember" ? "Ember" : "Stone"}`;
+      return s;
+    }
+  }
+  return null;
+}
+
+export function teamBotCount(m: Match, team: Team) {
+  return m.slots.filter((s) => s.team === team && s.kind === "bot").length;
+}
+
+export function giveWireToPlanter(m: Match) {
+  const plant = plantingTeam(m);
+  const human = m.slots.find((s) => s.kind === "human" && s.team === plant && s.alive);
+  const carrier = human ?? m.slots.find((s) => s.team === plant && s.alive);
+  if (!carrier) {
+    m.wire = groundWire(-22, 0.2, 0);
+    return;
+  }
+  m.wire = {
+    mode: "carried",
+    carrierId: carrier.id,
+    site: null,
+    x: 0,
+    y: 0,
+    z: 0,
+    plantHold: 0,
+    cutHold: 0,
+  };
+}
+
+function groundWire(x: number, y: number, z: number): WireState {
+  return {
+    mode: "ground",
+    carrierId: null,
+    site: null,
+    x,
+    y,
+    z,
+    plantHold: 0,
+    cutHold: 0,
+  };
+}
+
+export function plantWire(m: Match, site: SiteId, x: number, y: number, z: number) {
+  if (m.phase !== "live" || m.wire.mode !== "carried") return;
+  m.phase = "planted";
+  m.bombTime = tuning.fuse;
+  m.wire.mode = "planted";
+  m.wire.site = site;
+  m.wire.carrierId = null;
+  m.wire.x = x;
+  m.wire.y = y;
+  m.wire.z = z;
+  m.wire.plantHold = 0;
+}
+
+export function dropWire(m: Match, x: number, y: number, z: number) {
+  if (m.wire.mode !== "carried") return;
+  m.wire = groundWire(x, y + 0.15, z);
+}
+
+export function pickupWire(m: Match, id: number, team: Team) {
+  if (m.wire.mode !== "ground") return false;
+  if (team !== plantingTeam(m)) return false;
+  if (!slotById(m, id)?.alive) return false;
+  m.wire.mode = "carried";
+  m.wire.carrierId = id;
+  return true;
+}
+
+export function tickMatch(
+  m: Match,
+  dt: number,
+  ctx: {
+    living: (team: Team) => number;
+    inSite: (site: SiteId, x: number, z: number, y: number) => boolean;
+    holdingUse: boolean;
+    actor: { id: number; team: Team; x: number; y: number; z: number; alive: boolean };
+    spawnPlant: { x: number; y: number; z: number };
+    onDetonate?: (x: number, y: number, z: number) => void;
+    botCutting?: boolean;
+  },
+) {
+  if (m.phase === "settle") {
+    m.endT -= dt;
+    if (m.endT <= 0) m.phase = "bestplay";
+    return;
+  }
+
+  if (m.phase === "matchover" || m.phase === "bestplay") return;
+
+  if (m.phase === "ending") {
+    m.endT -= dt;
+    if (m.endT <= 0) nextRound(m, ctx.spawnPlant);
+    return;
+  }
+
+  if (m.phase === "freeze") {
+    m.timeLeft -= dt;
+    if (m.timeLeft <= 0) {
+      m.phase = "live";
+      m.timeLeft = tuning.round;
+    }
+    return;
+  }
+
+  if (m.phase === "live") {
+    m.timeLeft -= dt;
+    const planters = ctx.living(plantingTeam(m));
+    const watchers = ctx.living(watchingTeam(m));
+    if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to watch the Wire");
+    if (planters <= 0 && m.wire.mode !== "planted")
+      return finish(m, watchingTeam(m), "The Wire never left the dock");
+    if (m.timeLeft <= 0) return finish(m, watchingTeam(m), "Time died. The Wire never sat");
+  }
+
+  if (m.phase === "planted") {
+    m.bombTime -= dt;
+    if (m.bombTime <= 0) {
+      ctx.onDetonate?.(m.wire.x, m.wire.y, m.wire.z);
+      return finish(m, plantingTeam(m), "The Wire ran out");
+    }
+    const watchers = ctx.living(watchingTeam(m));
+    if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to cut");
+    if (m.wire.cutHold >= tuning.cut) return finish(m, watchingTeam(m), "The Wire was cut");
+  }
+
+  const a = ctx.actor;
+  if (!a.alive) return;
+
+  if (m.wire.mode === "ground") {
+    const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
+    if (d < 1.15 && a.team === plantingTeam(m) && ctx.holdingUse) pickupWire(m, a.id, a.team);
+  }
+
+  if (m.wire.mode === "carried" && m.wire.carrierId === a.id && m.phase === "live") {
+    if (ctx.holdingUse) {
+      const site = ctx.inSite("loft", a.x, a.z, a.y)
+        ? "loft"
+        : ctx.inSite("well", a.x, a.z, a.y)
+          ? "well"
+          : null;
+      if (site) {
+        m.wire.plantHold += dt;
+        if (m.wire.plantHold >= tuning.plant) plantWire(m, site, a.x, a.y, a.z);
+      } else m.wire.plantHold = 0;
+    } else m.wire.plantHold = 0;
+  }
+
+  if (m.wire.mode === "planted" && m.phase === "planted" && a.team === watchingTeam(m)) {
+    const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
+    const near = d < 1.35 && Math.abs(a.y - m.wire.y) < 1.6;
+    if (near && ctx.holdingUse && !ctx.botCutting) {
+      m.wire.cutHold += dt;
+      if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Wire was cut");
+    }
+  }
+}
+
+function finish(m: Match, winner: Team, text: string) {
+  if (winner === "ember") m.emberScore += 1;
+  else m.stoneScore += 1;
+  m.endText = text;
+  m.endT = 1;
+  m.lastWinner = winner;
+  m.matchOverPending = m.emberScore >= FIRST_TO || m.stoneScore >= FIRST_TO;
+  m.phase = "settle";
+}
+
+function nextRound(m: Match, spawn: { x: number; y: number; z: number }) {
+  if (m.round === SWAP_AFTER) m.swapped = true;
+  m.round += 1;
+  m.phase = "freeze";
+  m.timeLeft = FREEZE_TIME;
+  m.bombTime = tuning.fuse;
+  m.endText = "";
+  m.matchOverPending = false;
+  for (const s of m.slots) s.alive = true;
+  m.wire = groundWire(spawn.x, spawn.y + 0.2, spawn.z);
+  giveWireToPlanter(m);
+}
+
+export function restartMatch(m: Match, spawn: { x: number; y: number; z: number }) {
+  m.round = 1;
+  m.emberScore = 0;
+  m.stoneScore = 0;
+  m.swapped = false;
+  m.phase = "freeze";
+  m.timeLeft = FREEZE_TIME;
+  m.bombTime = tuning.fuse;
+  m.endText = "";
+  m.endT = 0;
+  m.matchOverPending = false;
+  m.lastWinner = null;
+  m.lastJoin = "Match restarted";
+  for (const s of m.slots) s.alive = true;
+  m.wire = groundWire(spawn.x, spawn.y + 0.2, spawn.z);
+  giveWireToPlanter(m);
+}
+
+export function concludeBestPlay(m: Match) {
+  if (m.phase !== "bestplay") return;
+  if (m.matchOverPending) {
+    m.phase = "matchover";
+    m.endText = m.emberScore > m.stoneScore ? "Ember takes Wharf" : "Stone takes Wharf";
+    m.endT = 14;
+    return;
+  }
+  m.phase = "ending";
+  m.endT = 1.6;
+}
+
+export function markDead(m: Match, id: number, x: number, y: number, z: number) {
+  const s = slotById(m, id);
+  if (s) s.alive = false;
+  if (m.wire.mode === "carried" && m.wire.carrierId === id) dropWire(m, x, y, z);
+}
+
+export function formatTime(seconds: number) {
+  const s = Math.max(0, Math.ceil(seconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${mm}:${ss.toString().padStart(2, "0")}`;
+}

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rifles Only — Last Wire</title>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="hurt"></div>
+    <div id="blast"></div>
+    <div id="smoke-veil"></div>
+    <div id="flash-veil"></div>
+    <div id="stun-veil"></div>
+    <div id="crosshair">
+      <span class="ch-arm ch-n"></span>
+      <span class="ch-arm ch-e"></span>
+      <span class="ch-arm ch-s"></span>
+      <span class="ch-arm ch-w"></span>
+    </div>
+    <div id="hitmark"></div>
+
+    <div id="match-bar">
+      <div id="ember-score">0</div>
+      <div id="clock">2:00</div>
+      <div id="stone-score">0</div>
+    </div>
+    <div id="round-tag">Round 1 · Ember plants</div>
+    <div id="round-result"></div>
+    <div id="prompt"></div>
+    <div id="use-bar"><span id="use-fill"></span></div>
+    <div id="cook-bar"><span id="cook-fill"></span></div>
+    <div id="spec"></div>
+    <div id="roster"></div>
+    <div id="join-note"></div>
+
+    <div id="hud-left">
+      <div id="vitals">
+        <div class="vital-top">
+          <span class="label">Health</span>
+          <span id="hp-status" data-state="Stable">Stable</span>
+        </div>
+        <div class="vital-num">
+          <span id="hp-num">100</span><span id="hp-max">/ 100</span>
+        </div>
+        <div id="hp"><span id="hp-fill"></span></div>
+        <div class="vital-meta">
+          <span id="stance">Stand</span>
+          <span id="loc">West spawn</span>
+        </div>
+        <div id="last-dmg">No damage taken</div>
+      </div>
+      <div id="minimap-wrap">
+        <div class="map-head">
+          <span>Wharf</span>
+          <span class="map-key">you · ember · stone · A Ice / B Slip</span>
+        </div>
+        <canvas id="minimap" width="220" height="176"></canvas>
+      </div>
+    </div>
+
+    <div id="hud-right">
+      <div id="score-wrap">
+        <span class="label">K / D</span>
+        <span id="score">0 / 0</span>
+      </div>
+      <div id="ammo">
+        <div id="ammo-count">5 / 5</div>
+        <div id="ammo-rounds"></div>
+      </div>
+      <div id="nades">4 SMOKE 2</div>
+    </div>
+
+    <div id="spawn-banner"></div>
+
+    <div id="death">
+      <p class="kicker">You were killed</p>
+      <p class="title">Down</p>
+      <p id="death-by">by a rifleman</p>
+      <p id="death-at">at Lane</p>
+      <p id="death-count">Deploying in 4</p>
+      <p id="death-where" class="bind">West spawn · full health · 8 rounds</p>
+    </div>
+
+    <div id="start">
+      <p class="kicker">Rifles Only · Last Wire</p>
+      <p class="title" id="start-title">Wharf</p>
+      <p id="start-blurb">5v5 on a winter dockyard. Ember plants the Wire at A Ice (2F cold store) or B Slip (dry dock). Walk onto the gold pad and hold F for five seconds. Stone cuts it (hold F, seven seconds) or holds the clock. First to six. Swap after five.</p>
+      <div id="map-pick"></div>
+      <p class="bind">Click to play · WASD · Space · Ctrl prone (jump-prone in air) · C crouch · Q/E peek · Shift board · Esc settings · 1 Kar98k · 2 Mosin · 3 smoke · 4 knife · V melee · F plant/cut · ` admin</p>
+      <button type="button" id="open-settings">Settings</button>
+    </div>
+
+    <div id="settings">
+      <p class="admin-kicker">Settings</p>
+      <label class="admin-knob"><span>Name</span><input id="set-name" type="text" maxlength="18" /></label>
+      <label class="admin-knob"><span>Mouse sens</span><input id="set-sens" type="range" min="0.15" max="4" step="0.05" /><b id="set-sens-v">1.00</b></label>
+      <label class="admin-knob"><span>Sound</span><input id="set-vol" type="range" min="0" max="1" step="0.01" /><b id="set-vol-v">70%</b></label>
+      <p class="admin-hint">Esc closes. Click the game to lock the mouse.</p>
+    </div>
+
+    <div id="scoreboard">
+      <div class="board-col ember">
+        <p class="board-team">Ember</p>
+        <div class="board-head"><span>Player</span><span>K</span><span>A</span><span>D</span><span>K/D</span><span>Ping</span></div>
+        <div id="board-ember"></div>
+      </div>
+      <div class="board-col stone">
+        <p class="board-team">Stone</p>
+        <div class="board-head"><span>Player</span><span>K</span><span>A</span><span>D</span><span>K/D</span><span>Ping</span></div>
+        <div id="board-stone"></div>
+      </div>
+    </div>
+
+    <div id="podium">
+      <p class="kicker">Wharf is decided</p>
+      <div class="stands">
+        <div class="stand silver" id="pod-2">
+          <div class="block"></div>
+          <p class="place">2</p>
+          <p class="who"></p>
+          <p class="stat"></p>
+        </div>
+        <div class="stand gold" id="pod-1">
+          <div class="block"></div>
+          <p class="place">1</p>
+          <p class="who"></p>
+          <p class="stat"></p>
+        </div>
+        <div class="stand bronze" id="pod-3">
+          <div class="block"></div>
+          <p class="place">3</p>
+          <p class="who"></p>
+          <p class="stat"></p>
+        </div>
+      </div>
+      <div id="podium-first">
+        <p class="kicker">First rifle</p>
+        <p id="podium-name">—</p>
+        <p id="podium-line"></p>
+      </div>
+    </div>
+
+    <div id="letterbox"></div>
+    <div id="bestplay">
+      <p class="kicker">Best play</p>
+      <p id="bestplay-name">—</p>
+      <p id="bestplay-stat"></p>
+      <p id="bestplay-kill"></p>
+      <p id="bestplay-pace"></p>
+      <p class="skip">Space to skip</p>
+    </div>
+
+    <div id="admin">
+      <p class="admin-kicker">Admin</p>
+      <label class="admin-check"><input type="checkbox" id="admin-god" /> Godmode</label>
+      <label class="admin-check"><input type="checkbox" id="admin-ff" /> Friendly fire</label>
+      <label class="admin-check"><input type="checkbox" id="admin-hl" /> Highlights</label>
+      <div class="admin-team">
+        <span>Ember bots <b id="admin-ember">4</b></span>
+        <button type="button" id="admin-ember-sub">−</button>
+        <button type="button" id="admin-ember-add">+</button>
+      </div>
+      <div class="admin-team">
+        <span>Stone bots <b id="admin-stone">5</b></span>
+        <button type="button" id="admin-stone-sub">−</button>
+        <button type="button" id="admin-stone-add">+</button>
+      </div>
+
+      <p class="admin-kicker sub">Map</p>
+      <select id="admin-map"></select>
+      <label class="admin-check"><input type="checkbox" id="admin-oneshot" /> One-shot (any tag kills)</label>
+      <label class="admin-check"><input type="checkbox" id="admin-classic-pawn" /> Classic cylinder bodies</label>
+      <select id="admin-player"></select>
+      <div class="admin-row">
+        <button type="button" id="admin-restart">Restart match</button>
+        <button type="button" id="admin-kick">Kick</button>
+        <button type="button" id="admin-cow">Cow</button>
+      </div>
+
+      <p class="admin-kicker sub">Feel</p>
+      <div id="admin-knobs"></div>
+      <p class="admin-hint">Unlimited bots. Cow: flaming, no weapons, explodes in 5s. ` or F10 closes.</p>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+# Node
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*~
+
+# Logs / editor
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Unity junk (keep Assets / Packages / ProjectSettings)
+game/Library/
+game/Logs/
+game/Temp/
+game/obj/
+game/Build/
+game/Builds/
+game/UserSettings/
+*.csproj.user
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.opendb
+*.VC.db
+*.TMX
+*.tmp
+
+# Feelbox local
+feelbox/verify-*.png
