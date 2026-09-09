@@ -126,6 +126,8 @@ import {
   pushFrame,
   pushKill,
   recapWindow,
+  reelDrivesBotMeshes,
+  reelWorldPawnVisible,
   samplePoses,
   PLAY_RATE,
   watchLabel,
@@ -2799,30 +2801,33 @@ function tickReel(dt: number) {
 function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
   const youTeam = slotById(match, playerId)?.team ?? "ember";
   setPawnCloth((ghost.userData.cloth as THREE.Mesh[]) ?? [ghost.userData.body], teamCloth(youTeam));
-  const isClient = net.role !== "host";
-  if (isClient) {
+  if (!reelDrivesBotMeshes(net.role)) {
     for (const [id, g] of clientPawns) {
       const p = poses.get(id);
       if (!p) {
         g.visible = false;
         continue;
       }
-      g.visible = id !== mvpId;
+      g.visible = reelWorldPawnVisible(id, mvpId);
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
       poseStance(g, p.alive ? "stand" : "down");
       stepWalkFromPos(g, p.x, p.z, p.alive);
     }
+    for (const b of bots) b.root.visible = false;
   } else {
     for (const b of bots) {
       const p = poses.get(b.id);
-      if (!p) continue;
+      if (!p) {
+        b.root.visible = false;
+        continue;
+      }
       b.x = p.x;
       b.y = p.y;
       b.z = p.z;
       b.yaw = p.yaw;
       b.hp = p.alive ? 100 : 0;
-      b.root.visible = b.id !== mvpId;
+      b.root.visible = reelWorldPawnVisible(b.id, mvpId);
       b.root.position.set(p.x, p.y, p.z);
       b.root.rotation.y = p.yaw;
       poseStance(b.root, p.alive ? "stand" : "down");
@@ -2832,8 +2837,11 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
     }
     for (const r of remotes.values()) {
       const p = poses.get(r.slotId);
-      if (!p) continue;
-      r.root.visible = r.slotId !== mvpId;
+      if (!p) {
+        if (r.slotId === mvpId) r.root.visible = false;
+        continue;
+      }
+      r.root.visible = reelWorldPawnVisible(r.slotId, mvpId);
       r.root.position.set(p.x, p.y, p.z);
       r.root.rotation.y = p.yaw;
       poseStance(r.root, p.alive ? "stand" : "down");

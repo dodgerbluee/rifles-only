@@ -67,6 +67,16 @@ export function watchLabel(viewId: number, youId: number, name?: string | null) 
   return n || "Rifle";
 }
 
+/** Recap camera already has a first-person viewmodel. Hide the subject's world pawn/rifle. */
+export function reelWorldPawnVisible(id: number, mvpId: number) {
+  return id !== mvpId;
+}
+
+/** Offline and host own bot meshes. Dedicated clients replay other people via clientPawns. */
+export function reelDrivesBotMeshes(role: "host" | "client" | "offline") {
+  return role !== "client";
+}
+
 export function pickMvp(tape: RoundTape, match: Match, preferId: number) {
   if (tape.kills.length === 0) return null;
   const counts = new Map<number, number>();

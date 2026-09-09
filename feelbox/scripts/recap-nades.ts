@@ -3,6 +3,7 @@
  */
 import { createSim } from "../src/sim.ts";
 import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
+import { reelDrivesBotMeshes, reelWorldPawnVisible } from "../src/replay.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -47,6 +48,15 @@ claimSlot(duo, "stone", "Pal");
 duo.phase = "bestplay";
 duo.endT = BESTPLAY_HOLD;
 check("two humans stay on the recap", !trySkipBestPlay(duo) && duo.phase === "bestplay", `phase=${duo.phase}`);
+
+const youId = 3;
+const botId = 8;
+check("offline recap drives bot meshes", reelDrivesBotMeshes("offline"));
+check("host recap drives bot meshes", reelDrivesBotMeshes("host"));
+check("dedicated client uses client pawns, not leftover bots", !reelDrivesBotMeshes("client"));
+check("bot MVP hides its world pawn/rifle", !reelWorldPawnVisible(botId, botId));
+check("other pawns stay visible while watching a bot", reelWorldPawnVisible(youId, botId));
+check("human MVP still hides only the subject", !reelWorldPawnVisible(youId, youId) && reelWorldPawnVisible(botId, youId));
 
 const sim = createSim({ name: "Last Wire" });
 sim.join(1, "Reed");
