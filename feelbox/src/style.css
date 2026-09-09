@@ -1698,6 +1698,13 @@ body.studio #studio {
   display: block;
 }
 
+body.studio #bestplay,
+body.studio #letterbox,
+body.locker #bestplay,
+body.locker #letterbox {
+  display: none !important;
+}
+
 body.studio #match-bar,
 body.studio #round-tag,
 body.studio #killfeed,

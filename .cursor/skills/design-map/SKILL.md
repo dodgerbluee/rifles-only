@@ -9,7 +9,7 @@ The human **paints the lot**. You **finalize**. Do not start from a pile of `box
 
 ## Map studio
 
-Home (server list) → **Map studio**. **Hand** grabs existing pieces. **Build** stamps walls and floors. **Accessories** stamps cover. **Play** runs the sketch against bots (no finalize). **Save for agent** if you want a rotation map.
+Home (server list) → **Map studio**. **Hand** grabs existing pieces or **Erase** (X) click/drag-deletes them. **Build** stamps buildings, floors, **Cut** (U) holes in a deck, thin **Wall** (W) room dividers, doors, and windows. **Accessories** stamps cover, stair **Climb** (C), and **Ladder** (N) against a wall. Drawing a same-size building on a floored 1-storey house raises that house; a smaller rect on the deck is a new room shell at that height. **Play** runs the sketch against bots (no finalize). **Save for agent** if you want a rotation map.
 
 That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play** does not need that file. If the file exists and they ask you to finalize, skip ASCII and start at **Finalize**.
 
@@ -34,7 +34,7 @@ That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play*
    - 5 planter + 5 watcher spawns, open to mid
    - ≥3 bot `routes`; at least one starts near each spawn side. You write routes — studio does not.
    - 2F only where they laid a floor and built on it, or the ASCII showed a climb
-   - Recipes live in `feelbox/src/maps/layout.ts` (`buildings`, `cover`, `climbs`, `sites`, `spawns`, `routes`).
+   - Recipes live in `feelbox/src/maps/layout.ts` (`buildings`, `slabs` + `holes`, `partitions`, `cover`, `climbs` with `kind: "stairs" | "ladder"`, `sites`, `spawns`, `routes`).
    Done when the file has no raw `box()` / `climb()` except what `compileLayout` emits.
 
 4. **Register** — add the id to `MapId` in `kit.ts`, `MAPS` + `buildMap` in `maps/index.ts`, and `rotation` in `feelbox/server.json`.
@@ -52,3 +52,8 @@ That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play*
 ## LayoutSpec
 
 See `feelbox/src/maps/layout.ts` (`LayoutSpec`, `YARD_SPEC`) and `feelbox/src/maps/studio.ts` (`blankSpec`). Copy the studio draft or `YARD_SPEC` — do not start from Cove.
+
+- **Stacking** — a building drawn on a deck uses `y` from `surfaceAt` (center + corners). Same footprint on a 1-storey roof increments `floors`.
+- **Cut / holes** — `SlabSpec.holes` are world-space rects. The compiler `punchRects` / `subtractRect` leftover-splits the deck (min ~0.12m). A hole that covers the slab deletes it. Cut never stamps a new slab.
+- **Wall / partitions** — `partitions[]` are T-thick (0.32) room shells, height `STOREY`, `y` from the surface. Drag: longer axis is length, the other is T.
+- **Ladder** — `climbs[].kind: "ladder"` (default stairs). `kit.ladder` is steep walkable rungs (rise ~0.3, run ~0.15). Studio snaps to the nearest building wall. Do not replace existing Siding / multi-floor stair climbs.

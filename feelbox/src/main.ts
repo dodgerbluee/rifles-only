@@ -79,11 +79,13 @@ import {
   defaultOrbit,
   deleteItem,
   downloadSpec,
+  eraseNear,
   ghostSize,
   isAccessoryTool,
   isOpeningTool,
   isRectTool,
   itemBox,
+  ladderPose,
   loadStored,
   makeLotHandles,
   makeStudioGrid,
@@ -100,12 +102,15 @@ import {
   placeBuildingRect,
   playableSpec,
   postDraft,
+  rectSurfaceY,
   resizeNearestBuilding,
   saveStored,
   setLotEdge,
+  SLAB_Y,
   snap,
   snapFloor,
   surfaceAt,
+  wallFootprint,
   toolFromCode,
   toolsFor,
   turnYaw,
@@ -694,7 +699,7 @@ function setStudioTool(id: ToolId) {
   studio.tool = id;
   studio.palette = paletteOf(id);
   if (isAccessoryTool(id)) studio.lastKit = id;
-  if (studio.walk && !isAccessoryTool(id)) leaveWalk();
+  if (studio.walk && !isAccessoryTool(id) && id !== "erase") leaveWalk();
   paintStudio();
 }
 
@@ -730,8 +735,8 @@ function paintStudio() {
   const hint = document.querySelector("#studio-hint");
   if (hint) {
     hint.textContent = studio.walk
-      ? "WASD move · click lock look · click to drop accessories · Esc orbit"
-      : "Hand grabs what is on the lot · Build stamps walls · Accessories stamp cover · Play starts a match · Esc leave";
+      ? "WASD move · click lock look · click to drop accessories or erase · Esc orbit"
+      : "Hand Grab or Erase · Build: walls, floors, cut, rooms · Accessories: cover, climb, ladder · Play starts a match · Esc leave";
   }
   const status = document.querySelector("#studio-status");
   const b = studio.spec.bounds;
@@ -763,6 +768,8 @@ function rebuildStudio() {
 
 function enterStudio() {
   if (locker.on) leaveLocker(false);
+  stopReel();
+  document.body.classList.remove("bestplay");
   studio.on = true;
   studio.walk = false;
   studio.drag = null;
@@ -890,6 +897,8 @@ function rebuildLocker() {
 
 function enterLocker() {
   if (studio.on) leaveStudio();
+  stopReel();
+  document.body.classList.remove("bestplay");
   locker.on = true;
   locker.dragging = false;
   locker.team = prefs.team ?? "ember";
@@ -935,7 +944,7 @@ function enterWalk() {
   studio.panning = false;
   studio.drag = null;
   studio.sel = null;
-  if (!isAccessoryTool(studio.tool)) setStudioTool(studio.lastKit);
+  if (!isAccessoryTool(studio.tool) && studio.tool !== "erase") setStudioTool(studio.lastKit);
   const spawn = walkSpawn();
   px = spawn.x;
   pz = spawn.z;
@@ -1001,16 +1010,18 @@ function commitBuildDrag() {
   if (!drag || drag.mode !== "rect") return;
   const w = Math.abs(drag.x1 - drag.x0);
   const d = Math.abs(drag.z1 - drag.z0);
-  if (w >= 4 || d >= 4 || studio.tool === "floor") {
+  if (studio.tool === "wall" || studio.tool === "cut" || w >= 4 || d >= 4 || studio.tool === "floor") {
     studio.spec = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y);
-    studio.bw = clampBuildSize(w);
-    studio.bd = clampBuildSize(d);
+    if (studio.tool === "building" || studio.tool === "floor") {
+      studio.bw = clampBuildSize(w);
+      studio.bd = clampBuildSize(d);
+    }
   } else {
     studio.spec = place(studio.spec, studio.tool, drag.x0, drag.z0, {
       yaw: studio.faceYaw,
       bw: studio.bw,
       bd: studio.bd,
-      y: drag.y,
+      y: rectSurfaceY(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1),
     });
   }
   saveStored(studio.spec);
@@ -1025,10 +1036,31 @@ function studioHit() {
   return pickGround(camera, ndc.x, ndc.y);
 }
 
+function stampEraseAt(x: number, z: number) {
+  const gx = snap(x);
+  const gz = snap(z);
+  const key = cellKey("erase", gx, gz);
+  if (key === studio.lastCell) return;
+  const next = eraseNear(studio.spec, gx, gz);
+  if (next === studio.spec) return;
+  studio.lastCell = key;
+  studio.spec = next;
+  studio.sel = null;
+  saveStored(studio.spec);
+  rebuildStudio();
+  paintStudio();
+  const status = document.querySelector("#studio-status");
+  if (status) status.textContent = "erased";
+}
+
 function stampStudio() {
   if (studio.tool === "select" || isRectTool(studio.tool) || isOpeningTool(studio.tool)) return;
   const hit = studioHit();
   if (!hit) return;
+  if (studio.tool === "erase") {
+    stampEraseAt(hit.x, hit.z);
+    return;
+  }
   const gx = snap(hit.x);
   const gz = snap(hit.z);
   const key = cellKey(studio.tool, gx, gz);
@@ -1048,10 +1080,14 @@ function stampStudio() {
 }
 
 function stampWalkAccessory() {
-  if (!isAccessoryTool(studio.tool)) return;
   const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const hit = aimGround(camera.position, dir);
   if (!hit) return;
+  if (studio.tool === "erase") {
+    stampEraseAt(hit.x, hit.z);
+    return;
+  }
+  if (!isAccessoryTool(studio.tool)) return;
   const gx = snap(hit.x);
   const gz = snap(hit.z);
   studio.spec = place(studio.spec, studio.tool, gx, gz, {
@@ -1601,7 +1637,7 @@ addEventListener("keydown", (e) => {
       if (studio.walk) leaveWalk();
       else enterWalk();
     }
-    if (e.code === "Delete" || e.code === "Backspace" || e.code === "KeyX") {
+    if (e.code === "Delete" || e.code === "Backspace") {
       deleteStudioSel();
     }
     if (e.code === "BracketLeft" || e.code === "BracketRight") {
@@ -1675,7 +1711,7 @@ addEventListener("mousedown", (e) => {
         canvas.requestPointerLock();
         return;
       }
-      if (e.button === 0 && isAccessoryTool(studio.tool)) stampWalkAccessory();
+      if (e.button === 0 && (isAccessoryTool(studio.tool) || studio.tool === "erase")) stampWalkAccessory();
       return;
     }
     if (e.button === 0) {
@@ -1684,7 +1720,7 @@ addEventListener("mousedown", (e) => {
       if (!hit) return;
       const gx = snap(hit.x);
       const gz = snap(hit.z);
-      const edge = pickLotEdge(studio.spec.bounds, hit.x, hit.z);
+      const edge = studio.tool === "erase" ? null : pickLotEdge(studio.spec.bounds, hit.x, hit.z);
       if (edge) {
         studio.drag = { mode: "lot", x0: gx, z0: gz, x1: gx, z1: gz, y: 0, edge };
         studio.painting = true;
@@ -2711,6 +2747,7 @@ function reelViewName(id: number) {
 }
 
 function startReel() {
+  if (studio.on || locker.on) return;
   recordSnap();
   mouseDown = false;
   clearFire(fireQ);
@@ -2724,7 +2761,7 @@ function startReel() {
   const recap = clips.length === 0 ? recapWindow(tape) : null;
   if (!mvp || clips.length === 0) {
     if (!recap) {
-    document.body.classList.add("bestplay");
+    if (!studio.on && !locker.on) document.body.classList.add("bestplay");
     hideDeath();
     bestplayKicker.textContent = "Best play";
     bestplayName.textContent = "No clip";
@@ -2776,7 +2813,7 @@ function startReel() {
     bestplayKill.textContent = `Kill 0 / ${mvp.kills}`;
     bestplayPace.textContent = "Live";
   }
-  document.body.classList.add("bestplay");
+  if (!studio.on && !locker.on) document.body.classList.add("bestplay");
   hideDeath();
   applyReel(samplePoses(tape, reel.playT), reel.mvpId, true);
 }
@@ -3557,7 +3594,7 @@ function frame(now: number) {
     ).cutting;
   }
 
-  if (!isClient) {
+  if (!isClient && !studio.on && !locker.on) {
   tickMatch(match, dt, {
     living: (team) => match.slots.filter((s) => s.team === team && s.alive).length,
     inSite: (id, x, z, y) => inSite(world, id, x, z, y),
@@ -3637,7 +3674,9 @@ function frame(now: number) {
   }
   seenPhase = match.phase;
 
-  if (match.phase === "bestplay") {
+  if (studio.on || locker.on) {
+    if (reel) stopReel();
+  } else if (match.phase === "bestplay") {
     if (rules.highlights && !reelPlayed) tickReel(dt);
     else if (reel) stopReel();
   } else if (reel) {
@@ -4238,7 +4277,7 @@ function frame(now: number) {
       hold.root.updateMatrixWorld(true);
       arm.root.visible = true;
       poseArm(arm, rifleWrist(hold, 0));
-      if (isAccessoryTool(studio.tool)) {
+      if (isAccessoryTool(studio.tool) && studio.tool !== "erase") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
         const ground = aimGround(camera.position, studioAim);
         if (ground) {
@@ -4268,24 +4307,39 @@ function frame(now: number) {
           studioGhost.visible = true;
           studioGhost.scale.set(fit.w, 0.16, fit.d);
           studioGhost.position.set(fit.x, fit.y - 0.08, fit.z);
+        } else if (studio.tool === "cut") {
+          const w = Math.max(0.4, Math.abs(studio.drag.x1 - studio.drag.x0));
+          const d = Math.max(0.4, Math.abs(studio.drag.z1 - studio.drag.z0));
+          const y = rectSurfaceY(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1);
+          studioGhost.visible = true;
+          studioGhost.scale.set(w, 0.16, d);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, Math.max(SLAB_Y, y) - 0.08, (studio.drag.z0 + studio.drag.z1) / 2);
+        } else if (studio.tool === "wall") {
+          const foot = wallFootprint(studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1);
+          const y = rectSurfaceY(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1);
+          const [, sy] = ghostSize("wall", foot.w, foot.d);
+          studioGhost.visible = true;
+          studioGhost.scale.set(foot.w, sy, foot.d);
+          studioGhost.position.set(foot.x, y + sy / 2, foot.z);
         } else {
           const w = Math.max(2, Math.abs(studio.drag.x1 - studio.drag.x0));
           const d = Math.max(2, Math.abs(studio.drag.z1 - studio.drag.z0));
           const [sx, sy, sz] = ghostSize(studio.tool, w, d);
+          const y = rectSurfaceY(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1);
           studioGhost.visible = true;
           studioGhost.scale.set(w, sy, d);
-          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, studio.drag.y + sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, y + sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
         }
-      } else if (isOpeningTool(studio.tool)) {
+      } else if (isOpeningTool(studio.tool) || studio.tool === "ladder") {
         const ground = studioHit();
         const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z, surfaceAt(studio.spec, ground.x, ground.z)) : null;
         if (wall) {
-          const pose = openingPose(wall, studio.tool);
+          const pose = studio.tool === "ladder" ? ladderPose(wall) : openingPose(wall, studio.tool);
           studioGhost.visible = true;
           studioGhost.scale.set(pose.sx, pose.sy, pose.sz);
           studioGhost.position.set(pose.x, pose.y, pose.z);
         } else studioGhost.visible = false;
-      } else if (studio.tool === "select") {
+      } else if (studio.tool === "select" || studio.tool === "erase") {
         studioGhost.visible = false;
       } else {
         const hit = studioHit();
@@ -4298,6 +4352,14 @@ function frame(now: number) {
             const fit = snapFloor(studio.spec, gx, gz, gx, gz, surfaceAt(studio.spec, gx, gz), { w: studio.bw, d: studio.bd });
             studioGhost.scale.set(fit.w, 0.16, fit.d);
             studioGhost.position.set(fit.x, fit.y - 0.08, fit.z);
+          } else if (studio.tool === "cut") {
+            studioGhost.scale.set(4, 0.16, 4);
+            studioGhost.position.set(snap(hit.x), Math.max(SLAB_Y, surfaceAt(studio.spec, hit.x, hit.z)) - 0.08, snap(hit.z));
+          } else if (studio.tool === "wall") {
+            const [sx, sy, sz] = ghostSize("wall", 8, 10);
+            const y = surfaceAt(studio.spec, hit.x, hit.z);
+            studioGhost.scale.set(sx, sy, sz);
+            studioGhost.position.set(snap(hit.x), y + sy / 2, snap(hit.z));
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
             const y = isRectTool(studio.tool) ? surfaceAt(studio.spec, hit.x, hit.z) : 0;

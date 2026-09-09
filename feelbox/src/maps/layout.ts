@@ -25,6 +25,8 @@ export type BuildingSpec = {
   mat?: "brick" | "plaster" | "wood" | "metal";
 };
 
+export type XzRect = { x: number; z: number; w: number; d: number };
+
 export type SlabSpec = {
   x: number;
   z: number;
@@ -32,7 +34,21 @@ export type SlabSpec = {
   d: number;
   /** Walk-surface height (top of the deck). */
   y: number;
+  /** World-space cuts punched out of this deck. */
+  holes?: XzRect[];
 };
+
+/** Thin interior wall. Thickness is usually kit T. */
+export type PartitionSpec = {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  y?: number;
+  h?: number;
+};
+
+export const HOLE_MIN = 0.12;
 
 export type CoverKind = "crate" | "jumpCrate" | "fullCrate" | "low" | "high" | "truck";
 
@@ -68,6 +84,8 @@ export const COVER_WALK: Record<CoverKind, boolean> = {
 
 export type ClimbDir = "+x" | "-x" | "+z" | "-z";
 
+export type ClimbKind = "stairs" | "ladder";
+
 export type ClimbSpec = {
   x: number;
   z: number;
@@ -75,6 +93,8 @@ export type ClimbSpec = {
   height?: number;
   width?: number;
   startY?: number;
+  /** Default stairs. Ladder is a steep vertical climb against a wall. */
+  kind?: ClimbKind;
 };
 
 export type LayoutSpec = {
@@ -86,6 +106,7 @@ export type LayoutSpec = {
   wallH?: number;
   buildings?: BuildingSpec[];
   slabs?: SlabSpec[];
+  partitions?: PartitionSpec[];
   cover?: CoverSpec[];
   climbs?: ClimbSpec[];
   sites: { id: Site["id"]; call: string; name: string; x: number; z: number; y?: number; r?: number }[];
@@ -105,6 +126,39 @@ const THEMES: Record<
   stone: { bg: 0x9aa094, fog: 0x8a8478, horizon: "#9aa094", zenith: "#6a6860", ground: "cobble", wall: "plaster" },
   dust: { bg: 0xc4a070, fog: 0xc4a882, horizon: "#c4a070", zenith: "#8a6238", ground: "dirt", wall: "lime" },
 };
+
+export function subtractRect(host: XzRect, hole: XzRect, min = HOLE_MIN): XzRect[] {
+  const hx0 = host.x - host.w / 2;
+  const hx1 = host.x + host.w / 2;
+  const hz0 = host.z - host.d / 2;
+  const hz1 = host.z + host.d / 2;
+  const ox0 = Math.max(hx0, hole.x - hole.w / 2);
+  const ox1 = Math.min(hx1, hole.x + hole.w / 2);
+  const oz0 = Math.max(hz0, hole.z - hole.d / 2);
+  const oz1 = Math.min(hz1, hole.z + hole.d / 2);
+  if (ox1 <= ox0 || oz1 <= oz0) return [host];
+  const out: XzRect[] = [];
+  const push = (x0: number, x1: number, z0: number, z1: number) => {
+    const w = x1 - x0;
+    const d = z1 - z0;
+    if (w >= min && d >= min) out.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w, d });
+  };
+  push(hx0, ox0, hz0, hz1);
+  push(ox1, hx1, hz0, hz1);
+  push(ox0, ox1, hz0, oz0);
+  push(ox0, ox1, oz1, hz1);
+  return out;
+}
+
+export function punchRects(host: XzRect, holes: XzRect[] | undefined, min = HOLE_MIN): XzRect[] {
+  let rects: XzRect[] = [host];
+  for (const hole of holes ?? []) {
+    const next: XzRect[] = [];
+    for (const r of rects) next.push(...subtractRect(r, hole, min));
+    rects = next;
+  }
+  return rects;
+}
 
 function spans(a: number, b: number, gaps: { c: number; w: number }[]) {
   let out: [number, number][] = [[Math.min(a, b), Math.max(a, b)]];
@@ -337,12 +391,25 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   }
 
   for (const s of spec.slabs ?? []) {
-    kit.box(s.x, s.y - 0.08, s.z, s.w, 0.16, s.d, kit.mat("wood", s.w / 2, s.d / 2), true, true);
+    const pieces = punchRects(s, s.holes);
+    for (const p of pieces) {
+      kit.box(p.x, s.y - 0.08, p.z, p.w, 0.16, p.d, kit.mat("wood", p.w / 2, p.d / 2), true, true);
+    }
+  }
+
+  for (const p of spec.partitions ?? []) {
+    const h = p.h ?? STOREY;
+    const y0 = p.y ?? 0;
+    kit.box(p.x, y0 + h / 2, p.z, p.w, h, p.d, kit.mat(theme.wall, Math.max(p.w, p.d) / 2, h / 2));
   }
 
   for (const c of spec.cover ?? []) coverAt(kit, c);
   for (const c of spec.climbs ?? []) {
-    kit.climb(c.x, c.z, c.dir, c.height ?? 2.8, c.width ?? 2.2, c.startY ?? 0);
+    if (c.kind === "ladder") {
+      kit.ladder(c.x, c.z, c.dir, c.height ?? STOREY, c.width ?? 1.1, c.startY ?? 0);
+    } else {
+      kit.climb(c.x, c.z, c.dir, c.height ?? 2.8, c.width ?? 2.2, c.startY ?? 0);
+    }
   }
 
   for (const s of spec.sites) {

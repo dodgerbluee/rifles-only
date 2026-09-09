@@ -6,11 +6,13 @@ import * as THREE from "three";
 import { T } from "./kit";
 import {
   COVER_SIZE,
+  HOLE_MIN,
   STOREY,
   YARD_SPEC,
   buildingBase,
   buildingFloors,
   buildingHeight,
+  punchRects,
   type BuildingSpec,
   type ClimbDir,
   type CoverKind,
@@ -19,6 +21,7 @@ import {
   type LayoutSpec,
   type ThemeId,
   type WallOpening,
+  type XzRect,
 } from "./layout";
 
 export const STUDIO_STORE = "rifles-studio-spec";
@@ -28,8 +31,11 @@ export type PaletteId = "hand" | "build" | "kit";
 
 export type ToolId =
   | "select"
+  | "erase"
   | "building"
   | "floor"
+  | "cut"
+  | "wall"
   | "door"
   | "window"
   | "crate"
@@ -43,6 +49,7 @@ export type ToolId =
   | "plant"
   | "watch"
   | "climb"
+  | "ladder"
   | "lamp"
   | "tree";
 
@@ -50,11 +57,16 @@ export type OpeningKind = "door" | "window";
 
 export type ToolDef = { id: ToolId; key: string; label: string };
 
-export const HAND_TOOLS: ToolDef[] = [{ id: "select", key: "Q", label: "Grab" }];
+export const HAND_TOOLS: ToolDef[] = [
+  { id: "select", key: "Q", label: "Grab" },
+  { id: "erase", key: "X", label: "Erase" },
+];
 
 export const BUILD_TOOLS: ToolDef[] = [
   { id: "building", key: "1", label: "Building" },
   { id: "floor", key: "2", label: "Floor" },
+  { id: "cut", key: "U", label: "Cut" },
+  { id: "wall", key: "W", label: "Wall" },
   { id: "door", key: "O", label: "Door" },
   { id: "window", key: "V", label: "Window" },
 ];
@@ -71,6 +83,7 @@ export const KIT_TOOLS: ToolDef[] = [
   { id: "plant", key: "9", label: "Plant" },
   { id: "watch", key: "0", label: "Watch" },
   { id: "climb", key: "C", label: "Climb" },
+  { id: "ladder", key: "N", label: "Ladder" },
   { id: "lamp", key: "L", label: "Lamp" },
   { id: "tree", key: "T", label: "Tree" },
 ];
@@ -81,10 +94,10 @@ export const HAND_IDS: ToolId[] = HAND_TOOLS.map((t) => t.id);
 export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
 export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
 export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
-export const RECT_TOOLS: ToolId[] = ["building", "floor"];
+export const RECT_TOOLS: ToolId[] = ["building", "floor", "cut", "wall"];
 
 export function paletteOf(tool: ToolId): PaletteId {
-  if (tool === "select") return "hand";
+  if (tool === "select" || tool === "erase") return "hand";
   return KIT_IDS.includes(tool) ? "kit" : "build";
 }
 
@@ -99,7 +112,7 @@ export function isRectTool(tool: ToolId) {
 }
 
 export function isHandTool(tool: ToolId) {
-  return tool === "select";
+  return tool === "select" || tool === "erase";
 }
 
 export function isBuildPaletteTool(tool: ToolId) {
@@ -117,6 +130,7 @@ export function isOpeningTool(tool: ToolId): tool is OpeningKind {
 export type StudioItem =
   | { kind: "building"; i: number }
   | { kind: "slab"; i: number }
+  | { kind: "partition"; i: number }
   | { kind: "cover"; i: number }
   | { kind: "climb"; i: number }
   | { kind: "site"; i: number }
@@ -147,6 +161,7 @@ export function blankSpec(): LayoutSpec {
     bounds: { ...YARD_SPEC.bounds },
     buildings: [],
     slabs: [],
+    partitions: [],
     cover: [],
     climbs: [],
     sites: [
@@ -212,15 +227,19 @@ export function place(
   const dir = dirFromYaw(opts.yaw ?? 0);
 
   if (tool === "select") return next;
+  if (tool === "erase") return eraseNear(spec, gx, gz);
 
   if (tool === "building") {
+    const y0 = opts.y ?? surfaceAt(spec, gx, gz);
+    const raised = raiseStoreyIfMatch(spec, gx, gz, bw, bd, y0);
+    if (raised) return raised;
     next.buildings = next.buildings ?? [];
     next.buildings.push({
       x: gx,
       z: gz,
       w: bw,
       d: bd,
-      y: opts.y ?? 0,
+      y: y0,
       h: STOREY,
       floors: 1,
       doors: [],
@@ -235,6 +254,23 @@ export function place(
       w: bw,
       d: bd,
       y: Math.max(SLAB_Y, opts.y ?? SLAB_Y),
+    });
+    return next;
+  }
+  if (tool === "cut") {
+    return cutSlabRect(spec, gx - bw / 2, gz - bd / 2, gx + bw / 2, gz + bd / 2);
+  }
+  if (tool === "wall") {
+    const alongX = dir === "+z" || dir === "-z";
+    const length = Math.max(2, alongX ? bw : bd);
+    next.partitions = next.partitions ?? [];
+    next.partitions.push({
+      x: gx,
+      z: gz,
+      w: alongX ? length : T,
+      d: alongX ? T : length,
+      y: opts.y ?? surfaceAt(spec, gx, gz),
+      h: STOREY,
     });
     return next;
   }
@@ -266,6 +302,9 @@ export function place(
     next.climbs.push({ x: gx, z: gz, dir, height: 2.8, width: 2.2 });
     return next;
   }
+  if (tool === "ladder") {
+    return placeLadder(spec, x, z, opts.yaw ?? 0, opts.y);
+  }
   if (tool === "lamp") {
     next.lamps = next.lamps ?? [];
     next.lamps.push([gx, gz]);
@@ -293,6 +332,10 @@ export function deleteItem(spec: LayoutSpec, item: StudioItem): LayoutSpec {
   }
   if (item.kind === "slab") {
     next.slabs?.splice(item.i, 1);
+    return next;
+  }
+  if (item.kind === "partition") {
+    next.partitions?.splice(item.i, 1);
     return next;
   }
   if (item.kind === "cover") {
@@ -330,15 +373,130 @@ export function containsXZ(x: number, z: number, cx: number, cz: number, w: numb
   return Math.abs(x - cx) <= w / 2 + pad && Math.abs(z - cz) <= d / 2 + pad;
 }
 
+export function inSlabHole(s: { x: number; z: number; w: number; d: number; holes?: XzRect[] }, x: number, z: number) {
+  return (s.holes ?? []).some((h) => containsXZ(x, z, h.x, h.z, h.w, h.d));
+}
+
 export function surfaceAt(spec: LayoutSpec, x: number, z: number) {
   let y = 0;
   for (const s of spec.slabs ?? []) {
-    if (containsXZ(x, z, s.x, s.z, s.w, s.d)) y = Math.max(y, s.y);
+    if (containsXZ(x, z, s.x, s.z, s.w, s.d) && !inSlabHole(s, x, z)) y = Math.max(y, s.y);
   }
   for (const b of spec.buildings ?? []) {
     if (containsXZ(x, z, b.x, b.z, b.w, b.d)) y = Math.max(y, buildingBase(b) + buildingHeight(b));
   }
   return y;
+}
+
+export function rectSurfaceY(spec: LayoutSpec, x0: number, z0: number, x1: number, z1: number) {
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  return Math.max(
+    surfaceAt(spec, cx, cz),
+    surfaceAt(spec, x0, z0),
+    surfaceAt(spec, x1, z1),
+    surfaceAt(spec, x0, z1),
+    surfaceAt(spec, x1, z0),
+  );
+}
+
+export function wallFootprint(x0: number, z0: number, x1: number, z1: number) {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const alongX = Math.abs(dx) >= Math.abs(dz);
+  const length = Math.max(T, alongX ? Math.abs(dx) : Math.abs(dz));
+  return {
+    x: (x0 + x1) / 2,
+    z: (z0 + z1) / 2,
+    w: alongX ? length : T,
+    d: alongX ? T : length,
+  };
+}
+
+function similarFootprint(a: { w: number; d: number }, b: { w: number; d: number }) {
+  const wr = Math.min(a.w, b.w) / Math.max(a.w, b.w);
+  const dr = Math.min(a.d, b.d) / Math.max(a.d, b.d);
+  return wr >= 0.72 && dr >= 0.72;
+}
+
+export function raiseStoreyIfMatch(spec: LayoutSpec, x: number, z: number, w: number, d: number, y: number): LayoutSpec | null {
+  const next = cloneSpec(spec);
+  for (const b of next.buildings ?? []) {
+    if (buildingFloors(b) !== 1) continue;
+    if (!containsXZ(x, z, b.x, b.z, b.w, b.d)) continue;
+    if (!similarFootprint({ w, d }, b)) continue;
+    const roof = buildingBase(b) + buildingHeight(b);
+    if (Math.abs(y - roof) > 0.35) continue;
+    b.floors = 2;
+    delete b.h;
+    return next;
+  }
+  return null;
+}
+
+export function cutSlabRect(spec: LayoutSpec, x0: number, z0: number, x1: number, z1: number): LayoutSpec {
+  const hole: XzRect = {
+    x: (x0 + x1) / 2,
+    z: (z0 + z1) / 2,
+    w: Math.max(HOLE_MIN, Math.abs(x1 - x0)),
+    d: Math.max(HOLE_MIN, Math.abs(z1 - z0)),
+  };
+  if (hole.w < 0.4 && hole.d < 0.4) return spec;
+  const next = cloneSpec(spec);
+  const slabs = next.slabs ?? [];
+  let best = -1;
+  let bestY = -Infinity;
+  for (let i = 0; i < slabs.length; i++) {
+    const s = slabs[i]!;
+    if (!containsXZ(hole.x, hole.z, s.x, s.z, s.w, s.d)) continue;
+    if (s.y >= bestY) {
+      bestY = s.y;
+      best = i;
+    }
+  }
+  if (best < 0) return spec;
+  const slab = slabs[best]!;
+  const holes = [...(slab.holes ?? []), hole];
+  const leftover = punchRects(slab, holes);
+  if (!leftover.length) {
+    slabs.splice(best, 1);
+    return next;
+  }
+  slab.holes = holes;
+  return next;
+}
+
+function wallToClimbDir(wall: DoorWall): ClimbDir {
+  if (wall === "n") return "-z";
+  if (wall === "s") return "+z";
+  if (wall === "e") return "-x";
+  return "+x";
+}
+
+export function placeLadder(spec: LayoutSpec, x: number, z: number, yaw = 0, y?: number): LayoutSpec {
+  const next = cloneSpec(spec);
+  const startY = y ?? surfaceAt(spec, x, z);
+  const hit = nearestBuildingWall(spec, x, z, startY, 8);
+  let px = snap(x);
+  let pz = snap(z);
+  let dir = dirFromYaw(yaw);
+  if (hit) {
+    const out = 0.22;
+    px = hit.x + (hit.wall === "e" ? out : hit.wall === "w" ? -out : 0);
+    pz = hit.z + (hit.wall === "n" ? out : hit.wall === "s" ? -out : 0);
+    dir = wallToClimbDir(hit.wall);
+  }
+  next.climbs = next.climbs ?? [];
+  next.climbs.push({
+    x: px,
+    z: pz,
+    dir,
+    height: STOREY,
+    width: 1.1,
+    startY: surfaceAt(spec, px, pz),
+    kind: "ladder",
+  });
+  return next;
 }
 
 /** First-floor deck flush with a 1-storey building's outer wall faces. */
@@ -409,8 +567,14 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 3.2): Studi
   }
   for (let i = 0; i < (spec.slabs ?? []).length; i++) {
     const s = spec.slabs![i]!;
-    if (inside(s.x, s.z, s.w, s.d)) {
+    if (inside(s.x, s.z, s.w, s.d) && !inSlabHole(s, x, z)) {
       hits.push({ item: { kind: "slab", i }, y: s.y, area: s.w * s.d, dist: 0 });
+    }
+  }
+  for (let i = 0; i < (spec.partitions ?? []).length; i++) {
+    const p = spec.partitions![i]!;
+    if (inside(p.x, p.z, p.w, p.d)) {
+      hits.push({ item: { kind: "partition", i }, y: (p.y ?? 0) + (p.h ?? STOREY), area: p.w * p.d, dist: 0 });
     }
   }
   const stamp = (item: StudioItem, ax: number, az: number, y: number, area: number) => {
@@ -468,6 +632,10 @@ export function itemPos(spec: LayoutSpec, item: StudioItem): { x: number; z: num
     const s = spec.slabs?.[item.i];
     return s ? { x: s.x, z: s.z } : null;
   }
+  if (item.kind === "partition") {
+    const p = spec.partitions?.[item.i];
+    return p ? { x: p.x, z: p.z } : null;
+  }
   if (item.kind === "cover") {
     const c = spec.cover?.[item.i];
     return c ? { x: c.x, z: c.z } : null;
@@ -513,6 +681,13 @@ export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: numbe
     if (!s) return spec;
     s.x = gx;
     s.z = gz;
+    return next;
+  }
+  if (item.kind === "partition") {
+    const p = next.partitions?.[item.i];
+    if (!p) return spec;
+    p.x = gx;
+    p.z = gz;
     return next;
   }
   if (item.kind === "cover") {
@@ -569,6 +744,13 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
     if (!s) return null;
     return { x: s.x, y: s.y - 0.08, z: s.z, sx: s.w, sy: 0.16, sz: s.d };
   }
+  if (item.kind === "partition") {
+    const p = spec.partitions?.[item.i];
+    if (!p) return null;
+    const h = p.h ?? STOREY;
+    const y0 = p.y ?? 0;
+    return { x: p.x, y: y0 + h / 2, z: p.z, sx: p.w, sy: h, sz: p.d };
+  }
   if (item.kind === "cover") {
     const c = spec.cover?.[item.i];
     if (!c) return null;
@@ -578,6 +760,10 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
   if (item.kind === "climb") {
     const c = spec.climbs?.[item.i];
     if (!c) return null;
+    if (c.kind === "ladder") {
+      const h = c.height ?? STOREY;
+      return { x: c.x, y: (c.startY ?? 0) + h / 2, z: c.z, sx: 1.2, sy: h, sz: 1.2 };
+    }
     return { x: c.x, y: (c.startY ?? 0) + 0.2, z: c.z, sx: 2.2, sy: 0.4, sz: 7 };
   }
   if (item.kind === "site") {
@@ -684,12 +870,15 @@ export async function postDraft(spec: LayoutSpec) {
 }
 
 export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number, number] {
+  if (tool === "erase") return [2, 0.2, 2];
   if (tool === "building") return [bw, STOREY, bd];
-  if (tool === "floor") return [bw, 0.16, bd];
+  if (tool === "floor" || tool === "cut") return [bw, 0.16, bd];
+  if (tool === "wall") return [Math.max(bw, T), STOREY, T];
   if (tool === "door") return [2.4, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];
   if (tool in COVER_SIZE) return COVER_SIZE[tool as CoverKind];
   if (tool === "climb") return [2.2, 0.4, 7];
+  if (tool === "ladder") return [1.2, STOREY, 0.4];
   if (tool === "siteA" || tool === "siteB") return [3, 0.12, 3];
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
   if (tool === "lamp") return [0.2, 3.2, 0.2];
@@ -801,8 +990,11 @@ export function makeStudioGrid(bounds: LayoutSpec["bounds"]) {
 
 export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId | null {
   if (code === "KeyQ" || code === "KeyH") return "select";
+  if (code === "KeyX") return "erase";
   if (code === "Digit1" || code === "Numpad1") return palette === "kit" ? "crate" : "building";
   if (code === "Digit2" || code === "Numpad2" || code === "KeyF") return palette === "kit" ? "low" : "floor";
+  if (code === "KeyU") return "cut";
+  if (code === "KeyW") return "wall";
   if (code === "KeyO" || code === "KeyD") return "door";
   if (code === "KeyV") return "window";
   if (code === "Digit3" || code === "Numpad3") return "crate";
@@ -816,6 +1008,7 @@ export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId
   if (code === "Digit9" || code === "Numpad9") return "plant";
   if (code === "Digit0" || code === "Numpad0") return "watch";
   if (code === "KeyC") return "climb";
+  if (code === "KeyN") return "ladder";
   if (code === "KeyL") return "lamp";
   if (code === "KeyT") return "tree";
   return null;
@@ -886,14 +1079,34 @@ export function placeBuildingRect(
   yaw: number,
   y = 0,
 ): LayoutSpec {
+  if (tool === "cut") return cutSlabRect(spec, x0, z0, x1, z1);
+  if (tool === "wall") {
+    const foot = wallFootprint(x0, z0, x1, z1);
+    const next = cloneSpec(spec);
+    next.partitions = next.partitions ?? [];
+    next.partitions.push({
+      x: foot.x,
+      z: foot.z,
+      w: foot.w,
+      d: foot.d,
+      y: rectSurfaceY(spec, x0, z0, x1, z1),
+      h: STOREY,
+    });
+    return next;
+  }
   const w = clampBuildSize(Math.abs(x1 - x0));
   const d = clampBuildSize(Math.abs(z1 - z0));
-  const placeY = tool === "floor" ? Math.max(SLAB_Y, y || SLAB_Y) : y;
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
   if (tool === "floor") {
+    const placeY = Math.max(SLAB_Y, y || SLAB_Y);
     const fit = snapFloor(spec, x0, z0, x1, z1, placeY);
     return place(spec, "floor", fit.x, fit.z, { yaw, bw: fit.w, bd: fit.d, y: fit.y });
   }
-  return place(spec, isRectTool(tool) ? tool : "building", (x0 + x1) / 2, (z0 + z1) / 2, { yaw, bw: w, bd: d, y: placeY });
+  const placeY = rectSurfaceY(spec, x0, z0, x1, z1);
+  const raised = raiseStoreyIfMatch(spec, cx, cz, w, d, placeY);
+  if (raised) return raised;
+  return place(spec, "building", cx, cz, { yaw, bw: w, bd: d, y: placeY });
 }
 
 function distToSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {
@@ -1007,4 +1220,12 @@ export function openingPose(hit: WallHit, kind: OpeningKind) {
   const sx = hit.wall === "n" || hit.wall === "s" ? w : 0.28;
   const sz = hit.wall === "e" || hit.wall === "w" ? w : 0.28;
   return { x: hit.x, y, z: hit.z, sx, sy: h, sz };
+}
+
+export function ladderPose(hit: WallHit) {
+  const out = 0.22;
+  const x = hit.x + (hit.wall === "e" ? out : hit.wall === "w" ? -out : 0);
+  const z = hit.z + (hit.wall === "n" ? out : hit.wall === "s" ? -out : 0);
+  const along = hit.wall === "n" || hit.wall === "s";
+  return { x, y: hit.y + STOREY / 2, z, sx: along ? 1.2 : 0.4, sy: STOREY, sz: along ? 0.4 : 1.2 };
 }

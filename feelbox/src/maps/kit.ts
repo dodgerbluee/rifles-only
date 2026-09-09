@@ -41,6 +41,14 @@ export type Kit = {
     startY?: number,
     tread?: "wood" | "lime",
   ) => void;
+  ladder: (
+    x: number,
+    z: number,
+    dir: "+x" | "-x" | "+z" | "-z",
+    height: number,
+    width?: number,
+    startY?: number,
+  ) => void;
 };
 
 const T = 0.32;
@@ -215,7 +223,44 @@ export function makeKit(scene: THREE.Scene): Kit {
     }
   };
 
-  return { root, tex, colliders, shootables, box, mat, gold, v, siteMarker, tree, lamp, pad, climb };
+  const ladder: Kit["ladder"] = (x, z, dir, height, width = 1.1, startY = 0) => {
+    const rise = 0.3;
+    const run = 0.15;
+    const treadH = 0.08;
+    const steps = Math.max(2, Math.ceil(height / rise));
+    const ax = dir === "+x" ? 1 : dir === "-x" ? -1 : 0;
+    const az = dir === "+z" ? 1 : dir === "-z" ? -1 : 0;
+    const px = -az;
+    const pz = ax;
+    const treadMat = mat("wood", 1.1, 0.28, 0.82, 0.04);
+    const railMat = mat("metal", 0.16, 1.0, 0.4, 0.55);
+    for (let i = 0; i < steps; i++) {
+      const yTop = startY + (i + 1) * rise;
+      const along = i * run + run * 0.5;
+      const cx = x + ax * along;
+      const cz = z + az * along;
+      box(cx, yTop - treadH * 0.5, cz, ax !== 0 ? run : width, treadH, az !== 0 ? run : width, treadMat, true, true);
+    }
+    const span = steps * run;
+    const climbH = steps * rise;
+    const edge = width * 0.5 - 0.04;
+    for (const side of [-1, 1] as const) {
+      const ox = px * edge * side;
+      const oz = pz * edge * side;
+      box(
+        x + ax * (span * 0.5) + ox,
+        startY + climbH * 0.5,
+        z + az * (span * 0.5) + oz,
+        ax !== 0 ? span : 0.05,
+        climbH,
+        az !== 0 ? span : 0.05,
+        railMat,
+        false,
+      );
+    }
+  };
+
+  return { root, tex, colliders, shootables, box, mat, gold, v, siteMarker, tree, lamp, pad, climb, ladder };
 }
 
 export function sky(scene: THREE.Scene, horizon: string, zenith: string, radius = 110) {
