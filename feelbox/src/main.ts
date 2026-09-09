@@ -63,20 +63,31 @@ import {
 import { bindAdmin, rules } from "./admin";
 import {
   TOOLS,
+  addOpening,
   applyOrbit,
   blankSpec,
   canvasNdc,
   cellKey,
+  clampBuildSize,
   defaultOrbit,
   downloadSpec,
   ghostSize,
+  growLot,
+  isBuildTool,
+  isOpeningTool,
   loadStored,
+  LOT_STEP,
   makeStudioGrid,
+  nearestBuildingWall,
+  openingPose,
   orbitDrag,
   panDrag,
+  pickBuildingWall,
   pickGround,
   place,
+  placeBuildingRect,
   postDraft,
+  resizeNearestBuilding,
   saveStored,
   snap,
   toolFromCode,
@@ -185,6 +196,7 @@ const studioGhost = new THREE.Mesh(
 studioGhost.visible = false;
 studioGhost.frustumCulled = false;
 scene.add(studioGhost);
+const studioAim = new THREE.Vector3();
 const studio = {
   on: false,
   spec: blankSpec(),
@@ -198,6 +210,8 @@ const studio = {
   painting: false,
   orbiting: false,
   panning: false,
+  walk: false,
+  drag: null as null | { x0: number; z0: number; x1: number; z1: number },
   lastCell: "",
 };
 const match = createMatch();
@@ -316,11 +330,13 @@ function enterPlay() {
 function leaveToLobby() {
   if (studio.on) {
     studio.on = false;
+    studio.walk = false;
+    studio.drag = null;
     studio.painting = false;
     studio.orbiting = false;
     studio.panning = false;
     studioGhost.visible = false;
-    document.body.classList.remove("studio", "studio-nav");
+    document.body.classList.remove("studio", "studio-nav", "studio-walk");
   }
   net.destroy();
   net = idleNet();
@@ -614,40 +630,61 @@ function afterMapLoad() {
 
 function paintStudio() {
   document.body.classList.toggle("studio", studio.on);
+  document.body.classList.toggle("studio-walk", studio.on && studio.walk);
   const tools = document.querySelector("#studio-tools")!;
-  if (!tools.childElementCount) {
-    for (const t of TOOLS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.tool = t.id;
-      b.textContent = `${t.key} ${t.label}`;
-      b.addEventListener("click", (e) => {
-        e.stopPropagation();
-        studio.tool = t.id;
-        paintStudio();
-      });
-      tools.append(b);
-    }
+  tools.replaceChildren();
+  for (const t of TOOLS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.tool = t.id;
+    b.textContent = `${t.key} ${t.label}`;
+    b.classList.toggle("on", t.id === studio.tool);
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      studio.tool = t.id;
+      paintStudio();
+    });
+    tools.append(b);
   }
-  tools.querySelectorAll("button").forEach((b) => {
-    b.classList.toggle("on", (b as HTMLButtonElement).dataset.tool === studio.tool);
-  });
+  const walkBtn = document.querySelector("#studio-walk");
+  if (walkBtn) {
+    walkBtn.classList.toggle("on", studio.walk);
+    walkBtn.textContent = studio.walk ? "Orbit" : "Walk";
+  }
+  const hint = document.querySelector("#studio-hint");
+  if (hint) {
+    hint.textContent = studio.walk
+      ? "WASD move · click lock look · O/G/V openings on the wall you aim · Esc orbit"
+      : "LMB paint · drag to size a building · Lot+/− · Walk to explore · [ ] size · R turn · Esc leave";
+  }
   const status = document.querySelector("#studio-status");
-  if (status) status.textContent = `${studio.spec.title} · ${studio.bw}×${studio.bd}`;
+  const b = studio.spec.bounds;
+  if (status) {
+    status.textContent = `${studio.spec.title} · lot ${b.maxX - b.minX}×${b.maxZ - b.minZ} · build ${studio.bw}×${studio.bd}`;
+  }
 }
 
 function rebuildStudio() {
   wipeMapMeshes();
-  world = compileLayout(scene, studio.spec, { clay: true });
+  world = compileLayout(scene, studio.spec, { clay: !studio.walk });
   afterMapLoad();
-  scene.add(makeStudioGrid(studio.spec.bounds));
-  studioGhost.visible = true;
+  if (!studio.walk) scene.add(makeStudioGrid(studio.spec.bounds));
+  studioGhost.visible = !studio.walk;
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle) mapTitle.textContent = studio.spec.title || "Studio";
+  if (studio.walk) {
+    const { minX, maxX, minZ, maxZ } = studio.spec.bounds;
+    camera.near = 0.05;
+    camera.far = Math.max(140, Math.hypot(maxX - minX, maxZ - minZ) * 1.4);
+    camera.fov = 90;
+    camera.updateProjectionMatrix();
+  }
 }
 
 function enterStudio() {
   studio.on = true;
+  studio.walk = false;
+  studio.drag = null;
   studio.spec = loadStored() ?? blankSpec();
   studio.cam = defaultOrbit(studio.spec.bounds);
   studio.faceYaw = 0;
@@ -663,23 +700,127 @@ function enterStudio() {
   paintStudio();
   hideJoinTeam();
   document.body.classList.add("studio");
+  document.body.classList.remove("studio-walk");
   applyOrbit(camera, studio.cam);
   document.exitPointerLock();
 }
 
 function leaveStudio() {
   studio.on = false;
+  studio.walk = false;
+  studio.drag = null;
   studio.painting = false;
   studio.orbiting = false;
   studio.panning = false;
   studio.lastCell = "";
   studioGhost.visible = false;
-  document.body.classList.remove("studio", "studio-nav");
+  document.body.classList.remove("studio", "studio-nav", "studio-walk");
   camera.near = 0.05;
   camera.far = 85;
   camera.fov = 90;
   camera.updateProjectionMatrix();
   loadMap(mapId, true);
+}
+
+function walkSpawn() {
+  const spec = studio.spec;
+  const { minX, maxX, minZ, maxZ } = spec.bounds;
+  const cx = (minX + maxX) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const boxed = (spec.buildings ?? []).some(
+    (b) => Math.abs(cx - b.x) < b.w / 2 - 0.6 && Math.abs(cz - b.z) < b.d / 2 - 0.6,
+  );
+  if (!boxed) return { x: cx, z: cz };
+  const p = spec.plantSpawns[2] ?? spec.plantSpawns[0];
+  if (p) return { x: p[0], z: p[1] };
+  return { x: minX + 4, z: cz };
+}
+
+function enterWalk() {
+  studio.walk = true;
+  studio.painting = false;
+  studio.orbiting = false;
+  studio.panning = false;
+  studio.drag = null;
+  const spawn = walkSpawn();
+  px = spawn.x;
+  pz = spawn.z;
+  py = 0.02;
+  vy = 0;
+  yaw = 0;
+  pitch = 0;
+  rebuildStudio();
+  paintStudio();
+  canvas.requestPointerLock();
+}
+
+function leaveWalk() {
+  studio.walk = false;
+  studio.drag = null;
+  document.exitPointerLock();
+  rebuildStudio();
+  paintStudio();
+  applyOrbit(camera, studio.cam);
+}
+
+function bumpLot(delta: number) {
+  const next = growLot(studio.spec, delta);
+  if (next === studio.spec) return;
+  studio.spec = next;
+  saveStored(studio.spec);
+  const b = next.bounds;
+  studio.cam.tx = (b.minX + b.maxX) / 2;
+  studio.cam.tz = (b.minZ + b.maxZ) / 2;
+  rebuildStudio();
+  paintStudio();
+}
+
+function stampOpening() {
+  if (!isOpeningTool(studio.tool)) return;
+  let hit = null as ReturnType<typeof pickBuildingWall>;
+  if (studio.walk) {
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    hit = pickBuildingWall(studio.spec, camera.position, dir);
+  } else {
+    const ground = studioHit();
+    if (ground) hit = nearestBuildingWall(studio.spec, ground.x, ground.z);
+  }
+  const status = document.querySelector("#studio-status");
+  if (!hit) {
+    if (status) status.textContent = "aim a building wall";
+    return;
+  }
+  studio.spec = addOpening(studio.spec, studio.tool, hit);
+  saveStored(studio.spec);
+  rebuildStudio();
+  paintStudio();
+  if (status) status.textContent = `placed ${studio.tool}`;
+}
+
+function commitBuildDrag() {
+  const drag = studio.drag;
+  studio.drag = null;
+  studio.painting = false;
+  studio.lastCell = "";
+  if (!drag) return;
+  const w = Math.abs(drag.x1 - drag.x0);
+  const d = Math.abs(drag.z1 - drag.z0);
+  if (w >= 4 || d >= 4) {
+    studio.spec = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw);
+    studio.bw = clampBuildSize(w);
+    studio.bd = clampBuildSize(d);
+  } else {
+    studio.spec = place(studio.spec, studio.tool, drag.x0, drag.z0, {
+      yaw: studio.faceYaw,
+      bw: studio.bw,
+      bd: studio.bd,
+    });
+  }
+  saveStored(studio.spec);
+  rebuildStudio();
+  paintStudio();
+  const status = document.querySelector("#studio-status");
+  if (status) status.textContent = `placed ${studio.tool}`;
 }
 
 function studioHit() {
@@ -799,6 +940,19 @@ bindAdmin({
   document.querySelector("#studio-leave")?.addEventListener("click", (e) => {
     e.stopPropagation();
     leaveStudio();
+  });
+  document.querySelector("#studio-lot-plus")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    bumpLot(LOT_STEP);
+  });
+  document.querySelector("#studio-lot-minus")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    bumpLot(-LOT_STEP);
+  });
+  document.querySelector("#studio-walk")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (studio.walk) leaveWalk();
+    else enterWalk();
   });
   document.querySelector("#studio")?.addEventListener("mousedown", (e) => e.stopPropagation());
 }
@@ -1122,7 +1276,8 @@ addEventListener("keydown", (e) => {
   }
   keys.add(e.code);
   if (studio.on) {
-    const tool = toolFromCode(e.code);
+    const moveKeys = studio.walk && ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "Space", "KeyF"].includes(e.code);
+    const tool = moveKeys ? null : toolFromCode(e.code);
     if (tool) {
       studio.tool = tool;
       paintStudio();
@@ -1132,17 +1287,31 @@ addEventListener("keydown", (e) => {
       const status = document.querySelector("#studio-status");
       if (status) status.textContent = "turned";
     }
-    if (e.code === "BracketLeft") {
-      studio.bw = Math.max(6, studio.bw - 2);
-      studio.bd = Math.max(6, studio.bd - 2);
+    if (e.code === "KeyP" && !e.repeat) {
+      if (studio.walk) leaveWalk();
+      else enterWalk();
+    }
+    if (e.code === "Minus" || e.code === "NumpadSubtract") bumpLot(-LOT_STEP);
+    if (e.code === "Equal" || e.code === "NumpadAdd") bumpLot(LOT_STEP);
+    if (e.code === "BracketLeft" || e.code === "BracketRight") {
+      const dw = e.code === "BracketRight" ? 2 : -2;
+      const ground = studio.walk ? { x: px, z: pz } : studioHit();
+      if (ground) {
+        const next = resizeNearestBuilding(studio.spec, ground.x, ground.z, dw, dw);
+        if (next !== studio.spec) {
+          studio.spec = next;
+          saveStored(studio.spec);
+          rebuildStudio();
+        }
+      }
+      studio.bw = clampBuildSize(studio.bw + dw);
+      studio.bd = clampBuildSize(studio.bd + dw);
       paintStudio();
     }
-    if (e.code === "BracketRight") {
-      studio.bw = Math.min(24, studio.bw + 2);
-      studio.bd = Math.min(20, studio.bd + 2);
-      paintStudio();
+    if (e.code === "Escape") {
+      if (studio.walk) leaveWalk();
+      else leaveStudio();
     }
-    if (e.code === "Escape") leaveStudio();
     return;
   }
   if (e.code === "KeyR" && locked) startReload();
@@ -1180,9 +1349,31 @@ addEventListener("mousedown", (e) => {
     e.preventDefault();
     studio.mx = e.clientX;
     studio.my = e.clientY;
+    if (studio.walk) {
+      if (!locked) {
+        canvas.requestPointerLock();
+        return;
+      }
+      if (e.button === 0 && isOpeningTool(studio.tool)) stampOpening();
+      return;
+    }
     if (e.button === 0) {
-      studio.painting = true;
       studio.lastCell = "";
+      if (isOpeningTool(studio.tool)) {
+        stampOpening();
+        return;
+      }
+      if (isBuildTool(studio.tool)) {
+        const hit = studioHit();
+        if (hit) {
+          const gx = snap(hit.x);
+          const gz = snap(hit.z);
+          studio.drag = { x0: gx, z0: gz, x1: gx, z1: gz };
+          studio.painting = true;
+        }
+        return;
+      }
+      studio.painting = true;
       stampStudio(studio.tool === "erase");
     }
     if (e.button === 2) studio.orbiting = true;
@@ -1214,6 +1405,7 @@ addEventListener("mousedown", (e) => {
 addEventListener("mouseup", (e) => {
   if (studio.on) {
     if (e.button === 0) {
+      if (studio.drag) commitBuildDrag();
       studio.painting = false;
       studio.lastCell = "";
     }
@@ -1233,8 +1425,10 @@ addEventListener("mouseup", (e) => {
 addEventListener("wheel", (e) => {
   if (studio.on) {
     if ((e.target as HTMLElement | null)?.closest("#studio")) return;
+    if (studio.walk) return;
     e.preventDefault();
-    zoomOrbit(studio.cam, e.deltaY);
+    const { minX, maxX, minZ, maxZ } = studio.spec.bounds;
+    zoomOrbit(studio.cam, e.deltaY, Math.max(180, Math.hypot(maxX - minX, maxZ - minZ) * 1.6));
     return;
   }
   if (!locked || alive) return;
@@ -1244,9 +1438,21 @@ addEventListener("mousemove", (e) => {
   if (studio.on) {
     studio.mx = e.clientX;
     studio.my = e.clientY;
+    if (studio.walk && locked) {
+      yaw -= e.movementX * MOUSE * prefs.sens;
+      pitch -= e.movementY * MOUSE * prefs.sens;
+      pitch = Math.max(-1.4, Math.min(1.4, pitch));
+      return;
+    }
     if (studio.orbiting) orbitDrag(studio.cam, e.movementX, e.movementY);
     else if (studio.panning) panDrag(studio.cam, e.movementX, e.movementY);
-    else if (studio.painting) stampStudio(studio.tool === "erase");
+    else if (studio.drag && studio.painting) {
+      const hit = studioHit();
+      if (hit) {
+        studio.drag.x1 = snap(hit.x);
+        studio.drag.z1 = snap(hit.z);
+      }
+    } else if (studio.painting) stampStudio(studio.tool === "erase");
     return;
   }
   if (!locked || !alive) return;
@@ -3543,18 +3749,126 @@ function frame(now: number) {
     for (const g of clientPawns.values()) g.visible = false;
     for (const b of bots) b.root.visible = false;
     ghost.visible = false;
-    showRifle(rifleKind, false);
     knife.visible = false;
     nadeView.visible = false;
-    arm.root.visible = false;
-    applyOrbit(camera, studio.cam);
-    const hit = studioHit();
-    const show = !!hit && studio.tool !== "erase";
-    studioGhost.visible = show;
-    if (hit && show) {
-      const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
-      studioGhost.scale.set(sx, sy, sz);
-      studioGhost.position.set(snap(hit.x), sy / 2, snap(hit.z));
+    if (studio.walk) {
+      const height = 1.78;
+      const speed = tuning.walk;
+      const gh = groundHeight(world.colliders, px, pz, RADIUS, py);
+      grounded = py <= gh + 0.06 && vy <= 0.2;
+      const forwardX = -Math.sin(yaw);
+      const forwardZ = -Math.cos(yaw);
+      const rightX = Math.cos(yaw);
+      const rightZ = -Math.sin(yaw);
+      let wx = 0;
+      let wz = 0;
+      if (keys.has("KeyW")) {
+        wx += forwardX;
+        wz += forwardZ;
+      }
+      if (keys.has("KeyS")) {
+        wx -= forwardX;
+        wz -= forwardZ;
+      }
+      if (keys.has("KeyD")) {
+        wx += rightX;
+        wz += rightZ;
+      }
+      if (keys.has("KeyA")) {
+        wx -= rightX;
+        wz -= rightZ;
+      }
+      const len = Math.hypot(wx, wz);
+      if (len > 0) {
+        const n = collideXZ(
+          world.colliders,
+          px + (wx / len) * speed * dt,
+          pz + (wz / len) * speed * dt,
+          RADIUS,
+          py + 0.08,
+          py + height,
+        );
+        px = n.x;
+        pz = n.z;
+      }
+      if (grounded && keys.has("Space") && !jumpHeld) {
+        vy = jumpSpeed();
+        grounded = false;
+      }
+      jumpHeld = keys.has("Space");
+      if (grounded && vy <= 0) {
+        py = gh;
+        vy = 0;
+      } else {
+        vy += -tuning.gravity * dt;
+        py += vy * dt;
+        const g2 = groundHeight(world.colliders, px, pz, RADIUS, py);
+        if (py < g2) {
+          py = g2;
+          vy = 0;
+          grounded = true;
+        }
+      }
+      if (py < -3.2) {
+        py = 0;
+        vy = 0;
+      }
+      camera.near = 0.05;
+      camera.fov = 90;
+      camera.position.set(px, py + 1.64, pz);
+      camera.rotation.order = "YXZ";
+      camera.rotation.x = pitch;
+      camera.rotation.y = yaw;
+      camera.rotation.z = 0;
+      camera.updateProjectionMatrix();
+      showRifle(rifleKind, true);
+      const hold = liveRifle();
+      hold.root.position.copy(hold.hipPos);
+      hold.root.rotation.set(0.1, 0.22, 0.06);
+      poseBolt(hold, 0);
+      hold.root.updateMatrixWorld(true);
+      arm.root.visible = true;
+      poseArm(arm, rifleWrist(hold, 0));
+      if (isOpeningTool(studio.tool)) {
+        studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
+        const wall = pickBuildingWall(studio.spec, camera.position, studioAim);
+        if (wall) {
+          const pose = openingPose(wall, studio.tool);
+          studioGhost.visible = true;
+          studioGhost.scale.set(pose.sx, pose.sy, pose.sz);
+          studioGhost.position.set(pose.x, pose.y, pose.z);
+        } else studioGhost.visible = false;
+      } else studioGhost.visible = false;
+    } else {
+      showRifle(rifleKind, false);
+      arm.root.visible = false;
+      applyOrbit(camera, studio.cam);
+      if (studio.drag) {
+        const w = Math.max(2, Math.abs(studio.drag.x1 - studio.drag.x0));
+        const d = Math.max(2, Math.abs(studio.drag.z1 - studio.drag.z0));
+        const sy = studio.tool === "third" ? 8.4 : studio.tool === "loft" ? 5.6 : 3.2;
+        studioGhost.visible = true;
+        studioGhost.scale.set(w, sy, d);
+        studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
+      } else if (isOpeningTool(studio.tool)) {
+        const ground = studioHit();
+        const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z) : null;
+        if (wall) {
+          const pose = openingPose(wall, studio.tool);
+          studioGhost.visible = true;
+          studioGhost.scale.set(pose.sx, pose.sy, pose.sz);
+          studioGhost.position.set(pose.x, pose.y, pose.z);
+        } else studioGhost.visible = false;
+      } else {
+        const hit = studioHit();
+        const show = !!hit && studio.tool !== "erase";
+        studioGhost.visible = show;
+        if (hit && show) {
+          const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
+          studioGhost.scale.set(sx, sy, sz);
+          studioGhost.position.set(snap(hit.x), sy / 2, snap(hit.z));
+        }
+      }
     }
   } else {
     studioGhost.visible = false;

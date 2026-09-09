@@ -218,8 +218,8 @@ export function makeKit(scene: THREE.Scene): Kit {
   return { root, tex, colliders, shootables, box, mat, gold, v, siteMarker, tree, lamp, pad, climb };
 }
 
-export function sky(scene: THREE.Scene, horizon: string, zenith: string) {
-  const g = new THREE.SphereGeometry(110, 24, 16);
+export function sky(scene: THREE.Scene, horizon: string, zenith: string, radius = 110) {
+  const g = new THREE.SphereGeometry(radius, 24, 16);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     fog: false,

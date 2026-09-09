@@ -4,11 +4,15 @@
  */
 import * as THREE from "three";
 import {
+  STOREY,
   YARD_SPEC,
+  buildingHeight,
   type ClimbDir,
   type CoverSpec,
+  type DoorWall,
   type LayoutSpec,
   type ThemeId,
+  type WallOpening,
 } from "./layout";
 
 export const STUDIO_STORE = "rifles-studio-spec";
@@ -17,6 +21,10 @@ export const GRID = 2;
 export type ToolId =
   | "building"
   | "loft"
+  | "third"
+  | "door"
+  | "wide"
+  | "window"
   | "crate"
   | "low"
   | "high"
@@ -30,9 +38,15 @@ export type ToolId =
   | "tree"
   | "erase";
 
+export type OpeningKind = "door" | "wide" | "window";
+
 export const TOOLS: { id: ToolId; key: string; label: string }[] = [
   { id: "building", key: "1", label: "Build" },
   { id: "loft", key: "2", label: "Loft" },
+  { id: "third", key: "F", label: "3F" },
+  { id: "door", key: "O", label: "Door" },
+  { id: "wide", key: "G", label: "Wide" },
+  { id: "window", key: "V", label: "Window" },
   { id: "crate", key: "3", label: "Crate" },
   { id: "low", key: "4", label: "Low" },
   { id: "high", key: "5", label: "High" },
@@ -46,6 +60,24 @@ export const TOOLS: { id: ToolId; key: string; label: string }[] = [
   { id: "tree", key: "T", label: "Tree" },
   { id: "erase", key: "X", label: "Erase" },
 ];
+
+export const BUILD_TOOLS: ToolId[] = ["building", "loft", "third"];
+export const OPENING_TOOLS: OpeningKind[] = ["door", "wide", "window"];
+
+export function isBuildTool(tool: ToolId) {
+  return BUILD_TOOLS.includes(tool);
+}
+
+export function isOpeningTool(tool: ToolId): tool is OpeningKind {
+  return OPENING_TOOLS.includes(tool as OpeningKind);
+}
+
+export const LOT_STEP = 8;
+export const LOT_MIN = { w: 40, d: 28 };
+export const LOT_MAX = { w: 160, d: 120 };
+export const BUILD_MIN = 6;
+export const BUILD_MAX = 80;
+export const DOOR_W = { door: 2.4, wide: 3.8, window: 1.8 };
 
 export const THEMES: ThemeId[] = ["dust", "winter", "harbor", "stone"];
 
@@ -127,16 +159,19 @@ export function place(
 
   if (tool === "erase") return eraseNear(next, gx, gz);
 
-  if (tool === "building" || tool === "loft") {
+  if (tool === "building" || tool === "loft" || tool === "third") {
+    const floors = tool === "third" ? 3 : tool === "loft" ? 2 : 1;
+    const stairs: DoorWall | undefined =
+      floors > 1 ? (dir === "+x" ? "e" : dir === "-x" ? "w" : dir === "+z" ? "n" : "s") : undefined;
     next.buildings = next.buildings ?? [];
     next.buildings.push({
       x: gx,
       z: gz,
       w: bw,
       d: bd,
-      floors: tool === "loft" ? 2 : 1,
-      doors: [{ wall: dir === "+x" ? "e" : dir === "-x" ? "w" : dir === "+z" ? "n" : "s" }],
-      stairs: tool === "loft" ? (dir === "+x" ? "e" : dir === "-x" ? "w" : dir === "+z" ? "n" : "s") : undefined,
+      floors,
+      doors: [],
+      stairs,
     });
     return next;
   }
@@ -184,7 +219,7 @@ export function place(
 export function eraseNear(spec: LayoutSpec, x: number, z: number, r = 3.2): LayoutSpec {
   const next = cloneSpec(spec);
   const hit = (ax: number, az: number) => near(x, z, ax, az, r);
-  const bi = (next.buildings ?? []).findIndex((b) => hit(b.x, b.z));
+  const bi = (next.buildings ?? []).findIndex((b) => Math.abs(x - b.x) <= b.w / 2 + 0.6 && Math.abs(z - b.z) <= b.d / 2 + 0.6);
   if (bi >= 0) {
     next.buildings!.splice(bi, 1);
     return next;
@@ -266,7 +301,12 @@ export async function postDraft(spec: LayoutSpec) {
 }
 
 export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number, number] {
-  if (tool === "building" || tool === "loft") return [bw, tool === "loft" ? 5.6 : 3.2, bd];
+  if (tool === "building") return [bw, 3.2, bd];
+  if (tool === "loft") return [bw, 5.6, bd];
+  if (tool === "third") return [bw, 8.4, bd];
+  if (tool === "door") return [2.4, 2.4, 0.28];
+  if (tool === "wide") return [3.8, 2.4, 0.28];
+  if (tool === "window") return [1.8, 1.3, 0.28];
   if (tool === "crate") return [1.4, 1.1, 1.4];
   if (tool === "low") return [2.4, 0.9, 0.7];
   if (tool === "high") return [0.7, 2.1, 2.6];
@@ -294,11 +334,13 @@ export type OrbitCam = {
 };
 
 export function defaultOrbit(bounds: LayoutSpec["bounds"]): OrbitCam {
+  const w = bounds.maxX - bounds.minX;
+  const d = bounds.maxZ - bounds.minZ;
   return {
     tx: (bounds.minX + bounds.maxX) / 2,
     ty: 0,
     tz: (bounds.minZ + bounds.maxZ) / 2,
-    dist: 58,
+    dist: Math.max(58, Math.hypot(w, d) * 0.72),
     theta: 0.58,
     phi: 0,
   };
@@ -334,9 +376,9 @@ export function panDrag(cam: OrbitCam, dx: number, dy: number) {
   cam.tz -= rz * dx * scale + fz * dy * scale;
 }
 
-export function zoomOrbit(cam: OrbitCam, deltaY: number) {
+export function zoomOrbit(cam: OrbitCam, deltaY: number, maxDist = 280) {
   const k = deltaY > 0 ? 1.12 : 1 / 1.12;
-  cam.dist = Math.max(14, Math.min(140, cam.dist * k));
+  cam.dist = Math.max(14, Math.min(maxDist, cam.dist * k));
 }
 
 export function turnYaw(yaw: number, steps = 1) {
@@ -382,6 +424,10 @@ export function makeStudioGrid(bounds: LayoutSpec["bounds"]) {
 export function toolFromCode(code: string): ToolId | null {
   if (code === "Digit1" || code === "Numpad1") return "building";
   if (code === "Digit2" || code === "Numpad2") return "loft";
+  if (code === "KeyF") return "third";
+  if (code === "KeyO" || code === "KeyD") return "door";
+  if (code === "KeyG") return "wide";
+  if (code === "KeyV") return "window";
   if (code === "Digit3" || code === "Numpad3") return "crate";
   if (code === "Digit4" || code === "Numpad4") return "low";
   if (code === "Digit5" || code === "Numpad5") return "high";
@@ -395,4 +441,191 @@ export function toolFromCode(code: string): ToolId | null {
   if (code === "KeyT") return "tree";
   if (code === "KeyX" || code === "Backspace") return "erase";
   return null;
+}
+
+export type WallHit = {
+  i: number;
+  wall: DoorWall;
+  at: number;
+  x: number;
+  y: number;
+  z: number;
+  floor: number;
+};
+
+export function growLot(spec: LayoutSpec, delta: number): LayoutSpec {
+  const next = cloneSpec(spec);
+  const b = next.bounds;
+  const w = b.maxX - b.minX + delta * 2;
+  const d = b.maxZ - b.minZ + delta * 2;
+  if (w < LOT_MIN.w || d < LOT_MIN.d || w > LOT_MAX.w || d > LOT_MAX.d) return spec;
+  next.bounds = {
+    minX: b.minX - delta,
+    maxX: b.maxX + delta,
+    minZ: b.minZ - delta,
+    maxZ: b.maxZ + delta,
+  };
+  return next;
+}
+
+export function clampBuildSize(n: number) {
+  return Math.max(BUILD_MIN, Math.min(BUILD_MAX, snap(Math.max(n, BUILD_MIN))));
+}
+
+export function floorsForTool(tool: ToolId): 1 | 2 | 3 {
+  if (tool === "third") return 3;
+  if (tool === "loft") return 2;
+  return 1;
+}
+
+export function nearestBuildingIndex(spec: LayoutSpec, x: number, z: number, r = 10) {
+  let best = -1;
+  let dist = r;
+  for (let i = 0; i < (spec.buildings ?? []).length; i++) {
+    const b = spec.buildings![i]!;
+    const hx = Math.max(Math.abs(x - b.x) - b.w / 2, 0);
+    const hz = Math.max(Math.abs(z - b.z) - b.d / 2, 0);
+    const n = Math.hypot(hx, hz);
+    if (n < dist) {
+      dist = n;
+      best = i;
+    }
+  }
+  return best;
+}
+
+export function resizeNearestBuilding(spec: LayoutSpec, x: number, z: number, dw: number, dd: number): LayoutSpec {
+  const i = nearestBuildingIndex(spec, x, z, 8);
+  if (i < 0) return spec;
+  const next = cloneSpec(spec);
+  const b = next.buildings![i]!;
+  b.w = clampBuildSize(b.w + dw);
+  b.d = clampBuildSize(b.d + dd);
+  return next;
+}
+
+export function placeBuildingRect(
+  spec: LayoutSpec,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  tool: ToolId,
+  yaw: number,
+): LayoutSpec {
+  const w = clampBuildSize(Math.abs(x1 - x0));
+  const d = clampBuildSize(Math.abs(z1 - z0));
+  return place(spec, isBuildTool(tool) ? tool : "building", (x0 + x1) / 2, (z0 + z1) / 2, { yaw, bw: w, bd: d });
+}
+
+function distToSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / len2));
+  const qx = ax + t * dx;
+  const qz = az + t * dz;
+  return { dist: Math.hypot(px - qx, pz - qz), x: qx, z: qz };
+}
+
+function wallSeg(b: { x: number; z: number; w: number; d: number }, wall: DoorWall) {
+  const x0 = b.x - b.w / 2;
+  const x1 = b.x + b.w / 2;
+  const z0 = b.z - b.d / 2;
+  const z1 = b.z + b.d / 2;
+  if (wall === "n") return { ax: x0, az: z1, bx: x1, bz: z1 };
+  if (wall === "s") return { ax: x0, az: z0, bx: x1, bz: z0 };
+  if (wall === "e") return { ax: x1, az: z0, bx: x1, bz: z1 };
+  return { ax: x0, az: z0, bx: x0, bz: z1 };
+}
+
+function atOnWall(b: { x: number; z: number }, wall: DoorWall, x: number, z: number) {
+  return wall === "n" || wall === "s" ? x - b.x : z - b.z;
+}
+
+export function nearestBuildingWall(spec: LayoutSpec, x: number, z: number, y = 0, maxDist = 6): WallHit | null {
+  let best: WallHit | null = null;
+  let dist = maxDist;
+  for (let i = 0; i < (spec.buildings ?? []).length; i++) {
+    const b = spec.buildings![i]!;
+    const floors = b.floors ?? 1;
+    const floor = floors === 1 ? 0 : Math.max(0, Math.min(floors - 1, Math.floor(y / STOREY)));
+    for (const wall of ["n", "s", "e", "w"] as DoorWall[]) {
+      const seg = wallSeg(b, wall);
+      const hit = distToSeg(x, z, seg.ax, seg.az, seg.bx, seg.bz);
+      if (hit.dist < dist) {
+        dist = hit.dist;
+        best = { i, wall, at: atOnWall(b, wall, hit.x, hit.z), x: hit.x, y: floor * STOREY, z: hit.z, floor };
+      }
+    }
+  }
+  return best;
+}
+
+export function pickBuildingWall(
+  spec: LayoutSpec,
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  maxDist = 10,
+): WallHit | null {
+  let best: WallHit | null = null;
+  let dist = maxDist;
+  for (let i = 0; i < (spec.buildings ?? []).length; i++) {
+    const b = spec.buildings![i]!;
+    const h = buildingHeight(b);
+    const x0 = b.x - b.w / 2;
+    const x1 = b.x + b.w / 2;
+    const z0 = b.z - b.d / 2;
+    const z1 = b.z + b.d / 2;
+    const faces: { wall: DoorWall; t: number; axis: "x" | "z" }[] = [];
+    if (Math.abs(dir.z) > 1e-4) {
+      faces.push({ wall: "n", t: (z1 - origin.z) / dir.z, axis: "z" });
+      faces.push({ wall: "s", t: (z0 - origin.z) / dir.z, axis: "z" });
+    }
+    if (Math.abs(dir.x) > 1e-4) {
+      faces.push({ wall: "e", t: (x1 - origin.x) / dir.x, axis: "x" });
+      faces.push({ wall: "w", t: (x0 - origin.x) / dir.x, axis: "x" });
+    }
+    for (const f of faces) {
+      if (f.t < 0.2 || f.t >= dist) continue;
+      const p = origin.clone().addScaledVector(dir, f.t);
+      if (p.y < 0.05 || p.y > h + 0.2) continue;
+      if (f.axis === "z" && (p.x < x0 - 0.05 || p.x > x1 + 0.05)) continue;
+      if (f.axis === "x" && (p.z < z0 - 0.05 || p.z > z1 + 0.05)) continue;
+      const floors = b.floors ?? 1;
+      const floor = floors === 1 ? 0 : Math.max(0, Math.min(floors - 1, Math.floor(p.y / STOREY)));
+      dist = f.t;
+      best = { i, wall: f.wall, at: atOnWall(b, f.wall, p.x, p.z), x: p.x, y: p.y, z: p.z, floor };
+    }
+  }
+  return best;
+}
+
+export function addOpening(spec: LayoutSpec, kind: OpeningKind, hit: WallHit): LayoutSpec {
+  const next = cloneSpec(spec);
+  const b = next.buildings?.[hit.i];
+  if (!b) return spec;
+  const width = DOOR_W[kind];
+  const along = hit.wall === "n" || hit.wall === "s" ? b.w : b.d;
+  const pad = width / 2 + 0.4;
+  const at = Math.max(-along / 2 + pad, Math.min(along / 2 - pad, Math.round(hit.at * 2) / 2));
+  const entry: WallOpening = { wall: hit.wall, at, width, floor: hit.floor };
+  const list = kind === "window" ? (b.windows ??= []) : (b.doors ??= []);
+  const dup = list.findIndex(
+    (o) => o.wall === hit.wall && (o.floor ?? 0) === hit.floor && Math.abs((o.at ?? 0) - at) < 0.8,
+  );
+  if (dup >= 0) list.splice(dup, 1, entry);
+  else list.push(entry);
+  if (kind !== "window" && (b.floors ?? 1) > 1) b.stairs = b.stairs ?? hit.wall;
+  return next;
+}
+
+export function openingPose(hit: WallHit, kind: OpeningKind) {
+  const w = DOOR_W[kind];
+  const h = kind === "window" ? 1.3 : 2.4;
+  const y =
+    kind === "window" ? hit.floor * STOREY + 1.7 : hit.floor * STOREY + h / 2;
+  const sx = hit.wall === "n" || hit.wall === "s" ? w : 0.28;
+  const sz = hit.wall === "e" || hit.wall === "w" ? w : 0.28;
+  return { x: hit.x, y, z: hit.z, sx, sy: h, sz };
 }

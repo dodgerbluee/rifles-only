@@ -9,7 +9,7 @@ The human **paints the lot**. You **finalize**. Do not start from a pile of `box
 
 ## Map studio
 
-Home (server list) → **Map studio**. Orbit/top-down paint editor — click and drag to stamp buildings, cover, sites, and spawns. Does not join a match. **Save for agent**.
+Home (server list) → **Map studio**. Orbit paint, drag to size buildings, Lot+/−, doors/windows, 2F/3F, and **Walk** to explore in first person. Does not join a match. **Save for agent**.
 
 That writes `feelbox/studio-draft.json` (and a download + localStorage). If that file exists, skip ASCII and start at **Finalize**.
 

@@ -1579,6 +1579,18 @@ body.studio.studio-nav #view {
   cursor: grab;
 }
 
+body.studio.studio-walk #crosshair {
+  display: block !important;
+}
+
+body.studio.studio-walk #view {
+  cursor: crosshair;
+}
+
+body.studio.studio-walk.playing #view {
+  cursor: none;
+}
+
 #studio-bar,
 #studio-tools {
   display: flex;
@@ -1611,7 +1623,8 @@ body.studio.studio-nav #view {
   font-size: 13px;
 }
 
-#studio-tools button.on {
+#studio-tools button.on,
+#studio-walk.on {
   border-color: #e8d9a8;
   color: #e8d9a8;
 }

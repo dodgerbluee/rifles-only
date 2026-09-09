@@ -8,14 +8,17 @@ import type { Site, World } from "../world";
 export type ThemeId = "winter" | "harbor" | "stone" | "dust";
 export type DoorWall = "n" | "s" | "e" | "w";
 
+export type WallOpening = { wall: DoorWall; at?: number; width?: number; floor?: number };
+
 export type BuildingSpec = {
   x: number;
   z: number;
   w: number;
   d: number;
   h?: number;
-  floors?: 1 | 2;
-  doors?: { wall: DoorWall; at?: number; width?: number }[];
+  floors?: 1 | 2 | 3;
+  doors?: WallOpening[];
+  windows?: WallOpening[];
   stairs?: DoorWall;
   mat?: "brick" | "plaster" | "wood" | "metal";
 };
@@ -96,33 +99,91 @@ function wallAlongZ(kit: Kit, x: number, z0: number, z1: number, y: number, h: n
   }
 }
 
-function doorGaps(b: BuildingSpec, wall: DoorWall) {
-  const along = wall === "n" || wall === "s" ? b.w : b.d;
-  const listed = (b.doors ?? []).filter((d) => d.wall === wall);
-  if (!listed.length) return [] as { c: number; w: number }[];
-  const mid = wall === "n" || wall === "s" ? b.x : b.z;
-  return listed.map((d) => ({
+export const STOREY = 2.88;
+const WIN_SILL = 1.05;
+const WIN_HEAD = 2.35;
+
+export function buildingHeight(b: BuildingSpec, wallH = 6.2) {
+  const floors = b.floors ?? 1;
+  if (floors === 1) return b.h ?? wallH - 0.4;
+  return floors * STOREY;
+}
+
+function alongOf(b: BuildingSpec, wall: DoorWall) {
+  return wall === "n" || wall === "s" ? b.w : b.d;
+}
+
+function midOf(b: BuildingSpec, wall: DoorWall) {
+  return wall === "n" || wall === "s" ? b.x : b.z;
+}
+
+function openingGaps(b: BuildingSpec, listed: WallOpening[] | undefined, wall: DoorWall, floor: number, fallbackW: number) {
+  const along = alongOf(b, wall);
+  const hits = (listed ?? []).filter((d) => d.wall === wall && (d.floor ?? 0) === floor);
+  if (!hits.length) return [] as { c: number; w: number }[];
+  const mid = midOf(b, wall);
+  return hits.map((d) => ({
     c: mid + (d.at ?? 0),
-    w: Math.min(along - 0.8, d.width ?? 2.4),
+    w: Math.min(along - 0.8, d.width ?? fallbackW),
   }));
 }
 
-function facingCenter(b: BuildingSpec, cx: number, cz: number): DoorWall {
+function doorGaps(b: BuildingSpec, wall: DoorWall, floor: number) {
+  return openingGaps(b, b.doors, wall, floor, 2.4);
+}
+
+function windowGaps(b: BuildingSpec, wall: DoorWall, floor: number) {
+  return openingGaps(b, b.windows, wall, floor, 1.8);
+}
+
+export function facingCenter(b: BuildingSpec, cx: number, cz: number): DoorWall {
   const dx = cx - b.x;
   const dz = cz - b.z;
   if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? "e" : "w";
   return dz > 0 ? "n" : "s";
 }
 
-function buildShell(kit: Kit, b: BuildingSpec, h: number, mat: THREE.Material, y0: number) {
+function wallBands(
+  along: (y: number, h: number, gaps: { c: number; w: number }[]) => void,
+  y0: number,
+  h: number,
+  doors: { c: number; w: number }[],
+  windows: { c: number; w: number }[],
+) {
+  if (!windows.length) {
+    along(y0, h, doors);
+    return;
+  }
+  const sill = Math.min(WIN_SILL, h * 0.45);
+  const head = Math.min(WIN_HEAD, Math.max(sill + 0.4, h * 0.82));
+  if (sill > 0.2) along(y0, sill, doors);
+  const midH = head - sill;
+  if (midH > 0.2) along(y0 + sill, midH, [...doors, ...windows]);
+  const topH = h - head;
+  if (topH > 0.2) along(y0 + head, topH, doors);
+}
+
+function buildStorey(kit: Kit, b: BuildingSpec, h: number, mat: THREE.Material, y0: number, floor: number, stairWall?: DoorWall) {
   const x0 = b.x - b.w / 2;
   const x1 = b.x + b.w / 2;
   const z0 = b.z - b.d / 2;
   const z1 = b.z + b.d / 2;
-  wallAlongX(kit, z1, x0, x1, y0, h, mat, doorGaps(b, "n"));
-  wallAlongX(kit, z0, x0, x1, y0, h, mat, doorGaps(b, "s"));
-  wallAlongZ(kit, x1, z0, z1, y0, h, mat, doorGaps(b, "e"));
-  wallAlongZ(kit, x0, z0, z1, y0, h, mat, doorGaps(b, "w"));
+  const walls: DoorWall[] = ["n", "s", "e", "w"];
+  for (const wall of walls) {
+    const doors = doorGaps(b, wall, floor);
+    if (floor > 0 && wall === stairWall) {
+      const mid = midOf(b, wall);
+      if (!doors.some((g) => Math.abs(g.c - mid) < 1.2)) doors.push({ c: mid, w: 2.4 });
+    }
+    const windows = windowGaps(b, wall, floor);
+    const along =
+      wall === "n" || wall === "s"
+        ? (y: number, hh: number, gaps: { c: number; w: number }[]) =>
+            wallAlongX(kit, wall === "n" ? z1 : z0, x0, x1, y, hh, mat, gaps)
+        : (y: number, hh: number, gaps: { c: number; w: number }[]) =>
+            wallAlongZ(kit, wall === "e" ? x1 : x0, z0, z1, y, hh, mat, gaps);
+    wallBands(along, y0, h, doors, windows);
+  }
 }
 
 function coverAt(kit: Kit, c: CoverSpec) {
@@ -170,7 +231,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   } else {
     scene.background = new THREE.Color(theme.bg);
     scene.fog = new THREE.Fog(theme.fog, 16, Math.max(42, Math.hypot(gw, gd) * 0.85));
-    sky(scene, theme.horizon, theme.zenith);
+    sky(scene, theme.horizon, theme.zenith, Math.max(110, Math.hypot(gw, gd) * 0.9 + 40));
   }
   scene.add(new THREE.HemisphereLight(clay ? 0xc4c0b8 : 0xc8c0b4, 0x3a3834, clay ? 0.95 : 0.9));
   const sun = new THREE.DirectionalLight(clay ? 0xddd8d0 : 0xe8e0d4, clay ? 0.85 : 0.7);
@@ -178,11 +239,12 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 2;
-  sun.shadow.camera.far = 120;
-  sun.shadow.camera.left = -52;
-  sun.shadow.camera.right = 52;
-  sun.shadow.camera.top = 42;
-  sun.shadow.camera.bottom = -42;
+  const span = Math.max(52, Math.max(gw, gd) * 0.55 + 8);
+  sun.shadow.camera.far = Math.max(120, Math.hypot(gw, gd) + 80);
+  sun.shadow.camera.left = -span;
+  sun.shadow.camera.right = span;
+  sun.shadow.camera.top = span * 0.8;
+  sun.shadow.camera.bottom = -span * 0.8;
   sun.shadow.bias = -0.0006;
   scene.add(sun);
 
@@ -193,24 +255,30 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   wallAlongZ(kit, maxX, minZ, maxZ, 0, H, rim, []);
   wallAlongZ(kit, minX, minZ, maxZ, 0, H, rim, []);
 
-  for (const raw of spec.buildings ?? []) {
-    const b: BuildingSpec = {
-      ...raw,
-      doors: raw.doors?.length ? raw.doors : [{ wall: facingCenter(raw, cx, cz) }],
-    };
+  for (const b of spec.buildings ?? []) {
     const mat = kit.mat(b.mat ?? theme.wall, b.w / 2, H / 2);
     const floors = b.floors ?? 1;
-    const story = b.h ?? (floors === 2 ? 2.9 : H - 0.4);
-    buildShell(kit, b, story, mat, 0);
-    if (floors === 2) {
-      kit.box(b.x, 2.8, b.z, b.w - T, 0.16, b.d - T, kit.mat("wood", b.w / 2, b.d / 2), true, true);
-      buildShell(kit, b, Math.max(2.4, story - 1.2), mat, 2.88);
-      const side = b.stairs ?? b.doors![0]!.wall;
+    const stairWall = floors > 1 ? (b.stairs ?? facingCenter(b, cx, cz)) : undefined;
+    if (floors === 1) {
+      buildStorey(kit, b, b.h ?? H - 0.4, mat, 0, 0);
+    } else {
+      for (let f = 0; f < floors; f++) {
+        const y0 = f * STOREY;
+        buildStorey(kit, b, STOREY - (f < floors - 1 ? 0.08 : 0), mat, y0, f, stairWall);
+        if (f < floors - 1) {
+          kit.box(b.x, y0 + STOREY - 0.08, b.z, b.w - T, 0.16, b.d - T, kit.mat("wood", b.w / 2, b.d / 2), true, true);
+        }
+      }
+      const side = stairWall!;
       const out = 1.1 + (side === "n" || side === "s" ? b.d / 2 : b.w / 2);
       const dir = side === "n" ? "-z" : side === "s" ? "+z" : side === "e" ? "-x" : "+x";
-      const sx = side === "e" || side === "w" ? b.x + (side === "e" ? out : -out) : b.x;
-      const sz = side === "n" || side === "s" ? b.z + (side === "n" ? out : -out) : b.z;
-      kit.climb(sx, sz, dir, 2.8, 2.2, 0);
+      const along = side === "n" || side === "s" ? "x" : "z";
+      for (let flight = 0; flight < floors - 1; flight++) {
+        const shift = (flight - (floors - 2) / 2) * 2.6;
+        const sx = along === "x" ? b.x + shift : b.x + (side === "e" ? out : -out);
+        const sz = along === "z" ? b.z + shift : b.z + (side === "n" ? out : -out);
+        kit.climb(sx, sz, dir, 2.8, 2.2, flight * 2.8);
+      }
     }
   }
 
