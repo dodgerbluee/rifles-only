@@ -92,11 +92,23 @@ export function stepWalkFromPos(root: THREE.Group, x: number, z: number, moving:
   stepWalk(root, dist, moving && dist > 0.003);
 }
 
+/** Gait advance per metre. Left plant at sin peak (π/2), right at trough (3π/2). */
+export const GAIT_PER_DIST = 2.2;
+export type Stride = "left" | "right";
+
+export function consumeStride(prev: number, next: number): Stride | null {
+  if (!(next > prev)) return null;
+  const cycle = Math.PI * 2;
+  if (Math.floor((next - Math.PI / 2) / cycle) > Math.floor((prev - Math.PI / 2) / cycle)) return "left";
+  if (Math.floor((next - Math.PI * 1.5) / cycle) > Math.floor((prev - Math.PI * 1.5) / cycle)) return "right";
+  return null;
+}
+
 export function stepWalk(root: THREE.Group, dist: number, moving: boolean) {
   const rig = root.userData.walk as WalkRig | null | undefined;
   if (!rig) return;
   let gait = Number(root.userData.gait) || 0;
-  if (moving) gait += dist * 2.2;
+  if (moving) gait += dist * GAIT_PER_DIST;
   root.userData.gait = gait;
   poseWalk(rig, gait, moving, root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined);
 }

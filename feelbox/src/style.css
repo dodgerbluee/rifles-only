@@ -776,41 +776,82 @@ body.dead:not(.bestplay) #hitmark {
 
 #server-list[hidden],
 #join-team[hidden],
-#join-status[hidden] {
+#join-status[hidden],
+#join-team-pick[hidden] {
   display: none !important;
 }
 
 #join-team {
-  margin-top: auto;
-  padding: 12px 0 8px;
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 28px;
+  background: #0e0e0c;
+  text-align: center;
 }
 
 #join-team .join-kicker {
+  margin: 0;
   color: #e6dfd0;
   font-weight: 650;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  font-size: 18px;
 }
 
 #join-team .join-ask {
-  color: #8d8676;
+  display: none;
+}
+
+#join-team.pick .join-kicker,
+#join-team.pick #join-status {
+  display: none !important;
+}
+
+#join-team.pick .join-ask {
+  display: block;
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  color: #f4eee2;
   font-size: 13px;
-  margin: 4px 0 10px !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
 #join-cancel {
-  margin-top: 10px;
+  z-index: 2;
+  margin: 8px 0 0;
   background: transparent;
   color: #8d8676;
   border: 0;
-  padding: 6px 0;
+  padding: 8px 14px;
   cursor: pointer;
   letter-spacing: 0.08em;
 }
 
-#join-team-pick {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-start;
+#join-team.pick #join-cancel {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: #f4eee2;
+  background: rgba(8, 8, 6, 0.45);
+  border-radius: 4px;
+}
+
+body.started #join-team {
+  display: none !important;
 }
 
 .bind {
@@ -1014,7 +1055,6 @@ body.admin #admin {
 
 #admin-player,
 .admin-row button,
-#admin-studio,
 #settings input[type="text"] {
   width: 100%;
   margin: 6px 0 0;
@@ -1088,6 +1128,24 @@ body.settings #settings {
   width: 100%;
 }
 
+#home-studio {
+  margin: 8px 0 0;
+  background: #1c1e18;
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 12px 14px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  font-weight: 650;
+}
+
+#home-studio:hover {
+  border-color: #e8d9a8;
+}
+
 #server-list .server-row {
   display: grid;
   grid-template-columns: 1.4fr 1fr 70px 80px auto;
@@ -1141,12 +1199,11 @@ body.settings #settings {
 }
 
 #join-status {
-  margin: 10px auto 0;
+  margin: 0;
   min-height: 1.35em;
-  max-width: 560px;
   color: #e8d9a8;
   letter-spacing: 0.08em;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 #join-status.busy::after {
@@ -1193,19 +1250,97 @@ body.settings #settings {
   color: #e8d9a8;
 }
 
-#join-team-pick,
+#join-team-pick {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+}
+
+#join-team-pick button.team-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  cursor: pointer;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+#join-team-pick button[data-team="ember"] {
+  background: #b24a18;
+  color: #f6e6d4;
+}
+
+#join-team-pick button[data-team="stone"] {
+  background: #2a68a8;
+  color: #e4eef8;
+}
+
+#join-team-pick button.team-side:hover {
+  filter: brightness(1.08);
+}
+
+#join-team-pick .team-name {
+  font-size: 28px;
+  font-weight: 650;
+}
+
+#join-team-pick .team-fig {
+  position: relative;
+  width: 72px;
+  height: 148px;
+  color: inherit;
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.35));
+}
+
+#join-team-pick .team-fig::before,
+#join-team-pick .team-fig::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  background: currentColor;
+}
+
+#join-team-pick .team-fig::before {
+  top: 0;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  border-radius: 50%;
+  opacity: 0.92;
+}
+
+#join-team-pick .team-fig::after {
+  top: 26px;
+  width: 38px;
+  height: 86px;
+  margin-left: -19px;
+  border-radius: 18px 18px 10px 10px;
+  opacity: 0.88;
+}
+
+#join-team-pick button[data-team="ember"] .team-fig {
+  color: #7a3010;
+}
+
+#join-team-pick button[data-team="stone"] .team-fig {
+  color: #1a4a80;
+}
+
 #set-team {
   display: flex;
   gap: 8px;
   justify-content: flex-start;
-  margin: 4px 0 8px;
-}
-
-#set-team {
   margin: 0;
 }
 
-#join-team-pick button,
 #set-team button {
   background: #2a2c24;
   color: #e6dfd0;
@@ -1215,13 +1350,11 @@ body.settings #settings {
   letter-spacing: 0.08em;
 }
 
-#join-team-pick button[data-team="ember"].on,
 #set-team button[data-team="ember"].on {
   border-color: #c45a3a;
   color: #f0a090;
 }
 
-#join-team-pick button[data-team="stone"].on,
 #set-team button[data-team="stone"].on {
   border-color: #6a90b4;
   color: #a8c8e0;
@@ -1410,6 +1543,7 @@ body.studio #studio {
 body.studio #match-bar,
 body.studio #round-tag,
 body.studio #killfeed,
+body.studio #hud-left,
 body.studio #hud-right,
 body.studio #crosshair,
 body.studio #death,
@@ -1419,10 +1553,20 @@ body.studio #cook-bar,
 body.studio #spec,
 body.studio #round-result,
 body.studio #start,
+body.studio #join-team,
 body.studio #roster,
 body.studio #join-note,
-body.studio #vitals {
+body.studio #vitals,
+body.studio #open-settings {
   display: none !important;
+}
+
+body.studio #view {
+  cursor: crosshair;
+}
+
+body.studio.studio-nav #view {
+  cursor: grab;
 }
 
 #studio-bar,

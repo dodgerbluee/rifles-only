@@ -1,5 +1,5 @@
 /**
- * Planting must charge, then the fuse clock has to tick while the Wire is live.
+ * Planting must charge, then the fuse clock has to tick while the Bomb is live.
  */
 import { createMatch, formatTime, plantedTag, plantWire, tickMatch } from "../src/match.ts";
 import { tuning } from "../src/tuning.ts";
@@ -32,6 +32,7 @@ check("finished plant goes live", match.phase === "planted", `phase=${match.phas
 check("fuse starts at the full timer", Math.abs(match.bombTime - tuning.fuse) < 0.05, `bomb=${match.bombTime}`);
 
 const tag = plantedTag(match);
+check("planted tag says Bomb live", tag.startsWith("Bomb live"), `tag=${tag}`);
 check("planted tag is the fuse without a site name", tag.includes(formatTime(match.bombTime)) && !/Ice|Slip/.test(tag), `tag=${tag}`);
 
 const before = match.bombTime;

@@ -20,12 +20,19 @@ check("aimed kill is labeled aimed", killWayLabel("aimed") === "aimed");
 check("hip fire is labeled no scope", killWayLabel("noscope") === "no scope");
 check("frag is labeled nade", killWayLabel("nade") === "nade");
 check("melee is labeled knife", killWayLabel("knife") === "knife");
-check("detonation is labeled wire", killWayLabel("bomb") === "wire");
+check("detonation is labeled bomb", killWayLabel("bomb") === "bomb");
 check("admin cow is labeled cow'd", killWayLabel("cow") === "cow'd");
 check("aimed headshot names both", killWayLabel("aimed", true) === "aimed headshot");
-check("aimed icon is a scope ring", killWayIcons("aimed").html.includes("circle"));
+const aimedKar = killWayIcons("aimed").html;
+const aimedMosin = killWayIcons("aimed", false, "mosin").html;
+const noscope = killWayIcons("noscope").html;
+const nade = killWayIcons("nade").html;
+check("aimed icon is kar U-notch, not a scope ring", aimedKar.includes("M4.2 5.4") && aimedKar.includes("M10 4") && !aimedKar.includes("circle"));
+check("aimed mosin is a peep ring", aimedMosin.includes("circle"));
+check("noscope icon has crosshair lines", noscope.includes("M10 2.2") && noscope.includes("M2.2 10") && noscope.includes("h5.4"));
 check("headshot icon includes a bullet path", killWayIcons("noscope", true).html.includes("M18 6.2"));
-check("nade icon is not text", !killWayIcons("nade").html.includes("nade"));
+check("nade icon is not text", !nade.includes("nade"));
+check("nade icon is a pineapple frag", nade.includes("3.6-2.15") && nade.includes("circle"));
 check(
   "taken bot shows bot then player",
   actorTag("Cal", "Reed") === "Cal (Reed)",
@@ -36,11 +43,13 @@ const planted = createMatch({ claimLocal: true });
 planted.phase = "live";
 plantWire(planted, "loft", -9, 3.4, 20.5);
 const tag = plantedTag(planted);
+check("planted tag says Bomb live", tag.startsWith("Bomb live"), `tag=${tag}`);
 check(
   "planted copy omits the site name",
   tag.includes(formatTime(planted.bombTime)) && !/Ice|Slip/.test(tag),
   `tag=${tag}`,
 );
+check("bomb icon is a satchel", killWayIcons("bomb").html.includes("rect"));
 
 const a = { ...line(1) };
 noteKill(1, 2, 1);

@@ -143,6 +143,7 @@ export function updateHud(opts: {
   bots: { x: number; z: number; team: string; hp: number }[];
   youTeam?: string;
   minimapEnemies?: boolean;
+  bomb?: { x: number; z: number; mode: "carried" | "ground" | "planted" };
   world: World;
   smokes: number;
   smokeMax: number;
@@ -201,6 +202,7 @@ export function updateHud(opts: {
   drawMinimap(opts.world, opts.x, opts.z, opts.yaw, opts.bots, alive, opts.clouds, opts.air, {
     youTeam: opts.youTeam,
     enemies: opts.minimapEnemies !== false,
+    bomb: opts.bomb,
   });
 }
 
@@ -213,7 +215,7 @@ function drawMinimap(
   alive: boolean,
   clouds: { x: number; z: number; radius: number; opacity: number }[],
   air: { x: number; z: number }[] = [],
-  radar?: { youTeam?: string; enemies?: boolean },
+  radar?: { youTeam?: string; enemies?: boolean; bomb?: { x: number; z: number; mode: "carried" | "ground" | "planted" } },
 ) {
   const dpr = Math.min(2, devicePixelRatio || 1);
   if (mapCanvas.width !== MAP_W * dpr) {
@@ -287,6 +289,11 @@ function drawMinimap(
     mapCtx.fillRect(p.x - 2.4, p.y - 2.4, 4.8, 4.8);
   }
 
+  const bomb = radar?.bomb;
+  if (bomb && (bomb.mode === "ground" || bomb.mode === "planted")) {
+    drawBombMarker(to(bomb.x, bomb.z), bomb.mode);
+  }
+
   const me = to(px, pz);
   mapCtx.save();
   mapCtx.translate(me.x, me.y);
@@ -304,6 +311,39 @@ function drawMinimap(
   mapCtx.strokeStyle = "rgba(232,217,168,0.35)";
   mapCtx.lineWidth = 1;
   mapCtx.strokeRect(0.5, 0.5, MAP_W - 1, MAP_H - 1);
+}
+
+function drawBombMarker(p: { x: number; y: number }, mode: "ground" | "planted") {
+  const hz = mode === "planted" ? 2.8 : 1.35;
+  const wave = 0.5 + 0.5 * Math.sin((performance.now() / 1000) * hz * Math.PI * 2);
+  const glow = 6.2 + wave * 3.4;
+  mapCtx.beginPath();
+  mapCtx.arc(p.x, p.y, glow, 0, Math.PI * 2);
+  mapCtx.fillStyle = `rgba(255, 72, 28, ${0.16 + wave * 0.28})`;
+  mapCtx.fill();
+
+  mapCtx.beginPath();
+  mapCtx.moveTo(p.x, p.y - 6.4);
+  mapCtx.lineTo(p.x + 5.4, p.y);
+  mapCtx.lineTo(p.x, p.y + 6.4);
+  mapCtx.lineTo(p.x - 5.4, p.y);
+  mapCtx.closePath();
+  mapCtx.fillStyle = mode === "planted" ? "#ff3a18" : "#ff7a20";
+  mapCtx.fill();
+  mapCtx.strokeStyle = "#1a100c";
+  mapCtx.lineWidth = 1.3;
+  mapCtx.stroke();
+
+  mapCtx.beginPath();
+  mapCtx.moveTo(p.x, p.y - 6.4);
+  mapCtx.lineTo(p.x + 1.6, p.y - 10.2);
+  mapCtx.strokeStyle = "#f2e2b0";
+  mapCtx.lineWidth = 1.6;
+  mapCtx.stroke();
+  mapCtx.beginPath();
+  mapCtx.arc(p.x + 1.8, p.y - 10.6, 1.35, 0, Math.PI * 2);
+  mapCtx.fillStyle = wave > 0.55 ? "#ffe8a0" : "#ff4a20";
+  mapCtx.fill();
 }
 
 export function updateMatchHud(m: Match, prompt: string, extra?: { nextMap?: string }) {
@@ -420,7 +460,7 @@ export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {
     killer.className = `who${k.killerTeam ? ` ${k.killerTeam}` : ""}`;
     killer.textContent = k.killerName;
     const way = document.createElement("span");
-    const mark = killWayIcons(k.way, k.head);
+    const mark = killWayIcons(k.way, k.head, k.rifle);
     way.className = `sep way${k.way ? ` ${k.way}` : ""}${k.head ? " head" : ""}`;
     way.setAttribute("aria-label", mark.label);
     way.title = mark.label;

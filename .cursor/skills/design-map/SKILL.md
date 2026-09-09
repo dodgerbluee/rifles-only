@@ -5,11 +5,11 @@ description: Design and implement Rifles Only maps through a compact LayoutSpec 
 
 # Design a map
 
-The human **builds in-game**. You **finalize**. Do not start from a pile of `box()` calls.
+The human **paints the lot**. You **finalize**. Do not start from a pile of `box()` calls.
 
-## In-game studio
+## Map studio
 
-Admin (` or F10) → **Map studio**. Walk the empty lot, stamp buildings/cover/sites/spawns, **Save for agent**.
+Home (server list) → **Map studio**. Orbit/top-down paint editor — click and drag to stamp buildings, cover, sites, and spawns. Does not join a match. **Save for agent**.
 
 That writes `feelbox/studio-draft.json` (and a download + localStorage). If that file exists, skip ASCII and start at **Finalize**.
 

@@ -95,13 +95,15 @@
         <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
       </div>
       <div id="server-list"></div>
+      <button type="button" id="home-studio">Map studio</button>
+    </div>
+
+    <div id="join-team" hidden>
+      <p class="join-kicker">Joining <span id="join-who">the match</span></p>
       <p id="join-status" hidden></p>
-      <div id="join-team" hidden>
-        <p class="join-kicker">Join <span id="join-who">the match</span></p>
-        <p class="join-ask">Pick a side</p>
-        <div id="join-team-pick"></div>
-        <button type="button" id="join-cancel">Back</button>
-      </div>
+      <p class="join-ask">Pick a side</p>
+      <div id="join-team-pick" hidden></div>
+      <button type="button" id="join-cancel">Back</button>
     </div>
 
     <div id="settings">
@@ -167,12 +169,12 @@
           <option value="harbor">Harbor</option>
           <option value="stone">Stone</option>
         </select>
-        <button type="button" id="studio-fly">Walk</button>
+        <button type="button" id="studio-turn">Turn</button>
         <button type="button" id="studio-save">Save for agent</button>
         <button type="button" id="studio-leave">Leave</button>
       </div>
       <div id="studio-tools"></div>
-      <p id="studio-hint">LMB place · RMB erase · [ ] size · F fly · look and stamp the lot, then Save</p>
+      <p id="studio-hint">LMB paint · drag to stamp · scroll zoom · RMB orbit · MMB pan · [ ] size · R turn · Esc leave</p>
       <p id="studio-status"></p>
     </div>
     <div id="bestplay">
@@ -218,8 +220,6 @@
         <button type="button" id="admin-kick">Kick</button>
         <button type="button" id="admin-cow">Cow</button>
       </div>
-      <button type="button" id="admin-studio">Map studio</button>
-
       <p class="admin-kicker sub">Feel</p>
       <div id="admin-knobs"></div>
       <p class="admin-hint">Unlimited bots. Cow: flaming, no weapons, explodes in 5s. ` or F10 closes.</p>

@@ -250,13 +250,14 @@ export function createSim(opts?: {
     roundKills.push({
       t: time,
       killerId: killer,
-      killerName: bomb ? "Wire" : cowed ? "Cow" : actorName(killerId),
+      killerName: bomb ? "Bomb" : cowed ? "Cow" : actorName(killerId),
       killerTeam: bomb || cowed ? undefined : slotById(match, killerId)?.team ?? slotById(match, killer)?.team,
       victimId: victim,
       victimName: actorName(victimId, victimName),
       victimTeam: slotById(match, victimId)?.team ?? slotById(match, victim)?.team,
       way,
       head,
+      rifle: way === "aimed" || way === "noscope" ? rifleOf(killerId) : undefined,
     });
   }
 
@@ -269,6 +270,18 @@ export function createSim(opts?: {
     const bot = bots.find((b) => b.id === shooterId);
     if (bot?.aim) return "aimed";
     return "noscope";
+  }
+
+  function rifleOf(id: number): "kar" | "mosin" | undefined {
+    const r = [...remotes.values()].find((x) => x.slotId === id || x.homeId === id);
+    if (r) {
+      if (r.weapon === "mosin") return "mosin";
+      if (r.weapon === "kar" || r.weapon === "rifle") return "kar";
+      return undefined;
+    }
+    const bot = bots.find((b) => b.id === id);
+    if (bot) return bot.id % 2 === 0 ? "kar" : "mosin";
+    return undefined;
   }
 
   function hurtRemote(r: Remote, dmg: number, killerId: number, way?: KillWay, head = false) {

@@ -323,21 +323,21 @@ export function tickMatch(
     m.timeLeft -= dt;
     const planters = ctx.living(plantingTeam(m));
     const watchers = ctx.living(watchingTeam(m));
-    if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to watch the Wire");
+    if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to watch the Bomb");
     if (planters <= 0 && m.wire.mode !== "planted")
-      return finish(m, watchingTeam(m), "The Wire never left the dock");
-    if (m.timeLeft <= 0) return finish(m, watchingTeam(m), "Time died. The Wire never sat");
+      return finish(m, watchingTeam(m), "The Bomb never left the dock");
+    if (m.timeLeft <= 0) return finish(m, watchingTeam(m), "Time died. The Bomb never sat");
   }
 
   if (m.phase === "planted") {
     m.bombTime -= dt;
     if (m.bombTime <= 0) {
       ctx.onDetonate?.(m.wire.x, m.wire.y, m.wire.z);
-      return finish(m, plantingTeam(m), "The Wire ran out");
+      return finish(m, plantingTeam(m), "The Bomb ran out");
     }
     const watchers = ctx.living(watchingTeam(m));
     if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to cut");
-    if (m.wire.cutHold >= tuning.cut) return finish(m, watchingTeam(m), "The Wire was cut");
+    if (m.wire.cutHold >= tuning.cut) return finish(m, watchingTeam(m), "The Bomb was cut");
   }
 
   const people =
@@ -378,7 +378,7 @@ export function tickMatch(
     }
     if (cutting) {
       m.wire.cutHold += dt;
-      if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Wire was cut");
+      if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Bomb was cut");
     }
   }
 }
@@ -456,5 +456,5 @@ export function siteCall(site: SiteId | "ice" | "slip" | null | undefined) {
 }
 
 export function plantedTag(m: Match) {
-  return `Wire live · ${formatTime(m.bombTime)}`;
+  return `Bomb live · ${formatTime(m.bombTime)}`;
 }

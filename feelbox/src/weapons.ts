@@ -229,23 +229,59 @@ export function makeMosin(): RifleView {
   return { id: "mosin", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
+/** One open balisong handle: U-channel rails, spacers, pivot knuckles. `z` is half-thickness. */
+function baliHandle(parent: THREE.Group, z: number, dark: THREE.Material, accent: THREE.Material) {
+  const railW = 0.0054;
+  const railT = 0.0056;
+  const x = 0.013;
+  part(parent, -x, -0.078, z, railW, 0.122, railT, dark);
+  part(parent, x, -0.078, z, railW, 0.122, railT, dark);
+  for (const sy of [-0.028, -0.074, -0.12]) {
+    part(parent, 0, sy, z, x * 2 + 0.003, 0.0085, railT * 0.88, accent);
+  }
+  part(parent, 0, -0.152, z, 0.033, 0.016, railT * 1.2, dark);
+  place(parent, cylZ(0.0056, railT * 1.08, dark, 8), -0.007, 0.004, z);
+  place(parent, cylZ(0.0056, railT * 1.08, dark, 8), 0.007, 0.004, z);
+}
+
 export function makeKnife(): THREE.Group {
   const root = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: 0xd8dce4, roughness: 0.14, metalness: 0.92 });
-  const edge = new THREE.MeshStandardMaterial({ color: 0xf7f8fc, roughness: 0.06, metalness: 0.98 });
-  const wrap = new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.9, metalness: 0.04 });
-  const brass = new THREE.MeshStandardMaterial({ color: 0xc49a48, roughness: 0.32, metalness: 0.72 });
-  part(root, 0, -0.09, 0, 0.028, 0.11, 0.022, wrap);
-  part(root, 0, -0.148, 0, 0.032, 0.026, 0.026, brass);
-  part(root, 0, 0.008, 0, 0.09, 0.012, 0.028, brass);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.26, 0.006), steel);
-  blade.position.set(0, 0.15, 0);
-  root.add(blade);
-  const clip = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.07, 0.006), steel);
-  clip.position.set(0.004, 0.3, 0);
-  clip.rotation.z = 0.55;
-  root.add(clip);
-  part(root, 0.02, 0.16, 0, 0.004, 0.24, 0.007, edge);
+  const bright = new THREE.MeshStandardMaterial({ color: 0xe4e7ee, roughness: 0.12, metalness: 0.96 });
+  const edge = new THREE.MeshStandardMaterial({ color: 0xf7f8fc, roughness: 0.05, metalness: 0.98 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.38, metalness: 0.82 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x4a4e56, roughness: 0.28, metalness: 0.88 });
+  const pin = new THREE.MeshStandardMaterial({ color: 0xc5c9d2, roughness: 0.16, metalness: 0.94 });
+  const voidMat = new THREE.MeshStandardMaterial({ color: 0x07080a, roughness: 1, metalness: 0 });
+
+  part(root, 0, 0.02, 0, 0.022, 0.032, 0.0042, bright);
+  part(root, 0, 0.105, 0, 0.026, 0.14, 0.0036, bright);
+  const spear = new THREE.Mesh(new THREE.ConeGeometry(0.0135, 0.09, 6), bright);
+  spear.scale.set(1, 1, 0.2);
+  spear.position.set(0, 0.218, 0);
+  root.add(spear);
+  part(root, 0.0122, 0.11, 0, 0.0026, 0.14, 0.004, edge);
+
+  const holeY = 0.062;
+  const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.0084, 0.0084, 0.007, 16), voidMat);
+  hole.rotation.x = Math.PI / 2;
+  hole.position.set(0, holeY, 0);
+  root.add(hole);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.0088, 0.0013, 6, 20), pin);
+  rim.position.set(0, holeY, 0);
+  root.add(rim);
+
+  baliHandle(root, 0.0062, dark, accent);
+  baliHandle(root, -0.0062, dark, accent);
+
+  part(root, 0, -0.148, -0.01, 0.016, 0.028, 0.004, accent);
+  part(root, 0.011, -0.14, -0.005, 0.018, 0.008, 0.004, accent);
+
+  place(root, cylZ(0.0038, 0.024, pin, 8), -0.007, 0.004, 0);
+  place(root, cylZ(0.0038, 0.024, pin, 8), 0.007, 0.004, 0);
+  for (const sy of [-0.028, -0.074, -0.12]) {
+    place(root, cylZ(0.0018, 0.02, pin, 6), 0, sy, 0);
+  }
+
   root.position.set(0.3, -0.3, -0.22);
   return root;
 }

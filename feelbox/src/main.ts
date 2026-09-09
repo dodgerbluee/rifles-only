@@ -63,16 +63,25 @@ import {
 import { bindAdmin, rules } from "./admin";
 import {
   TOOLS,
-  aimGround,
+  applyOrbit,
   blankSpec,
+  canvasNdc,
+  cellKey,
+  defaultOrbit,
   downloadSpec,
   ghostSize,
   loadStored,
+  makeStudioGrid,
+  orbitDrag,
+  panDrag,
+  pickGround,
   place,
   postDraft,
   saveStored,
   snap,
   toolFromCode,
+  turnYaw,
+  zoomOrbit,
   type ToolId,
 } from "./maps/studio";
 import { buildPawn, pawnStyle, poseStance, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
@@ -114,6 +123,7 @@ import {
   RIFLES,
   type RifleId,
 } from "./weapons";
+import { makeBomb } from "./bomb";
 import {
   clearFire,
   consumeFire,
@@ -137,6 +147,7 @@ import {
   type Remote,
 } from "./peers";
 import { prefs, savePrefs } from "./prefs";
+import { setStepVolume, tickSteps } from "./steps";
 import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
 import { jumpSpeed, tuning } from "./tuning";
 
@@ -169,7 +180,7 @@ let mapId: MapId = "wharf";
 let world = buildMap(scene, mapId);
 const studioGhost = new THREE.Mesh(
   new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshBasicMaterial({ color: 0xe8d9a8, transparent: true, opacity: 0.32, depthWrite: false }),
+  new THREE.MeshBasicMaterial({ color: 0xc8c4bc, transparent: true, opacity: 0.38, depthWrite: false }),
 );
 studioGhost.visible = false;
 studioGhost.frustumCulled = false;
@@ -178,9 +189,16 @@ const studio = {
   on: false,
   spec: blankSpec(),
   tool: "building" as ToolId,
-  fly: false,
   bw: 12,
   bd: 10,
+  cam: defaultOrbit(blankSpec().bounds),
+  faceYaw: 0,
+  mx: innerWidth / 2,
+  my: innerHeight / 2,
+  painting: false,
+  orbiting: false,
+  panning: false,
+  lastCell: "",
 };
 const match = createMatch();
 {
@@ -239,7 +257,7 @@ function bindNet(handle: NetHandle) {
   });
   handle.onRole((role) => {
     if (role === "client") lastBeat = performance.now();
-    if (role === "client" && prefs.team) {
+    if (role === "client" && prefs.team && document.body.classList.contains("started")) {
       handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
     }
     paintJoin();
@@ -250,29 +268,25 @@ function bindNet(handle: NetHandle) {
 }
 
 let joiningName = "";
-let pendingJoin = "";
 
 function joinPanel() {
   return document.querySelector<HTMLElement>("#join-team");
 }
 
-function showJoinTeam(name: string) {
-  pendingJoin = name;
-  joiningName = name;
-  const who = document.querySelector("#join-who");
-  if (who) who.textContent = name;
-  const panel = joinPanel();
-  if (panel) panel.hidden = false;
-  const list = document.querySelector<HTMLElement>("#server-list");
-  if (list) list.hidden = true;
-}
-
 function hideJoinTeam() {
-  pendingJoin = "";
   const panel = joinPanel();
-  if (panel) panel.hidden = true;
+  if (panel) {
+    panel.hidden = true;
+    panel.classList.remove("pick");
+  }
+  const pick = document.querySelector<HTMLElement>("#join-team-pick");
+  if (pick) pick.hidden = true;
   const list = document.querySelector<HTMLElement>("#server-list");
   if (list) list.hidden = false;
+}
+
+function awaitingTeamPick() {
+  return net.role === "client" && !document.body.classList.contains("started");
 }
 
 function joinGame(name?: string) {
@@ -281,16 +295,15 @@ function joinGame(name?: string) {
     return;
   }
   if (net.role === "client") {
-    enterPlay();
+    if (document.body.classList.contains("started")) enterPlay();
+    else paintJoin();
     return;
   }
   if (name) joiningName = name;
-  hideJoinTeam();
   lastBeat = performance.now();
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
-  enterPlay();
   paintJoin();
 }
 
@@ -303,8 +316,11 @@ function enterPlay() {
 function leaveToLobby() {
   if (studio.on) {
     studio.on = false;
+    studio.painting = false;
+    studio.orbiting = false;
+    studio.panning = false;
     studioGhost.visible = false;
-    document.body.classList.remove("studio");
+    document.body.classList.remove("studio", "studio-nav");
   }
   net.destroy();
   net = idleNet();
@@ -321,24 +337,36 @@ function leaveToLobby() {
 
 function paintJoin() {
   const el = document.querySelector<HTMLElement>("#join-status");
-  const list = document.querySelector("#server-list");
-  if (!el) return;
-  el.classList.remove("busy", "ok");
-  if (net.status === "connecting") {
-    const who = joiningName || "the game";
-    const tryN = net.attempt > 1 ? ` · try ${net.attempt}` : "";
-    el.textContent = `Connecting to ${who}${tryN}`;
-    el.classList.add("busy");
-    el.hidden = false;
-  } else {
-    el.textContent = "";
-    el.hidden = true;
+  const list = document.querySelector<HTMLElement>("#server-list");
+  const pick = document.querySelector<HTMLElement>("#join-team-pick");
+  const panel = joinPanel();
+  const who = joiningName || "the game";
+  const whoEl = document.querySelector("#join-who");
+  if (whoEl) whoEl.textContent = who;
+  if (el) {
+    el.classList.remove("busy", "ok");
+    if (net.status === "connecting") {
+      const tryN = net.attempt > 1 ? ` · try ${net.attempt}` : "";
+      el.textContent = `Connecting to ${who}${tryN}`;
+      el.classList.add("busy");
+      el.hidden = false;
+    } else {
+      el.textContent = "";
+      el.hidden = true;
+    }
+  }
+  const connecting = net.status === "connecting";
+  const picking = awaitingTeamPick();
+  if (list) list.hidden = connecting || picking;
+  if (pick) pick.hidden = !picking;
+  if (panel) {
+    panel.hidden = !connecting && !picking;
+    panel.classList.toggle("pick", picking);
   }
   if (!list) return;
   for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
-    const busy = net.status === "connecting";
-    row.classList.toggle("busy", busy);
-    row.disabled = busy || row.dataset.offline === "1";
+    row.classList.toggle("busy", connecting);
+    row.disabled = connecting || row.dataset.offline === "1";
   }
 }
 
@@ -604,18 +632,15 @@ function paintStudio() {
   tools.querySelectorAll("button").forEach((b) => {
     b.classList.toggle("on", (b as HTMLButtonElement).dataset.tool === studio.tool);
   });
-  const fly = document.querySelector("#studio-fly");
-  if (fly) fly.textContent = studio.fly ? "Fly" : "Walk";
   const status = document.querySelector("#studio-status");
-  if (status && !status.textContent) {
-    status.textContent = `${studio.spec.title} · ${studio.bw}×${studio.bd}`;
-  }
+  if (status) status.textContent = `${studio.spec.title} · ${studio.bw}×${studio.bd}`;
 }
 
 function rebuildStudio() {
   wipeMapMeshes();
-  world = compileLayout(scene, studio.spec);
+  world = compileLayout(scene, studio.spec, { clay: true });
   afterMapLoad();
+  scene.add(makeStudioGrid(studio.spec.bounds));
   studioGhost.visible = true;
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle) mapTitle.textContent = studio.spec.title || "Studio";
@@ -624,59 +649,62 @@ function rebuildStudio() {
 function enterStudio() {
   studio.on = true;
   studio.spec = loadStored() ?? blankSpec();
+  studio.cam = defaultOrbit(studio.spec.bounds);
+  studio.faceYaw = 0;
+  studio.painting = false;
+  studio.orbiting = false;
+  studio.panning = false;
+  studio.lastCell = "";
   const titleEl = document.querySelector<HTMLInputElement>("#studio-title")!;
   const themeEl = document.querySelector<HTMLSelectElement>("#studio-theme")!;
   titleEl.value = studio.spec.title;
   themeEl.value = studio.spec.theme;
   rebuildStudio();
-  const spawn = world.plantSpawns[2] ?? world.plantSpawns[0] ?? world.playerSpawn;
-  px = spawn.x;
-  py = spawn.y;
-  pz = spawn.z;
-  vy = 0;
   paintStudio();
-  document.body.classList.add("started");
+  hideJoinTeam();
+  document.body.classList.add("studio");
+  applyOrbit(camera, studio.cam);
   document.exitPointerLock();
 }
 
 function leaveStudio() {
   studio.on = false;
+  studio.painting = false;
+  studio.orbiting = false;
+  studio.panning = false;
+  studio.lastCell = "";
   studioGhost.visible = false;
-  document.body.classList.remove("studio");
+  document.body.classList.remove("studio", "studio-nav");
+  camera.near = 0.05;
+  camera.far = 85;
+  camera.fov = 90;
+  camera.updateProjectionMatrix();
   loadMap(mapId, true);
-  const me = lastSnap?.pawns.find((p) => (p.netId ?? 0) === net.peerId);
-  if (me) {
-    px = me.x;
-    py = me.y;
-    pz = me.z;
-  }
 }
 
-function studioAim() {
-  const origin = new THREE.Vector3();
-  const dir = new THREE.Vector3();
-  camera.getWorldPosition(origin);
-  camera.getWorldDirection(dir);
-  return aimGround(origin, dir);
+function studioHit() {
+  const ndc = canvasNdc(canvas, studio.mx, studio.my);
+  return pickGround(camera, ndc.x, ndc.y);
 }
 
 function stampStudio(erase = false) {
-  const hit = studioAim();
+  const hit = studioHit();
   if (!hit) return;
-  studio.spec = place(studio.spec, erase ? "erase" : studio.tool, hit.x, hit.z, {
-    yaw,
+  const gx = snap(hit.x);
+  const gz = snap(hit.z);
+  const key = cellKey(erase ? "erase" : studio.tool, gx, gz);
+  if (key === studio.lastCell) return;
+  studio.lastCell = key;
+  studio.spec = place(studio.spec, erase ? "erase" : studio.tool, gx, gz, {
+    yaw: studio.faceYaw,
     bw: studio.bw,
     bd: studio.bd,
   });
   saveStored(studio.spec);
-  const keep = { x: px, y: py, z: pz };
   rebuildStudio();
-  px = keep.x;
-  py = keep.y;
-  pz = keep.z;
+  paintStudio();
   const status = document.querySelector("#studio-status");
   if (status) status.textContent = erase ? "erased" : `placed ${studio.tool}`;
-  paintStudio();
 }
 
 async function saveStudio() {
@@ -741,7 +769,6 @@ bindAdmin({
       botSkill: rules.botSkill,
     });
   },
-  onStudio: () => enterStudio(),
 });
 
 {
@@ -753,18 +780,17 @@ bindAdmin({
   });
   themeEl.addEventListener("change", () => {
     studio.spec.theme = themeEl.value as typeof studio.spec.theme;
-    if (studio.on) {
-      const keep = { x: px, y: py, z: pz };
-      rebuildStudio();
-      px = keep.x;
-      py = keep.y;
-      pz = keep.z;
-    }
+    if (studio.on) rebuildStudio();
   });
-  document.querySelector("#studio-fly")?.addEventListener("click", (e) => {
+  document.querySelector("#home-studio")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    studio.fly = !studio.fly;
-    paintStudio();
+    enterStudio();
+  });
+  document.querySelector("#studio-turn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    studio.faceYaw = turnYaw(studio.faceYaw);
+    const status = document.querySelector("#studio-status");
+    if (status) status.textContent = "turned";
   });
   document.querySelector("#studio-save")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -813,11 +839,8 @@ camera.add(nadeView);
 const arm = makeRightArm();
 camera.add(arm.root);
 
-const wirePack = new THREE.Mesh(
-  new THREE.BoxGeometry(0.22, 0.1, 0.3),
-  new THREE.MeshStandardMaterial({ color: 0x5a2e18, roughness: 0.5, metalness: 0.35 }),
-);
-wirePack.castShadow = true;
+const bomb = makeBomb();
+const wirePack = bomb.root;
 scene.add(wirePack);
 
 let seenRound = 1;
@@ -903,7 +926,8 @@ function overlayOpen() {
   return (
     document.body.classList.contains("admin") ||
     document.body.classList.contains("settings") ||
-    document.body.classList.contains("podium")
+    document.body.classList.contains("podium") ||
+    document.body.classList.contains("studio")
   );
 }
 
@@ -957,7 +981,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
       row.append(name, map, pop, phase, join);
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        showJoinTeam(s.name);
+        joinGame(s.name);
       });
       list.append(row);
     }
@@ -971,6 +995,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
 
   const fillTeams = (root: Element, onPick?: (team: Team) => void) => {
     root.addEventListener("click", (e) => e.stopPropagation());
+    const sides = root.id === "join-team-pick";
     for (const [id, label] of [
       ["ember", "Ember"],
       ["stone", "Stone"],
@@ -978,20 +1003,32 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
       const b = document.createElement("button");
       b.type = "button";
       b.dataset.team = id;
-      b.textContent = label;
+      if (sides) {
+        b.className = "team-side";
+        const fig = document.createElement("span");
+        fig.className = "team-fig";
+        fig.setAttribute("aria-hidden", "true");
+        const name = document.createElement("span");
+        name.className = "team-name";
+        name.textContent = label;
+        b.append(fig, name);
+      } else {
+        b.textContent = label;
+      }
       b.addEventListener("click", () => (onPick ? onPick(id) : pickTeam(id)));
       root.append(b);
     }
   };
   fillTeams(document.querySelector("#join-team-pick")!, (team) => {
     pickTeam(team);
-    joinGame(pendingJoin || joiningName);
+    enterPlay();
+    hideJoinTeam();
   });
   const setTeam = document.querySelector("#set-team");
   if (setTeam) fillTeams(setTeam);
   document.querySelector("#join-cancel")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    hideJoinTeam();
+    leaveToLobby();
   });
   const adminMap = document.querySelector<HTMLSelectElement>("#admin-map")!;
   for (const m of MAPS) {
@@ -1044,9 +1081,11 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   });
   volEl.addEventListener("input", () => {
     prefs.volume = Number(volEl.value);
+    setStepVolume(prefs.volume);
     savePrefs();
     paint();
   });
+  setStepVolume(prefs.volume);
   panel.addEventListener("mousedown", (e) => e.stopPropagation());
 }
 addEventListener("contextmenu", (e) => {
@@ -1088,9 +1127,10 @@ addEventListener("keydown", (e) => {
       studio.tool = tool;
       paintStudio();
     }
-    if (e.code === "KeyF" && !e.repeat) {
-      studio.fly = !studio.fly;
-      paintStudio();
+    if (e.code === "KeyR" && !e.repeat) {
+      studio.faceYaw = turnYaw(studio.faceYaw);
+      const status = document.querySelector("#studio-status");
+      if (status) status.textContent = "turned";
     }
     if (e.code === "BracketLeft") {
       studio.bw = Math.max(6, studio.bw - 2);
@@ -1102,9 +1142,7 @@ addEventListener("keydown", (e) => {
       studio.bd = Math.min(20, studio.bd + 2);
       paintStudio();
     }
-    if (e.code === "Escape") {
-      if (locked) document.exitPointerLock();
-    }
+    if (e.code === "Escape") leaveStudio();
     return;
   }
   if (e.code === "KeyR" && locked) startReload();
@@ -1138,10 +1176,18 @@ addEventListener("keydown", (e) => {
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("mousedown", (e) => {
   if (studio.on) {
-    if (!locked) return;
+    if ((e.target as HTMLElement | null)?.closest("#studio")) return;
     e.preventDefault();
-    if (e.button === 0) stampStudio(false);
-    if (e.button === 2) stampStudio(true);
+    studio.mx = e.clientX;
+    studio.my = e.clientY;
+    if (e.button === 0) {
+      studio.painting = true;
+      studio.lastCell = "";
+      stampStudio(studio.tool === "erase");
+    }
+    if (e.button === 2) studio.orbiting = true;
+    if (e.button === 1) studio.panning = true;
+    document.body.classList.toggle("studio-nav", studio.orbiting || studio.panning);
     return;
   }
   if (!locked) return;
@@ -1166,6 +1212,15 @@ addEventListener("mousedown", (e) => {
   }
 });
 addEventListener("mouseup", (e) => {
+  if (studio.on) {
+    if (e.button === 0) {
+      studio.painting = false;
+      studio.lastCell = "";
+    }
+    if (e.button === 2) studio.orbiting = false;
+    if (e.button === 1) studio.panning = false;
+    document.body.classList.toggle("studio-nav", studio.orbiting || studio.panning);
+  }
   if (e.button === 0) {
     mouseDown = false;
     releaseFire(fireQ);
@@ -1176,19 +1231,25 @@ addEventListener("mouseup", (e) => {
   if (e.button === 2) ads = false;
 });
 addEventListener("wheel", (e) => {
-  if (studio.on && locked) {
+  if (studio.on) {
+    if ((e.target as HTMLElement | null)?.closest("#studio")) return;
     e.preventDefault();
-    const d = e.deltaY > 0 ? -2 : 2;
-    studio.bw = Math.max(6, Math.min(24, studio.bw + d));
-    studio.bd = Math.max(6, Math.min(20, studio.bd + d));
-    paintStudio();
+    zoomOrbit(studio.cam, e.deltaY);
     return;
   }
   if (!locked || alive) return;
   cycleSpec(e.deltaY > 0 ? 1 : -1);
-});
+}, { passive: false });
 addEventListener("mousemove", (e) => {
-  if (!locked || (!alive && !studio.on)) return;
+  if (studio.on) {
+    studio.mx = e.clientX;
+    studio.my = e.clientY;
+    if (studio.orbiting) orbitDrag(studio.cam, e.movementX, e.movementY);
+    else if (studio.panning) panDrag(studio.cam, e.movementX, e.movementY);
+    else if (studio.painting) stampStudio(studio.tool === "erase");
+    return;
+  }
+  if (!locked || !alive) return;
   const scale = (ads ? 0.42 : 1) * MOUSE * prefs.sens * (stunT > 0 ? 0.28 : 1);
   yaw -= e.movementX * scale;
   pitch -= e.movementY * scale;
@@ -2449,7 +2510,7 @@ function roundSpawn() {
   for (const b of bots) b.root.visible = true;
   showSpawn(
     you && you.team === planter
-      ? "Ember dock · you carry the Wire"
+      ? "Ember dock · you carry the Bomb"
       : `Stone dock · hold ${world.sites[0]?.name ?? "A"} and ${world.sites[1]?.name ?? "B"}`,
     time,
   );
@@ -2579,7 +2640,7 @@ function detonateWire(x: number, y: number, z: number) {
   const plant = plantingTeam(match);
   const you = slotById(match, playerId);
   if (you && you.team !== plant && alive) {
-    if (Math.hypot(px - x, py - y, pz - z) < tuning.blastR) hurtPlayer(200, "The Wire");
+    if (Math.hypot(px - x, py - y, pz - z) < tuning.blastR) hurtPlayer(200, "The Bomb");
   }
   for (const b of bots) {
     if (b.hp <= 0 || b.team === plant) continue;
@@ -2748,7 +2809,7 @@ function frame(now: number) {
   const gh = groundHeight(world.colliders, px, pz, RADIUS, py);
   grounded = py <= gh + 0.06 && vy <= 0.2;
 
-  if ((studio.on || (alive && !froze && net.role !== "offline" && !isCow(playerId))) && locked) {
+  if (!studio.on && (alive && !froze && net.role !== "offline" && !isCow(playerId)) && locked) {
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     const rightX = Math.cos(yaw);
@@ -2774,8 +2835,8 @@ function frame(now: number) {
       }
     }
     const len = Math.hypot(wx, wz);
-    walking = len > 0 && (alive || studio.on);
-    if (len > 0 && (alive || studio.on)) {
+    walking = len > 0 && alive;
+    if (len > 0 && alive) {
       const n = collideXZ(
         world.colliders,
         px + (wx / len) * speed * dt,
@@ -2802,32 +2863,25 @@ function frame(now: number) {
       diveVx += (0 - diveVx) * Math.min(1, dt * damp);
       diveVz += (0 - diveVz) * Math.min(1, dt * damp);
     }
-    if (studio.on && studio.fly) {
-      const up = (keys.has("Space") ? 1 : 0) - (keys.has("ControlLeft") || keys.has("ControlRight") ? 1 : 0);
-      py += up * speed * dt;
+    if (locked && alive && grounded && keys.has("Space") && !jumpHeld) {
+      if (prone) {
+        prone = false;
+        vy = jumpSpeed() * 0.82;
+      } else vy = jumpSpeed();
+      grounded = false;
+    }
+    jumpHeld = keys.has("Space");
+    if (grounded && vy <= 0) {
+      py = gh;
       vy = 0;
-      jumpHeld = keys.has("Space");
     } else {
-      if (locked && (alive || studio.on) && grounded && keys.has("Space") && !jumpHeld) {
-        if (prone) {
-          prone = false;
-          vy = jumpSpeed() * 0.82;
-        } else vy = jumpSpeed();
-        grounded = false;
-      }
-      jumpHeld = keys.has("Space");
-      if (grounded && vy <= 0) {
-        py = gh;
+      vy += -tuning.gravity * dt;
+      py += vy * dt;
+      const g2 = groundHeight(world.colliders, px, pz, RADIUS, py);
+      if (py < g2) {
+        py = g2;
         vy = 0;
-      } else {
-        vy += -tuning.gravity * dt;
-        py += vy * dt;
-        const g2 = groundHeight(world.colliders, px, pz, RADIUS, py);
-        if (py < g2) {
-          py = g2;
-          vy = 0;
-          grounded = true;
-        }
+        grounded = true;
       }
     }
     if (py < -3.2) {
@@ -2837,6 +2891,17 @@ function frame(now: number) {
   } else {
     walking = false;
   }
+
+  tickSteps({
+    x: px,
+    z: pz,
+    grounded,
+    moving: walking,
+    crouch,
+    ads,
+    prone,
+    ctx: audio,
+  });
 
   if (
     (match.phase === "live" || match.phase === "planted") &&
@@ -2927,7 +2992,7 @@ function frame(now: number) {
     playPlanted();
     const you = slotById(match, playerId);
     const win = !!you && you.team === plantingTeam(match);
-    setRoundResult("Wire planted", win);
+    setRoundResult("Bomb planted", win);
     plantBannerUntil = time + 3.4;
   }
   const holdingPlant = match.wire.plantHold > 0.02;
@@ -3260,6 +3325,7 @@ function frame(now: number) {
     wirePack.visible = true;
     wirePack.position.set(match.wire.x, match.wire.y, match.wire.z);
   }
+  bomb.pulse(time, match.wire.mode);
 
   const cover = smokeCoverage(px, eyeY, pz);
   veilEl.style.opacity = String(cover * 0.92);
@@ -3309,13 +3375,13 @@ function frame(now: number) {
     const site = inSite(world, "loft", px, pz, py) ? "ICE" : inSite(world, "well", px, pz, py) ? "SLIP" : "";
     prompt = site
       ? "HOLD F · PLANT"
-      : "You have the Wire · gold pad at A or B";
+      : "You have the Bomb · gold pad at A or B";
   } else if (match.wire.mode === "ground" && youTeam === planter) {
-    if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.4) prompt = "HOLD F · PICK UP THE WIRE";
+    if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.4) prompt = "HOLD F · PICK UP THE BOMB";
   } else if (match.wire.mode === "planted" && youTeam !== planter) {
-    if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE WIRE";
+    if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE BOMB";
   } else if (match.phase === "planted") {
-    prompt = "Wire live";
+    prompt = "Bomb live";
   }
   const nextId = lastSnap?.nextMap;
   updateMatchHud(match, prompt, {
@@ -3415,6 +3481,7 @@ function frame(now: number) {
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
     youTeam,
     minimapEnemies: rules.minimapEnemies,
+    bomb: { x: match.wire.x, z: match.wire.z, mode: match.wire.mode },
   });
 
   const netLine = statusLine(net);
@@ -3474,8 +3541,14 @@ function frame(now: number) {
 
   if (studio.on) {
     for (const g of clientPawns.values()) g.visible = false;
+    for (const b of bots) b.root.visible = false;
     ghost.visible = false;
-    const hit = studioAim();
+    showRifle(rifleKind, false);
+    knife.visible = false;
+    nadeView.visible = false;
+    arm.root.visible = false;
+    applyOrbit(camera, studio.cam);
+    const hit = studioHit();
     const show = !!hit && studio.tool !== "erase";
     studioGhost.visible = show;
     if (hit && show) {

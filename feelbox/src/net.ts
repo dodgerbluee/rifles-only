@@ -71,7 +71,7 @@ export function killWayLabel(way?: KillWay, head = false) {
   if (way === "noscope") return "no scope";
   if (way === "nade") return "nade";
   if (way === "knife") return "knife";
-  if (way === "bomb") return "wire";
+  if (way === "bomb") return "bomb";
   if (way === "cow") return "cow'd";
   return "kill";
 }
@@ -80,26 +80,37 @@ function svg(body: string) {
   return `<svg viewBox="0 0 20 20" aria-hidden="true">${body}</svg>`;
 }
 
+/** Kar98 tangent rear: open U-notch with the front post in the gap. Default aimed. */
+const AIMED_KAR = svg(
+  `<path d="M4.2 5.4v10.8h11.6V5.4" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<path d="M10 4v9.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
+);
+
+/** Mosin 91/30 rear: peep ring you look through. */
+const AIMED_MOSIN = svg(
+  `<circle cx="10" cy="10" r="6.3" fill="none" stroke="currentColor" stroke-width="1.55"/>` +
+    `<circle cx="10" cy="10" r="2.15" fill="none" stroke="currentColor" stroke-width="1.25"/>`,
+);
+
 const ICONS: Record<KillWay, string> = {
-  aimed: svg(
-    `<circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
-      `<circle cx="10" cy="10" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3"/>` +
-      `<path d="M10 2.2v2.4M10 15.4v2.4M2.2 10h2.4M15.4 10h2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
-  ),
+  aimed: AIMED_KAR,
   noscope: svg(
-    `<path d="M6 16.5V8.5L10 5.5 14 8.5v8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
-      `<circle cx="10" cy="11" r="1.2" fill="currentColor"/>`,
+    `<path d="M10 2.2v5.4M10 12.4v5.4M2.2 10h5.4M12.4 10h5.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
   ),
   nade: svg(
-    `<rect x="7.2" y="8" width="5.6" height="8.2" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
-      `<path d="M10 8V5.6M10 5.6c0-1.4 1.6-2.2 2.8-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+    `<path d="M6.4 8.5c0-1.35 1.55-2.15 3.6-2.15s3.6.8 3.6 2.15v6.5c0 1.75-1.55 2.65-3.6 2.65s-3.6-.9-3.6-2.65Z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>` +
+      `<path d="M6.55 11h6.9M6.55 13.7h6.9M10 6.5v11.4" fill="none" stroke="currentColor" stroke-width="1.1"/>` +
+      `<path d="M8.7 6.4V4.9h2.6V6.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>` +
+      `<circle cx="13.6" cy="4.2" r="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/>`,
   ),
   knife: svg(
     `<path d="M4 14.5l9.5-9.5 2.2 2.2-9.5 9.5H4v-2.2Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>` +
       `<path d="M11.2 6.8l2.4-2.4 2 2-2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.3"/>`,
   ),
   bomb: svg(
-    `<path d="M10 4.2 12.2 9h4.3L13.2 12.2 14.8 17 10 14.2 5.2 17l1.6-4.8L3.5 9h4.3Z" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/>`,
+    `<rect x="4.6" y="8.2" width="10.8" height="7.4" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.45"/>` +
+      `<path d="M10 8.2V4.1M10 4.1l1.6-1.3" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>` +
+      `<path d="M7.1 11.2h5.8M7.1 13.6h3.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>`,
   ),
   cow: svg(
     `<path d="M5 8.5 3.2 5.2 6.4 6.8h7.2L16.8 5.2 15 8.5v5.2H5V8.5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>` +
@@ -115,9 +126,9 @@ const HEAD_ICON = svg(
     `<circle cx="12.6" cy="9.2" r="0.7" fill="currentColor"/>`,
 );
 
-export function killWayIcons(way?: KillWay, head = false) {
+export function killWayIcons(way?: KillWay, head = false, rifle?: "kar" | "mosin") {
   const parts: string[] = [];
-  if (way === "aimed") parts.push(ICONS.aimed);
+  if (way === "aimed") parts.push(rifle === "mosin" ? AIMED_MOSIN : AIMED_KAR);
   else if (way === "noscope" && !head) parts.push(ICONS.noscope);
   else if (way && way !== "noscope") parts.push(ICONS[way]);
   if (head) parts.push(HEAD_ICON);
@@ -135,6 +146,7 @@ export type KillFeedItem = {
   victimTeam?: Team;
   way?: KillWay;
   head?: boolean;
+  rifle?: "kar" | "mosin";
 };
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */

@@ -1,6 +1,6 @@
 /**
- * In-game layout sketch. The human stamps a LayoutSpec; the agent finalizes
- * (routes, names, map-check, register). See .cursor/skills/design-map/SKILL.md.
+ * Home-page map sketch. The human paints a LayoutSpec from orbit; the agent
+ * finalizes (routes, names, map-check, register). See .cursor/skills/design-map/SKILL.md.
  */
 import * as THREE from "three";
 import {
@@ -53,7 +53,7 @@ export function blankSpec(): LayoutSpec {
   return {
     id: "draft",
     title: "Draft",
-    blurb: "In-game sketch. Finalize before rotation.",
+    blurb: "Studio sketch. Finalize before rotation.",
     theme: "dust",
     bounds: { ...YARD_SPEC.bounds },
     buildings: [],
@@ -282,6 +282,101 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
 export function nextTheme(cur: ThemeId): ThemeId {
   const i = THEMES.indexOf(cur);
   return THEMES[(i + 1) % THEMES.length]!;
+}
+
+export type OrbitCam = {
+  tx: number;
+  ty: number;
+  tz: number;
+  dist: number;
+  theta: number;
+  phi: number;
+};
+
+export function defaultOrbit(bounds: LayoutSpec["bounds"]): OrbitCam {
+  return {
+    tx: (bounds.minX + bounds.maxX) / 2,
+    ty: 0,
+    tz: (bounds.minZ + bounds.maxZ) / 2,
+    dist: 58,
+    theta: 0.58,
+    phi: 0,
+  };
+}
+
+export function applyOrbit(camera: THREE.PerspectiveCamera, cam: OrbitCam) {
+  const { tx, ty, tz, dist, theta, phi } = cam;
+  camera.position.set(
+    tx + dist * Math.sin(theta) * Math.sin(phi),
+    ty + dist * Math.cos(theta),
+    tz + dist * Math.sin(theta) * Math.cos(phi),
+  );
+  camera.lookAt(tx, ty, tz);
+  camera.fov = 48;
+  camera.near = 0.2;
+  camera.far = 400;
+  camera.updateProjectionMatrix();
+  camera.updateMatrixWorld();
+}
+
+export function orbitDrag(cam: OrbitCam, dx: number, dy: number) {
+  cam.phi -= dx * 0.008;
+  cam.theta = Math.max(0.06, Math.min(1.32, cam.theta - dy * 0.008));
+}
+
+export function panDrag(cam: OrbitCam, dx: number, dy: number) {
+  const scale = cam.dist * 0.0018;
+  const rx = Math.cos(cam.phi);
+  const rz = -Math.sin(cam.phi);
+  const fx = -Math.sin(cam.phi);
+  const fz = -Math.cos(cam.phi);
+  cam.tx -= rx * dx * scale + fx * dy * scale;
+  cam.tz -= rz * dx * scale + fz * dy * scale;
+}
+
+export function zoomOrbit(cam: OrbitCam, deltaY: number) {
+  const k = deltaY > 0 ? 1.12 : 1 / 1.12;
+  cam.dist = Math.max(14, Math.min(140, cam.dist * k));
+}
+
+export function turnYaw(yaw: number, steps = 1) {
+  return yaw + (Math.PI / 2) * steps;
+}
+
+export function canvasNdc(el: HTMLElement, clientX: number, clientY: number) {
+  const r = el.getBoundingClientRect();
+  return {
+    x: ((clientX - r.left) / Math.max(1, r.width)) * 2 - 1,
+    y: -((clientY - r.top) / Math.max(1, r.height)) * 2 + 1,
+  };
+}
+
+const _ndc = new THREE.Vector2();
+const _ray = new THREE.Raycaster();
+const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hit = new THREE.Vector3();
+
+export function pickGround(camera: THREE.Camera, ndcX: number, ndcY: number) {
+  camera.updateMatrixWorld();
+  _ndc.set(ndcX, ndcY);
+  _ray.setFromCamera(_ndc, camera);
+  if (!_ray.ray.intersectPlane(_plane, _hit)) return null;
+  return _hit.clone();
+}
+
+export function cellKey(tool: string, x: number, z: number) {
+  return `${tool}:${x},${z}`;
+}
+
+export function makeStudioGrid(bounds: LayoutSpec["bounds"]) {
+  const w = bounds.maxX - bounds.minX;
+  const d = bounds.maxZ - bounds.minZ;
+  const size = Math.max(w, d) + 8;
+  const div = Math.max(2, Math.round(size / GRID));
+  const grid = new THREE.GridHelper(size, div, 0x7a7670, 0x4e4c48);
+  grid.position.set((bounds.minX + bounds.maxX) / 2, 0.05, (bounds.minZ + bounds.maxZ) / 2);
+  grid.name = "studio-grid";
+  return grid;
 }
 
 export function toolFromCode(code: string): ToolId | null {

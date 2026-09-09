@@ -39,6 +39,7 @@ export type Kit = {
     height: number,
     width?: number,
     startY?: number,
+    tread?: "wood" | "lime",
   ) => void;
 };
 
@@ -130,20 +131,87 @@ export function makeKit(scene: THREE.Scene): Kit {
     box(x, y, z, sx, 0.08, sz, gold, true, true, false);
   };
 
-  const climb: Kit["climb"] = (x, z, dir, height, width = 2.2, startY = 0) => {
+  const climb: Kit["climb"] = (x, z, dir, height, width = 2.2, startY = 0, tread = "wood") => {
     const rise = 0.28;
     const run = 0.62;
+    const treadH = 0.1;
+    const nosing = 0.1;
+    const gap = 0.038;
     const steps = Math.max(2, Math.ceil(height / rise));
     const ax = dir === "+x" ? 1 : dir === "-x" ? -1 : 0;
     const az = dir === "+z" ? 1 : dir === "-z" ? -1 : 0;
-    const plank = mat("wood", 1.4, 0.4);
+    const px = -az;
+    const pz = ax;
+    const lime = tread === "lime";
+    const treadMat = lime ? mat("lime", 1.8, 0.45, 0.88, 0.05) : mat("wood", 1.8, 0.38, 0.82, 0.04);
+    const riserMat = lime ? mat("dirt", 0.7, 0.28, 0.96, 0.02) : mat("brick", 0.5, 0.22, 0.95, 0.02);
+    const lipMat = lime ? mat("lime", 0.45, 0.18, 0.76, 0.06) : mat("wood", 0.4, 0.18, 0.7, 0.03);
+    const railMat = mat("metal", 0.18, 1.1, 0.42, 0.55);
+
     for (let i = 0; i < steps; i++) {
-      const y = startY + (i + 1) * rise;
-      const cx = x + ax * (i * run + run * 0.5);
-      const cz = z + az * (i * run + run * 0.5);
-      const sx = ax !== 0 ? run + 0.12 : width;
-      const sz = az !== 0 ? run + 0.12 : width;
-      box(cx, y - rise * 0.5, cz, sx, rise, sz, plank, true, true);
+      const yTop = startY + (i + 1) * rise;
+      const along = i * run + run * 0.5 - nosing * 0.5;
+      const cx = x + ax * along;
+      const cz = z + az * along;
+      const depth = run + nosing;
+      box(cx, yTop - treadH * 0.5, cz, ax !== 0 ? depth : width, treadH, az !== 0 ? depth : width, treadMat, true, true);
+
+      const lipD = 0.055;
+      const lipH = 0.028;
+      const lipAlong = i * run - nosing + lipD * 0.5;
+      box(
+        x + ax * lipAlong,
+        yTop + lipH * 0.15,
+        z + az * lipAlong,
+        ax !== 0 ? lipD : width + 0.02,
+        lipH,
+        az !== 0 ? lipD : width + 0.02,
+        lipMat,
+        false,
+      );
+
+      const riserD = 0.07;
+      const riserH = Math.max(0.08, rise - treadH - gap);
+      const rAlong = i * run + riserD * 0.5;
+      box(
+        x + ax * rAlong,
+        yTop - treadH - gap - riserH * 0.5,
+        z + az * rAlong,
+        ax !== 0 ? riserD : width * 0.94,
+        riserH,
+        az !== 0 ? riserD : width * 0.94,
+        riserMat,
+        false,
+      );
+    }
+
+    const span = steps * run;
+    const climbH = steps * rise;
+    const angle = Math.atan2(climbH, span);
+    const railY = 0.86;
+    const postW = 0.05;
+    const edge = width * 0.5 - 0.05;
+    const postN = Math.max(2, Math.round(steps / 3));
+    for (const side of [-1, 1] as const) {
+      const ox = px * edge * side;
+      const oz = pz * edge * side;
+      for (let p = 0; p <= postN; p++) {
+        const t = p / postN;
+        const along = 0.08 + t * (span - 0.16);
+        const foot = startY + t * climbH;
+        box(x + ax * along + ox, foot + railY * 0.5, z + az * along + oz, postW, railY, postW, railMat, false);
+      }
+      const len = Math.hypot(span, climbH) + 0.08;
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(ax !== 0 ? len : postW, 0.042, az !== 0 ? len : postW),
+        railMat,
+      );
+      rail.position.set(x + ax * (span * 0.5) + ox, startY + climbH * 0.5 + railY, z + az * (span * 0.5) + oz);
+      if (ax !== 0) rail.rotation.z = ax * angle;
+      if (az !== 0) rail.rotation.x = -az * angle;
+      rail.castShadow = true;
+      rail.receiveShadow = true;
+      root.add(rail);
     }
   };
 

@@ -136,8 +136,9 @@ function coverAt(kit: Kit, c: CoverSpec) {
   }
 }
 
-export function compileLayout(scene: THREE.Scene, spec: LayoutSpec): World {
+export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { clay?: boolean }): World {
   const kit = makeKit(scene);
+  const clay = !!opts?.clay;
   const theme = THEMES[spec.theme];
   const H = spec.wallH ?? 6.2;
   const { minX, maxX, minZ, maxZ } = spec.bounds;
@@ -146,11 +147,33 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec): World {
   const gw = maxX - minX;
   const gd = maxZ - minZ;
 
-  scene.background = new THREE.Color(theme.bg);
-  scene.fog = new THREE.Fog(theme.fog, 16, Math.max(42, Math.hypot(gw, gd) * 0.85));
-  sky(scene, theme.horizon, theme.zenith);
-  scene.add(new THREE.HemisphereLight(0xc8c0b4, 0x3a3834, 0.9));
-  const sun = new THREE.DirectionalLight(0xe8e0d4, 0.7);
+  if (clay) {
+    const clayOf: Record<string, THREE.Material> = {
+      plaster: new THREE.MeshLambertMaterial({ color: 0xc0bbb2 }),
+      brick: new THREE.MeshLambertMaterial({ color: 0xa8a298 }),
+      asphalt: new THREE.MeshLambertMaterial({ color: 0x8a8680 }),
+      dirt: new THREE.MeshLambertMaterial({ color: 0x8e8a82 }),
+      wood: new THREE.MeshLambertMaterial({ color: 0x9c968c }),
+      metal: new THREE.MeshLambertMaterial({ color: 0x7a7874 }),
+      sand: new THREE.MeshLambertMaterial({ color: 0xb0aaa0 }),
+      snow: new THREE.MeshLambertMaterial({ color: 0xc8c4bc }),
+      grass: new THREE.MeshLambertMaterial({ color: 0x8a867c }),
+      leaf: new THREE.MeshLambertMaterial({ color: 0x8a867c }),
+      cobble: new THREE.MeshLambertMaterial({ color: 0x929088 }),
+      lime: new THREE.MeshLambertMaterial({ color: 0xb8b2a8 }),
+    };
+    kit.mat = (kind) => clayOf[kind] ?? clayOf.brick!;
+    kit.gold.color.setHex(0xc8c0b0);
+    kit.gold.emissive.setHex(0x222018);
+    scene.background = new THREE.Color(0x5c5a56);
+    scene.fog = new THREE.Fog(0x5c5a56, 70, 220);
+  } else {
+    scene.background = new THREE.Color(theme.bg);
+    scene.fog = new THREE.Fog(theme.fog, 16, Math.max(42, Math.hypot(gw, gd) * 0.85));
+    sky(scene, theme.horizon, theme.zenith);
+  }
+  scene.add(new THREE.HemisphereLight(clay ? 0xc4c0b8 : 0xc8c0b4, 0x3a3834, clay ? 0.95 : 0.9));
+  const sun = new THREE.DirectionalLight(clay ? 0xddd8d0 : 0xe8e0d4, clay ? 0.85 : 0.7);
   sun.position.set(8, 48, -12);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -200,8 +223,19 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec): World {
     kit.pad(s.x, s.y ?? 0, s.z);
     kit.siteMarker(kit.v(s.x, s.z, 1.4), s.call);
   }
-  for (const [x, z] of spec.lamps ?? spec.sites.map((s) => [s.x, s.z] as [number, number])) kit.lamp(x, z);
-  for (const [x, z] of spec.trees ?? []) kit.tree(x, z);
+  if (clay) {
+    const plantMat = new THREE.MeshLambertMaterial({ color: 0xb88a78 });
+    const watchMat = new THREE.MeshLambertMaterial({ color: 0x8a9098 });
+    const lampMat = new THREE.MeshLambertMaterial({ color: 0x7a7874 });
+    const treeMat = new THREE.MeshLambertMaterial({ color: 0x8a867c });
+    for (const [x, z] of spec.plantSpawns) kit.box(x, 0.12, z, 1.2, 0.24, 1.2, plantMat, false, true, false);
+    for (const [x, z] of spec.watchSpawns) kit.box(x, 0.12, z, 1.2, 0.24, 1.2, watchMat, false, true, false);
+    for (const [x, z] of spec.lamps ?? []) kit.box(x, 1.6, z, 0.2, 3.2, 0.2, lampMat, false);
+    for (const [x, z] of spec.trees ?? []) kit.box(x, 2, z, 1.8, 4, 1.8, treeMat, false);
+  } else {
+    for (const [x, z] of spec.lamps ?? spec.sites.map((s) => [s.x, s.z] as [number, number])) kit.lamp(x, z);
+    for (const [x, z] of spec.trees ?? []) kit.tree(x, z);
+  }
 
   const plantSpawns = spec.plantSpawns.map(([x, z]) => kit.v(x, z));
   const watchSpawns = spec.watchSpawns.map(([x, z]) => kit.v(x, z));
