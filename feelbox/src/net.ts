@@ -101,6 +101,7 @@ export type Snapshot = {
   stoneScore: number;
   swapped: boolean;
   clock: number;
+  time?: number;
   wireTime: number;
   wire: WireSnap;
   pawns: Pawn[];

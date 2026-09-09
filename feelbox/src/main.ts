@@ -55,7 +55,7 @@ import {
 } from "./match";
 import { bindAdmin, rules } from "./admin";
 import { buildPawn, pawnStyle, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
-import { pickBodyVictim, pawnHitMeshes, remoteTargets, type LiveBody } from "./combat";
+import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
   clearTape,
   createTape,
@@ -813,16 +813,16 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyR" && locked) startReload();
   if (e.code === "KeyG" && locked && !e.repeat) tryThrowSmoke();
   if (e.code === "KeyJ" && locked && !e.repeat) tryJoin();
-  if (e.code === "Digit1") {
+  if (e.code === "Digit1" || e.code === "Numpad1") {
     weapon = "rifle";
     rifleKind = "kar";
   }
-  if (e.code === "Digit2") {
+  if (e.code === "Digit2" || e.code === "Numpad2") {
     weapon = "rifle";
     rifleKind = "mosin";
   }
-  if (e.code === "Digit3") weapon = "knife";
-  if (e.code === "Digit4") cycleNade();
+  if (e.code === "Digit3" || e.code === "Numpad3") weapon = "knife";
+  if (e.code === "Digit4" || e.code === "Numpad4") selectNade();
   if (e.code === "KeyV" && locked && !e.repeat) tryBash();
   if ((e.code === "ControlLeft" || e.code === "ControlRight") && locked && !e.repeat) tryProne();
   if (e.code === "KeyE" && locked && !e.repeat && !alive) {
@@ -930,6 +930,18 @@ function isNade(w: string): w is NadeKind {
 
 function paintNadeView() {
   (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(nadeKind));
+}
+
+function selectNade() {
+  if (!isNade(weapon)) {
+    const have = nadeBag[nadeKind] > 0 ? nadeKind : NADE_ORDER.find((k) => nadeBag[k] > 0);
+    if (!have) return;
+    nadeKind = have;
+    weapon = have;
+    paintNadeView();
+    return;
+  }
+  cycleNade();
 }
 
 function cycleNade() {
@@ -1373,18 +1385,24 @@ function tryMelee(bash: boolean) {
       dz: dir.z,
       bash,
     });
-    for (const g of clientPawns.values()) g.updateMatrixWorld(true);
-    raycaster.set(origin, dir);
-    const hit = raycaster.intersectObjects(
-      [...clientPawns.values()].flatMap((g) => pawnHitMeshes(g)),
-      false,
-    )[0];
-    const worldHit = rayWorld(origin, dir, tuning.melee, world.colliders);
-    if (!hit || hit.distance > tuning.melee) return;
-    if (worldHit && worldHit.dist < hit.distance - 0.04) return;
-    lastHit = bash ? "bash" : "knife";
-    flashHit(false);
-    impact(hit.point, hit.face?.normal ?? new THREE.Vector3(0, 1, 0), true, false);
+    const you = slotById(match, actorId())?.team;
+    const bodies: LiveBody[] =
+      lastSnap?.pawns
+        .filter((p) => (p.netId ?? 0) !== (net.peerId ?? -1))
+        .map((p) => ({
+          id: p.id,
+          team: p.team,
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          alive: p.alive,
+        })) ?? [];
+    const hit = meleeTarget(origin, dir, bodies, tuning.melee, you, rules.friendlyFire, [actorId()]);
+    if (hit) {
+      lastHit = bash ? "bash" : "knife";
+      flashHit(false);
+      impact(new THREE.Vector3(hit.x, hit.y + 1.05, hit.z), new THREE.Vector3(0, 1, 0), true, false);
+    }
     return;
   }
   raycaster.set(origin, dir);
@@ -1463,6 +1481,19 @@ function bang(freq: number, dur: number, gain = 0.07) {
   g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
   o.stop(ctx.currentTime + dur);
   n.stop(ctx.currentTime + dur);
+}
+
+let plantCue = false;
+
+function playPlantStart() {
+  bang(180, 0.12, 0.08);
+  window.setTimeout(() => bang(240, 0.18, 0.07), 90);
+}
+
+function playPlanted() {
+  bang(392, 0.14, 0.1);
+  window.setTimeout(() => bang(523, 0.16, 0.1), 120);
+  window.setTimeout(() => bang(659, 0.4, 0.12), 280);
 }
 
 function tryFire() {
@@ -1668,8 +1699,12 @@ function ingestFeed(items: Snapshot["feed"]) {
   }
 }
 
+function tapeTime() {
+  return lastSnap?.time ?? time;
+}
+
 function recordSnap() {
-  pushFrame(tape, time, collectPoses());
+  pushFrame(tape, tapeTime(), collectPoses());
   lastRecord = time;
 }
 
@@ -1688,8 +1723,13 @@ function startReel() {
   clearFire(fireQ);
   for (const b of bots) restoreHead(b);
   const mvp = pickMvp(tape, match, playerId);
-  const recap = !mvp ? recapWindow(tape) : null;
-  if (!mvp && !recap) {
+  const t0 = tape.frames[0]?.t ?? 0;
+  const t1 = tape.frames[tape.frames.length - 1]?.t ?? 0;
+  const clips =
+    mvp?.clips.filter((c) => c.t >= t0 - 0.6 && c.t <= t1 + 0.6) ?? [];
+  const recap = clips.length === 0 ? recapWindow(tape) : null;
+  if (!mvp || clips.length === 0) {
+    if (!recap) {
     document.body.classList.add("bestplay");
     hideDeath();
     bestplayName.textContent = "No clip";
@@ -1706,12 +1746,26 @@ function startReel() {
       skipAt: time + 1.1,
     };
     return;
-  }
-  if (mvp) {
-    const bounds = playBounds(mvp.clips, tape);
+    }
+    const you = slotById(match, playerId);
+    reel = {
+      mvpId: playerId,
+      clips: [],
+      playT: recap.start,
+      endT: recap.end,
+      shown: 0,
+      recap: true,
+      skipAt: time + 1.2,
+    };
+    bestplayName.textContent = you?.kind === "human" ? "You" : (you?.name ?? "You");
+    bestplayStat.textContent = "Round recap";
+    bestplayKill.textContent = "";
+    bestplayPace.textContent = "Live";
+  } else {
+    const bounds = playBounds(clips, tape);
     reel = {
       mvpId: mvp.id,
-      clips: mvp.clips,
+      clips,
       playT: bounds.start,
       endT: bounds.end,
       shown: 0,
@@ -1721,21 +1775,6 @@ function startReel() {
     bestplayName.textContent = mvp.name;
     bestplayStat.textContent = `${mvp.kills} kill${mvp.kills === 1 ? "" : "s"} this round`;
     bestplayKill.textContent = `Kill 0 / ${mvp.kills}`;
-    bestplayPace.textContent = "Live";
-  } else {
-    const you = slotById(match, playerId);
-    reel = {
-      mvpId: playerId,
-      clips: [],
-      playT: recap!.start,
-      endT: recap!.end,
-      shown: 0,
-      recap: true,
-      skipAt: time + 1.2,
-    };
-    bestplayName.textContent = you?.kind === "human" ? "You" : (you?.name ?? "You");
-    bestplayStat.textContent = "Round recap";
-    bestplayKill.textContent = "";
     bestplayPace.textContent = "Live";
   }
   document.body.classList.add("bestplay");
@@ -2510,6 +2549,12 @@ function frame(now: number) {
     setRoundResult(null);
     reelPlayed = false;
   }
+  if (match.phase === "planted" && seenPhase !== "planted") playPlanted();
+  if (match.wire.plantHold > 0.05 && !plantCue) {
+    plantCue = true;
+    playPlantStart();
+  }
+  if (match.wire.plantHold <= 0.02) plantCue = false;
   if (match.phase === "freeze" && seenPhase !== "freeze") {
     setRoundResult(null);
     if (isClient) {
@@ -2561,6 +2606,7 @@ function frame(now: number) {
     if (snapSeq !== appliedSeq) {
       ingestFeed(lastSnap.feed);
       for (const pop of lastSnap.pops ?? []) applyNadePop(pop, true);
+      if (match.phase === "live" || match.phase === "planted") recordSnap();
       if (me) {
         if (me.hp < hp) {
           lastDamage = `−${Math.round(hp - me.hp)}`;
@@ -2604,6 +2650,12 @@ function frame(now: number) {
   if (!isClient && match.round !== seenRound) {
     seenRound = match.round;
     roundSpawn();
+  }
+  if (isClient && lastSnap && match.round !== seenRound) {
+    seenRound = match.round;
+    nadeBag = { ...NADE_MAX };
+    nadeKind = "smoke";
+    paintNadeView();
   }
 
   if (alive || match.phase === "bestplay" || match.phase === "matchover" || match.phase === "settle") {

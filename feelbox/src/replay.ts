@@ -49,7 +49,7 @@ export function clearTape(tape: RoundTape) {
 
 export function pushFrame(tape: RoundTape, t: number, poses: Pose[]) {
   const last = tape.frames[tape.frames.length - 1];
-  if (last && t - last.t < 0.04) {
+  if (last && t - last.t < 0.02) {
     last.t = t;
     last.poses = poses;
     return;

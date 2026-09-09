@@ -74,6 +74,33 @@ export function pickBodyVictim(
   return best;
 }
 
+export function meleeTarget(
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  bodies: LiveBody[],
+  reach: number,
+  shooterTeam: Team | undefined,
+  friendlyFire: boolean,
+  skipIds: number[] = [],
+): LiveBody | null {
+  let best: { body: LiveBody; score: number } | null = null;
+  for (const b of bodies) {
+    if (!b.alive || skipIds.includes(b.id)) continue;
+    if (!friendlyFire && shooterTeam && b.team === shooterTeam) continue;
+    const dx = b.x - origin.x;
+    const dy = b.y + 1.05 - origin.y;
+    const dz = b.z - origin.z;
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist > reach + 0.5) continue;
+    const inv = dist > 1e-4 ? 1 / dist : 1;
+    const facing = dir.x * dx * inv + dir.y * dy * inv + dir.z * dz * inv;
+    if (dist > 0.85 && facing < 0.12) continue;
+    const score = dist - facing * 0.35;
+    if (!best || score < best.score) best = { body: b, score };
+  }
+  return best?.body ?? null;
+}
+
 export function pawnHitMeshes(root: THREE.Object3D): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   root.traverse((o) => {

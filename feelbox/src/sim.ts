@@ -16,7 +16,7 @@ import {
   tickMatch,
   type Team,
 } from "./match";
-import { inSite, rayShot, rayWorld, spawnYaw } from "./world";
+import { inSite, rayShot, spawnYaw } from "./world";
 import { buildMap, MAPS, type MapId } from "./maps";
 import {
   botTargets,
@@ -28,7 +28,7 @@ import {
   updateBots,
   type Bot,
 } from "./bots";
-import { pickBodyVictim, remoteTargets, type LiveBody } from "./combat";
+import { pickBodyVictim, meleeTarget, remoteTargets, type LiveBody } from "./combat";
 import type { ClientEvent, KillFeedItem, Pawn, PlayerInput, Snapshot } from "./net";
 import {
   dropPeer,
@@ -249,48 +249,16 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     if (time - r.lastMelee < 0.48) return false;
     r.lastMelee = time;
     const reach = tuning.melee;
-    const worldHit = rayWorld(origin, dir, reach, world.colliders);
     const youTeam = slotById(match, r.slotId)?.team;
-    const skip = friendlyFire ? undefined : youTeam;
-    for (const b of bots) b.root.updateMatrixWorld(true);
-    for (const o of remotes.values()) o.root.updateMatrixWorld(true);
-    raycaster.set(origin, dir);
-    const meshHit = raycaster.intersectObjects(
-      [...botTargets(bots, skip, [r.slotId]), ...remoteTargets(remotes.values(), skip, [r.slotId])],
-      false,
-    )[0];
-    if (meshHit && meshHit.distance <= reach && !(worldHit && worldHit.dist < meshHit.distance - 0.04)) {
-      const hid = meshHit.object.userData.botId as number;
-      const bot = bots.find((b) => b.id === hid);
-      if (bot && bot.hp > 0 && (friendlyFire || bot.team !== youTeam)) {
-        noteHit(r.slotId, bot.id, time);
-        if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
-        return true;
-      }
-      const remote = [...remotes.values()].find((x) => x.slotId === hid);
-      if (remote && remote.alive && (friendlyFire || remote.team !== youTeam)) {
-        hurtRemote(remote, 100, r.slotId);
-        return true;
-      }
-    }
-    const bodyHit = pickBodyVictim(
-      origin,
-      dir,
-      liveBodies(),
-      Math.min(reach, worldHit?.dist ?? reach),
-      youTeam,
-      friendlyFire,
-      [r.slotId],
-      crouchIds(),
-    );
-    if (!bodyHit || bodyHit.t > reach) return false;
-    const bot = bots.find((b) => b.id === bodyHit.body.id);
+    const body = meleeTarget(origin, dir, liveBodies(), reach, youTeam, friendlyFire, [r.slotId]);
+    if (!body) return false;
+    const bot = bots.find((b) => b.id === body.id);
     if (bot && bot.hp > 0) {
       noteHit(r.slotId, bot.id, time);
       if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
       return true;
     }
-    const remote = [...remotes.values()].find((x) => x.slotId === bodyHit.body.id);
+    const remote = [...remotes.values()].find((x) => x.slotId === body.id);
     if (remote && remote.alive) {
       hurtRemote(remote, 100, r.slotId);
       return true;
@@ -608,6 +576,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         stoneScore: match.stoneScore,
         swapped: match.swapped,
         clock: match.phase === "planted" ? match.bombTime : match.timeLeft,
+        time,
         wireTime: match.bombTime,
         wire: {
           mode: match.wire.mode,

@@ -1,14 +1,29 @@
 /**
  * Dedicated-sim gaps: knife must kill, held jump must not bunny-hop.
  */
-import { createSim } from "../src/sim.ts";
+import * as THREE from "three";
+import { meleeTarget } from "../src/combat.ts";
 import { emptyInput } from "../src/peers.ts";
+import { createSim } from "../src/sim.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
   if (!ok) failed += 1;
   console.log(`${ok ? "ok" : "FAIL"}  ${name}${extra ? `  ${extra}` : ""}`);
 }
+
+const origin = new THREE.Vector3(0, 1.5, 0);
+const dir = new THREE.Vector3(0, 0, -1);
+const hit = meleeTarget(
+  origin,
+  dir,
+  [{ id: 1, team: "stone", x: 0, y: 0, z: -1.2, alive: true }],
+  1.92,
+  "ember",
+  false,
+  [],
+);
+check("melee hits a body in front", !!hit && hit.id === 1);
 
 const sim = createSim({ name: "Last Wire" });
 sim.join(1, "Reed");
@@ -44,6 +59,7 @@ sim.event(1, {
 });
 sim.tick(1 / 30);
 check("melee event is accepted live", !!sim.snapshot().pawns.find((p) => p.netId === 1));
+check("snapshot carries sim time", typeof before.time === "number");
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

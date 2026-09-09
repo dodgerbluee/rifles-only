@@ -319,6 +319,7 @@ export function buildSnapshot(
     stoneScore: match.stoneScore,
     swapped: match.swapped,
     clock: match.phase === "planted" ? match.bombTime : match.timeLeft,
+    time: 0,
     wireTime: match.bombTime,
     wire: {
       mode: match.wire.mode,
