@@ -48,13 +48,17 @@ import {
   createMatch,
   dropWire,
   restartMatch,
+  humanCount,
   humanSlot,
   markDead,
   pickupWire,
   plantingTeam,
   plantWire,
+  roundCombatOpen,
+  roundFrozen,
   slotById,
   tickMatch,
+  trySkipBestPlay,
   vacateSlot,
   watchingTeam,
   type Slot,
@@ -1886,7 +1890,7 @@ function smokeOrigin() {
 
 function tryThrowSmoke(power = 0.55) {
   if (!alive || !locked || isCow(playerId)) return;
-  if (match.phase === "freeze" || match.phase === "settle" || match.phase === "ending" || match.phase === "matchover" || match.phase === "bestplay") return;
+  if (!roundCombatOpen(match.phase)) return;
   if (nadeBag[nadeKind] <= 0 || time - lastThrow < 0.45) return;
   lastThrow = time;
   nadeBag[nadeKind] -= 1;
@@ -1926,7 +1930,7 @@ function tryDropSmoke() {
   smokeHeld = false;
   smokeCharge = 0;
   if (!alive || !locked || isCow(playerId)) return;
-  if (match.phase === "freeze" || match.phase === "settle" || match.phase === "ending" || match.phase === "matchover" || match.phase === "bestplay") return;
+  if (!roundCombatOpen(match.phase)) return;
   if (nadeBag[nadeKind] <= 0 || time - lastThrow < 0.45) return;
   lastThrow = time;
   nadeBag[nadeKind] -= 1;
@@ -2258,8 +2262,7 @@ function tryTakeover() {
 
 function tryProne() {
   if (!alive || !locked || isCow(playerId)) return;
-  if (match.phase === "freeze" || match.phase === "ending" || match.phase === "matchover" || match.phase === "bestplay")
-    return;
+  if (roundFrozen(match.phase)) return;
   if (!grounded) {
     prone = true;
     crouch = false;
@@ -2277,7 +2280,7 @@ function tryProne() {
 
 function tryMelee(bash: boolean) {
   if (!alive || !locked || isCow(playerId)) return;
-  if (match.phase === "freeze" || match.phase === "settle" || match.phase === "ending" || match.phase === "matchover" || match.phase === "bestplay") return;
+  if (!roundCombatOpen(match.phase)) return;
   if (time - lastMelee < 0.48) return;
   lastMelee = time;
   bashT = 0.42;
@@ -2432,7 +2435,7 @@ function playBombTick(sec: number) {
 
 function tryFire() {
   if (!alive || reloading > 0 || weapon !== "rifle" || bashT > 0 || isCow(playerId)) return;
-  if (match.phase === "freeze" || match.phase === "settle" || match.phase === "ending" || match.phase === "matchover" || match.phase === "bestplay") return;
+  if (!roundCombatOpen(match.phase)) return;
   if (time - lastFire < RIFLES[rifleKind].cycle) return;
   if (mag <= 0) {
     bang(160, 0.05, 0.03);
@@ -2729,8 +2732,12 @@ function startReel() {
 }
 
 function trySkipReel() {
-  if (!reel || time < reel.skipAt) return;
-  stopReel();
+  const solo = humanCount(match) <= 1;
+  if (reel && time < reel.skipAt && !solo) return;
+  if (!reel && !solo) return;
+  if (solo) net.sendEvent({ kind: "skipRecap" });
+  if (reel) stopReel();
+  else if (net.role !== "client") trySkipBestPlay(match);
 }
 
 function stopReel() {
@@ -2753,14 +2760,21 @@ function tickReel(dt: number) {
   }
   if (reel.recap) {
     reel.playT += dt * (tape.frames.length < 2 ? 1 : PLAY_RATE);
-    bestplayPace.textContent = time >= reel.skipAt ? "Space to skip" : "Live";
+    bestplayPace.textContent = time >= reel.skipAt || humanCount(match) <= 1 ? "Space to skip" : "Live";
     applyReel(samplePoses(tape, reel.playT), reel.mvpId, false);
     if (reel.playT >= reel.endT) stopReel();
     return;
   }
   const live = inSlowWindow(reel.playT, reel.clips);
   reel.playT += dt * (live ? PLAY_RATE : FAST_RATE);
-  bestplayPace.textContent = time >= reel.skipAt ? (live ? "Live · Space to skip" : "10× · Space") : live ? "Live" : "10×";
+  bestplayPace.textContent =
+    time >= reel.skipAt || humanCount(match) <= 1
+      ? live
+        ? "Live · Space to skip"
+        : "10× · Space"
+      : live
+        ? "Live"
+        : "10×";
   const n = killsReached(reel.playT, reel.clips);
   if (n > reel.shown) {
     const clip = reel.clips[n - 1]!;
@@ -3304,13 +3318,8 @@ function frame(now: number) {
   const isClient = net.role !== "host";
   if (isClient && lastSnap) applyMatchSnap(match, lastSnap);
   const reeling = match.phase === "bestplay";
-  const settling = match.phase === "settle";
-  const froze =
-    match.phase === "freeze" ||
-    match.phase === "ending" ||
-    match.phase === "matchover" ||
-    reeling;
-  const combatLock = froze || settling;
+  const froze = roundFrozen(match.phase);
+  const combatLock = !roundCombatOpen(match.phase);
 
   if (weapon !== "rifle") clearFire(fireQ);
   else if (mouseDown && !fireQ.held) pressFire(fireQ);
@@ -3441,10 +3450,7 @@ function frame(now: number) {
     ctx: audio,
   });
 
-  if (
-    (match.phase === "live" || match.phase === "planted") &&
-    time - lastRecord >= 1 / 14
-  ) {
+  if (roundCombatOpen(match.phase) && time - lastRecord >= 1 / 14) {
     recordSnap();
   }
 
@@ -3533,8 +3539,8 @@ function frame(now: number) {
     setRoundResult("Bomb planted", win);
     plantBannerUntil = time + 3.4;
   }
-  const holdingPlant = match.wire.plantHold > 0.02;
-  const holdingCut = match.wire.cutHold > 0.02;
+  const holdingPlant = match.wire.plantHold > 0.02 && (match.phase === "live" || match.phase === "planted");
+  const holdingCut = match.wire.cutHold > 0.02 && match.phase === "planted";
   if (holdingPlant || holdingCut) {
     if (!plantCue) {
       plantCue = true;
@@ -3627,7 +3633,7 @@ function frame(now: number) {
           bang(140, 0.06, 0.1);
         }
       }
-      if (match.phase === "live" || match.phase === "planted") recordSnap();
+      if (roundCombatOpen(match.phase)) recordSnap();
       if (me) {
         if (me.nades) {
           if (!alive && me.alive) nadeBag = { ...me.nades };
@@ -3863,7 +3869,7 @@ function frame(now: number) {
     wirePack.visible = true;
     wirePack.position.set(match.wire.x, match.wire.y, match.wire.z);
   }
-  bomb.pulse(time, match.wire.mode);
+  bomb.pulse(time, match.phase === "planted" && match.wire.mode === "planted" ? "planted" : match.wire.mode === "planted" ? "ground" : match.wire.mode);
 
   const cover = smokeCoverage(px, eyeY, pz);
   veilEl.style.opacity = String(cover * 0.92);

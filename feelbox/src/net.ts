@@ -180,7 +180,8 @@ export type ClientEvent =
       botSkill?: "easy" | "normal" | "hard";
     }
   | { kind: "shot"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number }
-  | { kind: "melee"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number; bash?: boolean };
+  | { kind: "melee"; ox: number; oy: number; oz: number; dx: number; dy: number; dz: number; bash?: boolean }
+  | { kind: "skipRecap" };
 
 export type NetEvent = ClientEvent & { peerId?: number };
 

@@ -13,11 +13,15 @@ import {
   plantingTeam,
   removeBotSlot,
   restartMatch,
+  roundCombatOpen,
+  roundFrozen,
   slotById,
   slotTag,
   tickMatch,
+  trySkipBestPlay,
   type Team,
 } from "./match";
+import type { ClientEvent, KillFeedItem, KillWay, Pawn, PlayerInput, Snapshot } from "./net";
 import { inSite, rayShot, spawnYaw, hasLos } from "./world";
 import { buildMap, MAPS, type MapId } from "./maps";
 import {
@@ -480,12 +484,8 @@ export function createSim(opts?: {
     tick(dt) {
       dt = Math.min(0.05, dt);
       time += dt;
-      const froze =
-        match.phase === "freeze" ||
-        match.phase === "ending" ||
-        match.phase === "matchover" ||
-        match.phase === "bestplay";
-      const combatLock = froze || match.phase === "settle";
+      const froze = roundFrozen(match.phase);
+      const combatLock = !roundCombatOpen(match.phase);
 
       const fighters = [
         ...bots.map((b) => ({
@@ -644,15 +644,13 @@ export function createSim(opts?: {
         if (skipRecap && match.phase === "bestplay") concludeBestPlay(match);
         return;
       }
+      if (event.kind === "skipRecap") {
+        trySkipBestPlay(match);
+        return;
+      }
       if (event.kind === "shot") {
         if (!r?.alive) return;
-        const froze =
-          match.phase === "freeze" ||
-          match.phase === "ending" ||
-          match.phase === "matchover" ||
-          match.phase === "bestplay" ||
-          match.phase === "settle";
-        if (froze) return;
+        if (!roundCombatOpen(match.phase)) return;
         const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
         if (dir.lengthSq() < 1e-6) return;
         dir.normalize();
@@ -664,13 +662,7 @@ export function createSim(opts?: {
       }
       if (event.kind === "melee") {
         if (!r?.alive) return;
-        const froze =
-          match.phase === "freeze" ||
-          match.phase === "ending" ||
-          match.phase === "matchover" ||
-          match.phase === "bestplay" ||
-          match.phase === "settle";
-        if (froze) return;
+        if (!roundCombatOpen(match.phase)) return;
         const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
         if (dir.lengthSq() < 1e-6) return;
         dir.normalize();

@@ -2,7 +2,7 @@
  * Best-play must hold for the recap, and thrown nades must show up in snapshots.
  */
 import { createSim } from "../src/sim.ts";
-import { BESTPLAY_HOLD, createMatch, tickMatch } from "../src/match.ts";
+import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -36,6 +36,17 @@ skipped.phase = "settle";
 skipped.endT = 0.01;
 tickMatch(skipped, 0.02, { ...dummy, skipRecap: true });
 check("skipRecap leaves settle without a recap hold", skipped.phase !== "bestplay", `phase=${skipped.phase}`);
+
+const solo = createMatch({ claimLocal: true });
+solo.phase = "bestplay";
+solo.endT = BESTPLAY_HOLD;
+check("solo skip ends the recap", trySkipBestPlay(solo) && solo.phase === "ending", `phase=${solo.phase}`);
+
+const duo = createMatch({ claimLocal: true });
+claimSlot(duo, "stone", "Pal");
+duo.phase = "bestplay";
+duo.endT = BESTPLAY_HOLD;
+check("two humans stay on the recap", !trySkipBestPlay(duo) && duo.phase === "bestplay", `phase=${duo.phase}`);
 
 const sim = createSim({ name: "Last Wire" });
 sim.join(1, "Reed");

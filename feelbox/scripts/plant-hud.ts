@@ -1,7 +1,7 @@
 /**
  * Planting must charge, then the fuse clock has to tick while the Bomb is live.
  */
-import { createMatch, formatTime, plantedTag, plantWire, tickMatch } from "../src/match.ts";
+import { createMatch, formatTime, plantedTag, plantWire, roundCombatOpen, tickMatch } from "../src/match.ts";
 import { tuning } from "../src/tuning.ts";
 
 let failed = 0;
@@ -39,6 +39,16 @@ const before = match.bombTime;
 tickMatch(match, 1.25, { ...dummy, holdingUse: false });
 check("fuse ticks down while planted", match.bombTime < before - 1, `bomb=${match.bombTime.toFixed(2)}`);
 check("clock text is a countdown", formatTime(match.bombTime).includes(":"));
+
+const cut = createMatch({ claimLocal: true });
+cut.phase = "planted";
+cut.wire.mode = "planted";
+cut.wire.cutHold = tuning.cut;
+cut.wire.plantHold = 0.4;
+tickMatch(cut, 0.02, { ...dummy, holdingUse: false });
+check("cut finish zeros the hold ticks", cut.wire.cutHold === 0 && cut.wire.plantHold === 0, `cut=${cut.wire.cutHold} plant=${cut.wire.plantHold}`);
+check("cut finish settles the round", cut.phase === "settle", `phase=${cut.phase}`);
+check("settle still allows combat", roundCombatOpen(cut.phase));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

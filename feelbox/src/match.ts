@@ -112,6 +112,26 @@ export function watchingTeam(m: Match): Team {
   return plantingTeam(m) === "ember" ? "stone" : "ember";
 }
 
+export function humanCount(m: Match) {
+  return m.slots.filter((s) => s.kind === "human").length;
+}
+
+/** Live fight plus the gap after a win, before freeze / recap / match over. */
+export function roundCombatOpen(phase: Phase) {
+  return phase === "live" || phase === "planted" || phase === "settle" || phase === "ending";
+}
+
+export function roundFrozen(phase: Phase) {
+  return phase === "freeze" || phase === "bestplay" || phase === "matchover";
+}
+
+export function trySkipBestPlay(m: Match) {
+  if (m.phase !== "bestplay") return false;
+  if (humanCount(m) > 1) return false;
+  concludeBestPlay(m);
+  return true;
+}
+
 export function claimSlot(m: Match, team: Team, name: string): Slot | null {
   const bot = m.slots.find((s) => s.team === team && s.kind === "bot");
   if (!bot) return null;
@@ -391,6 +411,8 @@ function finish(m: Match, winner: Team, text: string) {
   m.lastWinner = winner;
   m.matchOverPending = m.emberScore >= m.firstTo || m.stoneScore >= m.firstTo;
   m.phase = "settle";
+  m.wire.plantHold = 0;
+  m.wire.cutHold = 0;
 }
 
 function nextRound(m: Match, spawn: { x: number; y: number; z: number }) {
