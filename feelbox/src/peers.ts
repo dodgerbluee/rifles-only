@@ -158,7 +158,8 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
     return;
   }
   const height = r.crouch ? 1.2 : 1.78;
-  const speed = tuning.walk * (r.crouch ? 0.55 : 1) * (r.ads ? tuning.adsSlow : 1);
+  const knife = r.weapon === "knife" && !r.ads ? 1.25 : 1;
+  const speed = tuning.walk * (r.crouch ? 0.55 : 1) * (r.ads ? tuning.adsSlow : 1) * knife;
   const keys = new Set(inp.keys);
   const fx = -Math.sin(r.yaw);
   const fz = -Math.cos(r.yaw);
@@ -344,27 +345,70 @@ export function collectInput(opts: {
   };
 }
 
+const HARD_SNAP_XZ = 1.6;
+const HARD_SNAP_Y = 2.2;
+const SNAP_BLEND = 0.22;
+
+export function reconcilePos(
+  x: number,
+  y: number,
+  z: number,
+  sx: number,
+  sy: number,
+  sz: number,
+): { x: number; y: number; z: number } {
+  const err = Math.hypot(sx - x, sz - z);
+  if (err > HARD_SNAP_XZ || Math.abs(sy - y) > HARD_SNAP_Y) return { x: sx, y: sy, z: sz };
+  return {
+    x: x + (sx - x) * SNAP_BLEND,
+    y: y + (sy - y) * SNAP_BLEND,
+    z: z + (sz - z) * SNAP_BLEND,
+  };
+}
+
+function lerpAngle(a: number, b: number, u: number) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * u;
+}
+
 export function syncClientPawns(
   scene: THREE.Scene,
   pawns: Pawn[],
   selfNetId: number,
   store: Map<number, THREE.Group>,
+  dt: number,
 ) {
   const seen = new Set<number>();
+  const a = 1 - Math.exp(-16 * dt);
   for (const p of pawns) {
     if ((p.netId ?? 0) === selfNetId) continue;
     seen.add(p.id);
     let g = store.get(p.id);
     if (!g) {
       g = standIn(p.team, p.name, p.id);
+      g.position.set(p.x, p.y, p.z);
+      g.rotation.y = p.yaw;
       scene.add(g);
       store.set(p.id, g);
     }
     g.visible = true;
-    g.position.set(p.x, p.y, p.z);
-    g.rotation.y = p.yaw;
+    const ox = g.position.x;
+    const oz = g.position.z;
+    const err = Math.hypot(p.x - ox, p.z - oz);
+    if (err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
+      g.position.set(p.x, p.y, p.z);
+      g.rotation.y = p.yaw;
+    } else {
+      g.position.x += (p.x - g.position.x) * a;
+      g.position.y += (p.y - g.position.y) * a;
+      g.position.z += (p.z - g.position.z) * a;
+      g.rotation.y = lerpAngle(g.rotation.y, p.yaw, a);
+    }
     g.rotation.x = p.alive ? 0 : 1.25;
-    stepWalkFromPos(g, p.x, p.z, p.alive);
+    const moving = p.alive && Math.hypot(g.position.x - ox, g.position.z - oz) > 0.002;
+    stepWalkFromPos(g, g.position.x, g.position.z, moving);
   }
   for (const [id, g] of store) {
     if (seen.has(id)) continue;

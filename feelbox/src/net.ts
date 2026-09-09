@@ -121,7 +121,6 @@ export type NetHandle = {
   destroy(): void;
 };
 
-const INPUT_HZ = 20;
 const BACKOFF = [400, 800, 1600, 3200, 5000];
 
 export function defaultNetUrl(): string {
@@ -168,8 +167,7 @@ export function connectNet(url?: string): NetHandle {
   let dead = false;
   let tries = 0;
   let reconnectTimer = 0;
-  let inputTimer = 0;
-  let latestInput: PlayerInput | null = null;
+  let rttTimer = 0;
 
   const roleCbs: Array<(role: NetRole, peerId: number) => void> = [];
   const inputCbs: Array<(peerId: number, input: PlayerInput) => void> = [];
@@ -183,7 +181,8 @@ export function connectNet(url?: string): NetHandle {
     peerId: null,
     pingMs: 0,
     sendInput(input) {
-      latestInput = input;
+      if (handle.role !== "client") return;
+      rawSend({ type: "input", input });
     },
     sendSnapshot() {
       /* dedicated game process is the authority */
@@ -212,7 +211,7 @@ export function connectNet(url?: string): NetHandle {
     destroy() {
       dead = true;
       clearTimeout(reconnectTimer);
-      clearInterval(inputTimer);
+      clearInterval(rttTimer);
       try {
         ws?.close();
       } catch {
@@ -252,9 +251,12 @@ export function connectNet(url?: string): NetHandle {
     if (!msg || typeof msg.type !== "string") return;
 
     if (msg.type === "ping") {
-      const t = Number(msg.t);
-      if (Number.isFinite(t)) handle.pingMs = Math.max(0, Date.now() - t);
       rawSend({ type: "pong" });
+      return;
+    }
+    if (msg.type === "rtt") {
+      const t = Number(msg.t);
+      if (Number.isFinite(t)) handle.pingMs = Math.max(0, performance.now() - t);
       return;
     }
     if (msg.type === "welcome") {
@@ -328,10 +330,10 @@ export function connectNet(url?: string): NetHandle {
     reconnectTimer = window.setTimeout(open, wait);
   }
 
-  inputTimer = window.setInterval(() => {
-    if (handle.role !== "client" || !latestInput) return;
-    rawSend({ type: "input", input: latestInput });
-  }, 1000 / INPUT_HZ);
+  rttTimer = window.setInterval(() => {
+    if (handle.role !== "client") return;
+    rawSend({ type: "rtt", t: performance.now() });
+  }, 2000);
 
   open();
   return handle;

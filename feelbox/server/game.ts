@@ -14,7 +14,7 @@ const GAME_NAME = process.env.GAME_NAME ?? "Last Wire";
 const HEARTBEAT_MS = 15_000;
 const DEAD_MS = 45_000;
 const HELLO_MS = 5_000;
-const SNAP_HZ = 18;
+const SNAP_HZ = 30;
 const TICK_HZ = 30;
 const LOBBY_BEAT_MS = 2000;
 const MAX_NAME = 24;
@@ -107,6 +107,11 @@ wss.on("connection", (ws) => {
     const msg = parseJson(raw);
     if (!msg || typeof msg.type !== "string") return;
     if (msg.type === "pong") return;
+    if (msg.type === "rtt") {
+      const t = Number(msg.t);
+      if (Number.isFinite(t)) send(ws, { type: "rtt", t });
+      return;
+    }
 
     if (msg.type === "hello") {
       if (peer.helloed) return;

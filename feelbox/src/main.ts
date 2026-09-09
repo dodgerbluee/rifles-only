@@ -103,6 +103,7 @@ import {
   buildSnapshot,
   collectInput,
   dropPeer,
+  reconcilePos,
   seatPeer,
   statusLine,
   syncClientPawns,
@@ -181,10 +182,13 @@ let net: NetHandle = idleNet();
 const remotes = new Map<number, Remote>();
 const clientPawns = new Map<number, THREE.Group>();
 let lastSnap: Snapshot | null = null;
+let snapSeq = 0;
+let appliedSeq = -1;
 
 function bindNet(handle: NetHandle) {
   handle.onSnapshot((snap) => {
     lastSnap = snap;
+    snapSeq += 1;
   });
   handle.onRole((role) => {
     if (role === "client" && prefs.team) {
@@ -2142,7 +2146,7 @@ function frame(now: number) {
   const gh = groundHeight(world.colliders, px, pz, RADIUS, py);
   grounded = py <= gh + 0.06 && vy <= 0.2;
 
-  if (alive && locked && !froze && !isClient && !isCow(playerId)) {
+  if (alive && locked && !froze && net.role !== "offline" && !isCow(playerId)) {
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     const rightX = Math.cos(yaw);
@@ -2335,7 +2339,7 @@ function frame(now: number) {
     if (snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
       loadMap(snapMap as MapId);
     }
-    syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns);
+    syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt);
     for (const b of bots) b.root.visible = false;
     ghost.visible = false;
     for (const p of lastSnap.pawns) {
@@ -2344,11 +2348,21 @@ function frame(now: number) {
     const me = lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId);
     if (me) {
       playerId = me.id;
-      px = me.x;
-      py = me.y;
-      pz = me.z;
       hp = me.hp;
       alive = me.alive;
+      if (snapSeq !== appliedSeq) {
+        appliedSeq = snapSeq;
+        if (!me.alive) {
+          px = me.x;
+          py = me.y;
+          pz = me.z;
+        } else {
+          const n = reconcilePos(px, py, pz, me.x, me.y, me.z);
+          px = n.x;
+          py = n.y;
+          pz = n.z;
+        }
+      }
       if (me.kills != null) {
         kills = me.kills;
         deaths = me.deaths ?? deaths;
