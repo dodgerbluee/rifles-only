@@ -42,6 +42,9 @@ restorePawnHead(root);
 check("restore brings the head back", fig.head.visible && fig.helm.visible);
 check("restore allows another pop", popPawnHead(root, scene) === true);
 
+restorePawnHead(root);
+check("a living pawn keeps its head unless the kill pop lands", fig.head.visible);
+
 const sim = createSim({ name: "Last Wire" });
 sim.join(1, "Reed");
 for (let i = 0; i < 4; i++) sim.tick(1 / 30);

@@ -45,6 +45,7 @@ type Cloud = {
   pos: THREE.Vector3;
   age: number;
   radius: number;
+  snapOp?: number;
 };
 
 const LAND_FUSE: Record<NadeKind, number> = {
@@ -191,17 +192,7 @@ export function updateSmoke(
     c.age += dt;
     const growT = Math.min(1, c.age / GROW);
     c.radius = THREE.MathUtils.lerp(0.5, MAX_R, 1 - Math.pow(1 - growT, 2));
-    const op = puffOpacity(c.age);
-    for (const p of c.puffs) {
-      const s = p.size * c.radius * (0.22 + 0.08 * Math.sin(c.age * 0.7 + p.phase));
-      p.mesh.scale.setScalar(Math.max(0.05, s));
-      p.mesh.position.set(
-        p.base.x * c.radius * 0.28,
-        p.base.y * c.radius * 0.16 + Math.sin(c.age * 0.9 + p.phase) * 0.22,
-        p.base.z * c.radius * 0.28,
-      );
-      (p.mesh.material as THREE.MeshLambertMaterial).opacity = op * 0.38;
-    }
+    poseCloud(c, puffOpacity(c.age));
     if (c.age > LIFE) {
       scene.remove(c.root);
       clouds.splice(i, 1);
@@ -243,20 +234,58 @@ function spawnCloud(scene: THREE.Scene, pos: THREE.Vector3) {
   clouds.push({ root, puffs, pos: pos.clone(), age: 0, radius: 0.5 });
 }
 
+function poseCloud(c: Cloud, op = puffOpacity(c.age)) {
+  for (const p of c.puffs) {
+    const s = p.size * c.radius * (0.22 + 0.08 * Math.sin(c.age * 0.7 + p.phase));
+    p.mesh.scale.setScalar(Math.max(0.05, s));
+    p.mesh.position.set(
+      p.base.x * c.radius * 0.28,
+      p.base.y * c.radius * 0.16 + Math.sin(c.age * 0.9 + p.phase) * 0.22,
+      p.base.z * c.radius * 0.28,
+    );
+    (p.mesh.material as THREE.MeshLambertMaterial).opacity = op * 0.38;
+  }
+}
+
+export function billowClouds(dt: number) {
+  for (const c of clouds) {
+    c.age += dt;
+    poseCloud(c, c.snapOp ?? puffOpacity(c.age));
+  }
+}
+
 export function applyCloudSnap(scene: THREE.Scene, snaps: SmokeCloud[]) {
-  while (clouds.length > snaps.length) {
-    const c = clouds.pop()!;
+  const used = new Set<Cloud>();
+  const next: Cloud[] = [];
+  for (const s of snaps) {
+    let best: Cloud | undefined;
+    let bestD = 2.8;
+    for (const c of clouds) {
+      if (used.has(c)) continue;
+      const d = Math.hypot(c.pos.x - s.x, c.pos.y - s.y, c.pos.z - s.z);
+      if (d < bestD) {
+        best = c;
+        bestD = d;
+      }
+    }
+    if (!best) {
+      spawnCloud(scene, new THREE.Vector3(s.x, s.y, s.z));
+      best = clouds[clouds.length - 1]!;
+    }
+    used.add(best);
+    best.pos.set(s.x, s.y, s.z);
+    best.root.position.copy(best.pos);
+    best.radius = s.radius;
+    best.snapOp = s.opacity;
+    poseCloud(best, s.opacity);
+    next.push(best);
+  }
+  for (const c of clouds) {
+    if (used.has(c)) continue;
     scene.remove(c.root);
   }
-  while (clouds.length < snaps.length) spawnCloud(scene, new THREE.Vector3());
-  for (let i = 0; i < snaps.length; i++) {
-    const s = snaps[i]!;
-    const c = clouds[i]!;
-    c.pos.set(s.x, s.y, s.z);
-    c.root.position.copy(c.pos);
-    c.radius = s.radius;
-    c.age = s.opacity < 0.2 ? LIFE - FADE + 0.2 : GROW + 1;
-  }
+  clouds.length = 0;
+  clouds.push(...next);
 }
 
 export function applyNadeSnap(scene: THREE.Scene, snaps: AirNade[]) {

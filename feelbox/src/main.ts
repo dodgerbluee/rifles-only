@@ -26,6 +26,7 @@ import {
   activeNades,
   applyCloudSnap,
   applyNadeSnap,
+  billowClouds,
   dropSmoke,
   nadeColor,
   NADE_ORDER,
@@ -1564,14 +1565,6 @@ function tryFire() {
       flashHit(!!head);
       bang(head ? 520 : 280, 0.06, 0.05);
       tracer(muzzle, meshHit.point);
-      if (head) {
-        const id = meshHit.object.userData.botId as number;
-        const g = clientPawns.get(id);
-        if (g && popPawnHead(g, scene)) {
-          bang(70, 0.12, 0.16);
-          bang(140, 0.06, 0.1);
-        }
-      }
     } else if (worldHit) {
       lastHit = "world";
       impact(worldHit.point, worldHit.normal, false, false);
@@ -2625,6 +2618,11 @@ function frame(now: number) {
     }
     if (!reel) {
       syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt);
+      for (const p of lastSnap.pawns) {
+        if ((p.netId ?? 0) === net.peerId) continue;
+        const g = clientPawns.get(p.id);
+        if (g && p.alive) restorePawnHead(g);
+      }
       for (const b of bots) b.root.visible = false;
       ghost.visible = false;
     }
@@ -2849,6 +2847,7 @@ function frame(now: number) {
   if (isClient) {
     applyNadeSnap(scene, lastSnap?.nades ?? []);
     applyCloudSnap(scene, lastSnap?.clouds ?? []);
+    billowClouds(dt);
   } else updateSmoke(scene, dt, world.colliders, applyNadePop);
   updateGore(scene, dt);
 
