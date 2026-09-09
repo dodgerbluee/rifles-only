@@ -2,7 +2,7 @@
  * Stance, recap skip, takeover nades, and dummy pawns.
  */
 import { createSim } from "../src/sim.ts";
-import { BESTPLAY_HOLD, createMatch, tickMatch } from "../src/match.ts";
+import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch } from "../src/match.ts";
 import { fillAbsentSlots } from "../src/peers.ts";
 import { NADE_MAX } from "../src/smoke.ts";
 
@@ -21,16 +21,32 @@ const dummy = {
 };
 
 const hold = createMatch({ claimLocal: false });
+claimSlot(hold, "ember", "Reed");
 hold.phase = "settle";
 hold.endT = 0.01;
 tickMatch(hold, 0.02, dummy);
 check("highlights on still recap", hold.phase === "bestplay" && Math.abs(hold.endT - BESTPLAY_HOLD) < 0.001);
 
 const skip = createMatch({ claimLocal: false });
+claimSlot(skip, "ember", "Reed");
 skip.phase = "settle";
 skip.endT = 0.01;
 tickMatch(skip, 0.02, { ...dummy, skipRecap: true });
 check("highlights off skips recap hold", skip.phase === "ending" || skip.phase === "matchover", `phase=${skip.phase}`);
+
+const vacant = createMatch({ claimLocal: false });
+vacant.phase = "live";
+vacant.timeLeft = 40;
+tickMatch(vacant, 0.5, dummy);
+check("empty server parks in freeze", vacant.phase === "freeze", `phase=${vacant.phase}`);
+const held = vacant.timeLeft;
+tickMatch(vacant, 8, dummy);
+check("empty freeze does not go live", vacant.phase === "freeze" && vacant.timeLeft === held);
+claimSlot(vacant, "ember", "Reed");
+tickMatch(vacant, 0.4, dummy);
+check("a human starts the freeze countdown", vacant.phase === "freeze" && vacant.timeLeft < held - 0.3);
+tickMatch(vacant, vacant.freezeTime + 0.2, dummy);
+check("round goes live once someone is in", vacant.phase === "live", `phase=${vacant.phase}`);
 
 const sim = createSim({ name: "Last Wire" });
 sim.join(1, "Reed");

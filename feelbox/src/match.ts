@@ -125,6 +125,10 @@ export function roundFrozen(phase: Phase) {
   return phase === "freeze" || phase === "bestplay" || phase === "matchover";
 }
 
+export function waitingForPlayers(m: Match) {
+  return humanCount(m) === 0;
+}
+
 export function trySkipBestPlay(m: Match) {
   if (m.phase !== "bestplay") return false;
   if (humanCount(m) > 1) return false;
@@ -274,6 +278,20 @@ export function pickupWire(m: Match, id: number, team: Team) {
   return true;
 }
 
+function holdEmptyServer(m: Match, spawn: { x: number; y: number; z: number }) {
+  if (m.phase !== "freeze") {
+    m.phase = "freeze";
+    m.bombTime = tuning.fuse;
+    m.endText = "";
+    m.endT = 0;
+    m.matchOverPending = false;
+    for (const s of m.slots) s.alive = true;
+    m.wire = groundWire(spawn.x, spawn.y + 0.2, spawn.z);
+    giveWireToPlanter(m);
+  }
+  m.timeLeft = m.freezeTime;
+}
+
 export function tickMatch(
   m: Match,
   dt: number,
@@ -298,6 +316,11 @@ export function tickMatch(
     onRotate?: () => void;
   },
 ) {
+  if (waitingForPlayers(m)) {
+    holdEmptyServer(m, ctx.spawnPlant);
+    return;
+  }
+
   if (m.phase === "settle") {
     m.endT -= dt;
     if (m.endT <= 0) {

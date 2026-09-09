@@ -20,6 +20,7 @@ const dummy = {
 };
 
 const match = createMatch({ claimLocal: false });
+claimSlot(match, "ember", "Reed");
 match.phase = "settle";
 match.endT = 0.01;
 tickMatch(match, 0.02, dummy);
@@ -33,6 +34,7 @@ tickMatch(match, 0.4, dummy);
 check("bestplay concludes after the hold", match.phase === "ending" || match.phase === "matchover", `phase=${match.phase}`);
 
 const skipped = createMatch({ claimLocal: false });
+claimSlot(skipped, "ember", "Reed");
 skipped.phase = "settle";
 skipped.endT = 0.01;
 tickMatch(skipped, 0.02, { ...dummy, skipRecap: true });

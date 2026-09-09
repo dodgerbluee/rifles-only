@@ -60,6 +60,7 @@ import {
   tickMatch,
   trySkipBestPlay,
   vacateSlot,
+  waitingForPlayers,
   watchingTeam,
   type Slot,
   type Team,
@@ -3967,7 +3968,8 @@ function frame(now: number) {
   const viewId = mePawn?.id ?? playerId;
   const planter = plantingTeam(match);
   let prompt = "";
-  if (match.phase === "freeze") prompt = "Hold";
+  if (waitingForPlayers(match)) prompt = "Waiting for players";
+  else if (match.phase === "freeze") prompt = "Hold";
   else if (match.phase === "bestplay") prompt = "";
   else if (match.phase === "ending" || match.phase === "matchover") prompt = match.endText;
   else if (match.wire.mode === "carried" && match.wire.carrierId === viewId) {

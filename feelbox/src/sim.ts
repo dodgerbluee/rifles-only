@@ -7,6 +7,7 @@ import {
   concludeBestPlay,
   createMatch,
   dropWire,
+  humanCount,
   markDead,
   pickupWire,
   plantWire,
@@ -132,6 +133,7 @@ export function createSim(opts?: {
   let oneShot = !!opts?.oneShot;
   let skipRecap = opts?.highlights === false;
   let botSkill: BotSkill = opts?.botSkill ?? "normal";
+  let vacant = humanCount(match) === 0;
   const roundKills: KillFeedItem[] = [];
   const pendingHeads: number[] = [];
   const cows: { id: number; until: number }[] = [];
@@ -549,6 +551,15 @@ export function createSim(opts?: {
           else loadMap(nxt);
         },
       });
+
+      const empty = humanCount(match) === 0;
+      if (empty && !vacant) {
+        restoreHomeSeats(match, remotes);
+        resetBots(bots, world, match);
+        roundSpawnHumans();
+        for (const s of match.slots) s.alive = true;
+      }
+      vacant = empty;
 
       for (let i = cows.length - 1; i >= 0; i--) {
         if (time < cows[i]!.until) continue;

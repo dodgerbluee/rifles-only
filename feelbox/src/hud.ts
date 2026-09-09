@@ -1,5 +1,5 @@
 import type { World } from "./world";
-import { actorTag, formatTime, plantedTag, plantingTeam, type Match } from "./match";
+import { actorTag, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { kd, line, topThree } from "./stats";
@@ -355,14 +355,16 @@ export function updateMatchHud(m: Match, prompt: string, extra?: { nextMap?: str
       : m.phase === "ending" || m.phase === "matchover" || m.phase === "settle"
         ? m.endT
         : m.timeLeft;
-  if (m.phase === "freeze") clockEl.textContent = `IN ${Math.max(0, Math.ceil(m.timeLeft))}`;
+  if (m.phase === "freeze") clockEl.textContent = waitingForPlayers(m) ? "WAIT" : `IN ${Math.max(0, Math.ceil(m.timeLeft))}`;
   else if (m.phase === "bestplay") clockEl.textContent = "REEL";
   else if (m.phase === "planted") clockEl.textContent = formatTime(m.bombTime);
   else clockEl.textContent = formatTime(timed);
   clockEl.classList.toggle("bomb", m.phase === "planted");
   const plant = plantingTeam(m);
   roundTag.textContent =
-    m.phase === "planted"
+    waitingForPlayers(m)
+      ? "Waiting for players"
+      : m.phase === "planted"
       ? plantedTag(m)
       : m.phase === "bestplay"
       ? "Best play"
