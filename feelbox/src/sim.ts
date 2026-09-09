@@ -4,7 +4,6 @@
 import * as THREE from "three";
 import {
   addBotSlot,
-  concludeBestPlay,
   createMatch,
   dropWire,
   markDead,
@@ -30,7 +29,7 @@ import {
   type Bot,
 } from "./bots";
 import { pickBodyVictim, remoteTargets, type LiveBody } from "./combat";
-import type { ClientEvent, Pawn, PlayerInput, Snapshot } from "./net";
+import type { ClientEvent, KillFeedItem, Pawn, PlayerInput, Snapshot } from "./net";
 import {
   dropPeer,
   seatPeer,
@@ -40,7 +39,9 @@ import {
 } from "./peers";
 import {
   activeClouds,
+  activeNades,
   clearNades,
+  drainPops,
   dropSmoke,
   smokeBlocksLos,
   throwSmoke,
@@ -89,6 +90,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
   let seenRound = match.round;
   let friendlyFire = false;
   let oneShot = false;
+  const roundKills: KillFeedItem[] = [];
 
   function spawnList(team: Team) {
     const planter = plantingTeam(match);
@@ -113,6 +115,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
 
   function restartRoom() {
     resetStats();
+    roundKills.length = 0;
     restartMatch(match, world.plantSpawns[2]!);
     resetBots(bots, world, match);
     roundSpawnHumans();
@@ -168,7 +171,13 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
   function frag(killerId: number, victimId: number, victimName: string, x: number, y: number, z: number) {
     noteKill(killerId, victimId, time);
     markDead(match, victimId, x, y, z);
-    void victimName;
+    roundKills.push({
+      t: time,
+      killerId,
+      killerName: slotById(match, killerId)?.name ?? "Rifle",
+      victimId,
+      victimName,
+    });
   }
 
   function hurtRemote(r: Remote, dmg: number, killerId: number) {
@@ -373,10 +382,9 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         botCutting,
       });
 
-      if (match.phase === "bestplay") concludeBestPlay(match);
-
       if (match.round !== seenRound) {
         seenRound = match.round;
+        roundKills.length = 0;
         resetBots(bots, world, match);
         roundSpawnHumans();
         for (const s of match.slots) s.alive = true;
@@ -411,6 +419,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         return;
       }
       if (event.kind === "throwSmoke") {
+        if (!r?.alive) return;
         const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
         const kind = event.nade ?? "smoke";
         if ((event.power ?? 0.55) <= 0) dropSmoke(scene, origin, kind);
@@ -534,9 +543,13 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
           cutHold: match.wire.cutHold,
         },
         pawns,
-        feed: [],
+        feed: roundKills.slice(),
         events: [],
         clouds: activeClouds(),
+        nades: activeNades(),
+        pops: drainPops(),
+        endText: match.endText,
+        lastWinner: match.lastWinner,
         mapId,
       };
     },

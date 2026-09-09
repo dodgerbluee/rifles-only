@@ -144,6 +144,7 @@ export function updateHud(opts: {
   nades?: { smoke: number; frag: number; stun: number; flash: number };
   nadeKind?: "smoke" | "frag" | "stun" | "flash";
   clouds: { x: number; z: number; radius: number; opacity: number }[];
+  air?: { x: number; z: number }[];
   weapon?: "rifle" | "kar" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
   rifleName?: string;
   spread?: number;
@@ -192,7 +193,7 @@ export function updateHud(opts: {
   if (ch) ch.style.setProperty("--spread", `${Math.max(6, Math.round(opts.spread ?? 10))}px`);
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle && opts.world.title) mapTitle.textContent = opts.world.title;
-  drawMinimap(opts.world, opts.x, opts.z, opts.yaw, opts.bots, alive, opts.clouds);
+  drawMinimap(opts.world, opts.x, opts.z, opts.yaw, opts.bots, alive, opts.clouds, opts.air);
 }
 
 function drawMinimap(
@@ -203,6 +204,7 @@ function drawMinimap(
   bots: { x: number; z: number; team: string; hp: number }[],
   alive: boolean,
   clouds: { x: number; z: number; radius: number; opacity: number }[],
+  air: { x: number; z: number }[] = [],
 ) {
   const dpr = Math.min(2, devicePixelRatio || 1);
   if (mapCanvas.width !== MAP_W * dpr) {
@@ -268,6 +270,14 @@ function drawMinimap(
     mapCtx.beginPath();
     mapCtx.arc(p.x, p.y, r, 0, Math.PI * 2);
     mapCtx.fillStyle = `rgba(200, 194, 176, ${0.18 + cloud.opacity * 0.28})`;
+    mapCtx.fill();
+  }
+
+  for (const nade of air) {
+    const p = to(nade.x, nade.z);
+    mapCtx.beginPath();
+    mapCtx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+    mapCtx.fillStyle = "rgba(232, 210, 120, 0.95)";
     mapCtx.fill();
   }
 

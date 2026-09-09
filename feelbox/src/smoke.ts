@@ -67,6 +67,7 @@ const PUFF_MAT = new THREE.MeshLambertMaterial({
 
 const nades: Nade[] = [];
 const clouds: Cloud[] = [];
+const pendingPops: NadePop[] = [];
 const puffGeo = new THREE.SphereGeometry(1, 14, 10);
 
 export function nadeColor(kind: NadeKind) {
@@ -81,6 +82,16 @@ export function activeClouds(): SmokeCloud[] {
     radius: c.radius,
     opacity: puffOpacity(c.age),
   }));
+}
+
+export type AirNade = { x: number; y: number; z: number; kind: NadeKind };
+
+export function activeNades(): AirNade[] {
+  return nades.map((n) => ({ x: n.pos.x, y: n.pos.y, z: n.pos.z, kind: n.kind }));
+}
+
+export function drainPops(): NadePop[] {
+  return pendingPops.splice(0);
 }
 
 export function smokeBlocksLos(
@@ -165,7 +176,9 @@ export function updateSmoke(
       (n.mesh.material as THREE.Material).dispose();
       nades.splice(i, 1);
       if (kind === "smoke") spawnCloud(scene, pos);
-      onPop?.({ kind, x: pos.x, y: pos.y, z: pos.z });
+      const pop: NadePop = { kind, x: pos.x, y: pos.y, z: pos.z };
+      pendingPops.push(pop);
+      onPop?.(pop);
     }
   }
 
@@ -239,6 +252,40 @@ export function applyCloudSnap(scene: THREE.Scene, snaps: SmokeCloud[]) {
     c.root.position.copy(c.pos);
     c.radius = s.radius;
     c.age = s.opacity < 0.2 ? LIFE - FADE + 0.2 : GROW + 1;
+  }
+}
+
+export function applyNadeSnap(scene: THREE.Scene, snaps: AirNade[]) {
+  while (nades.length > snaps.length) {
+    const n = nades.pop()!;
+    scene.remove(n.mesh);
+    n.mesh.geometry.dispose();
+    (n.mesh.material as THREE.Material).dispose();
+  }
+  while (nades.length < snaps.length) {
+    const mesh = makeNadeMesh("smoke");
+    scene.add(mesh);
+    nades.push({
+      mesh,
+      pos: new THREE.Vector3(),
+      vel: new THREE.Vector3(),
+      fuse: 99,
+      kind: "smoke",
+      settled: false,
+      air: 0,
+    });
+  }
+  for (let i = 0; i < snaps.length; i++) {
+    const s = snaps[i]!;
+    const n = nades[i]!;
+    if (n.kind !== s.kind) {
+      (n.mesh.material as THREE.MeshStandardMaterial).color.set(NADE_COLOR[s.kind]);
+      n.kind = s.kind;
+    }
+    n.pos.set(s.x, s.y, s.z);
+    n.mesh.position.copy(n.pos);
+    n.mesh.rotation.x += 0.12;
+    n.mesh.rotation.z += 0.08;
   }
 }
 
@@ -325,4 +372,5 @@ export function clearNades(scene: THREE.Scene) {
   nades.length = 0;
   for (const c of clouds) scene.remove(c.root);
   clouds.length = 0;
+  pendingPops.length = 0;
 }

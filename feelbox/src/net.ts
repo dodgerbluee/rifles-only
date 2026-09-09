@@ -57,6 +57,7 @@ export type WireSnap = {
 };
 
 export type KillFeedItem = {
+  t?: number;
   killerId: number;
   killerName: string;
   victimId: number;
@@ -104,6 +105,10 @@ export type Snapshot = {
   feed: KillFeedItem[];
   events: NetEvent[];
   clouds?: { x: number; y: number; z: number; radius: number; opacity: number }[];
+  nades?: { x: number; y: number; z: number; kind: "smoke" | "frag" | "stun" | "flash" }[];
+  pops?: { kind: "smoke" | "frag" | "stun" | "flash"; x: number; y: number; z: number }[];
+  endText?: string;
+  lastWinner?: Team | null;
   mapId?: string;
 };
 

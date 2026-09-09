@@ -3,7 +3,7 @@ import { collideXZ, groundHeight, type World } from "./world";
 import { addBotSlot, claimSlot, plantingTeam, type Match, type Team } from "./match";
 import { despawnBot, spawnBot, type Bot } from "./bots";
 import type { NetHandle, Pawn, PlayerInput, Snapshot, Weapon } from "./net";
-import { activeClouds } from "./smoke";
+import { activeClouds, activeNades, drainPops } from "./smoke";
 
 import { line } from "./stats";
 import { tuning } from "./tuning";
@@ -323,6 +323,10 @@ export function buildSnapshot(
     feed: [],
     events: [],
     clouds: activeClouds(),
+    nades: activeNades(),
+    pops: drainPops(),
+    endText: match.endText,
+    lastWinner: match.lastWinner,
     mapId,
   };
 }
@@ -343,6 +347,8 @@ export function applyMatchSnap(match: Match, snap: Snapshot) {
   match.wire.z = snap.wire.z;
   match.wire.plantHold = snap.wire.plantHold;
   match.wire.cutHold = snap.wire.cutHold;
+  if (snap.endText != null) match.endText = snap.endText;
+  if (snap.lastWinner !== undefined) match.lastWinner = snap.lastWinner;
   if (snap.pawns.length) {
     match.slots = snap.pawns.map((p) => ({
       id: p.id,

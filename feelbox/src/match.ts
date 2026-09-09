@@ -42,6 +42,7 @@ export type Match = {
 
 export const FREEZE_TIME = 2.8;
 export const END_HOLD = 4.2;
+export const BESTPLAY_HOLD = 10;
 export const FIRST_TO = 6;
 export const SWAP_AFTER = 5;
 
@@ -226,11 +227,20 @@ export function tickMatch(
 ) {
   if (m.phase === "settle") {
     m.endT -= dt;
-    if (m.endT <= 0) m.phase = "bestplay";
+    if (m.endT <= 0) {
+      m.phase = "bestplay";
+      m.endT = BESTPLAY_HOLD;
+    }
     return;
   }
 
-  if (m.phase === "matchover" || m.phase === "bestplay") return;
+  if (m.phase === "bestplay") {
+    m.endT -= dt;
+    if (m.endT <= 0) concludeBestPlay(m);
+    return;
+  }
+
+  if (m.phase === "matchover") return;
 
   if (m.phase === "ending") {
     m.endT -= dt;

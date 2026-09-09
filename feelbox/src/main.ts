@@ -23,7 +23,9 @@ import {
 } from "./hud";
 import {
   activeClouds,
+  activeNades,
   applyCloudSnap,
+  applyNadeSnap,
   dropSmoke,
   nadeColor,
   NADE_ORDER,
@@ -262,6 +264,7 @@ type Reel = {
   skipAt: number;
 };
 let reel: Reel | null = null;
+let reelPlayed = false;
 let lastRecord = -1;
 let seenPhase = match.phase;
 let cowUntil = 0;
@@ -1537,7 +1540,36 @@ function flashHit(kill: boolean) {
   hitmark.style.opacity = "1";
 }
 
+function pawnPoseWeapon(w: string): Pose["weapon"] {
+  if (w === "mosin") return "mosin";
+  if (w === "knife" || w === "smoke" || w === "frag" || w === "stun" || w === "flash") return w;
+  return "kar";
+}
+
 function collectPoses(): Pose[] {
+  if (net.role !== "host" && lastSnap) {
+    return lastSnap.pawns.map((p) => {
+      const self = (p.netId ?? 0) === (net.peerId ?? -1);
+      return {
+        id: p.id,
+        x: self ? px + Math.cos(yaw) * lastLeanM : p.x,
+        y: self ? py : p.y,
+        z: self ? pz - Math.sin(yaw) * lastLeanM : p.z,
+        yaw: self ? yaw : p.yaw,
+        pitch: self ? pitch : p.pitch,
+        eye: self ? eyeOff() : 1.52,
+        alive: self ? alive : p.alive,
+        weapon: pawnPoseWeapon(self ? (weapon === "rifle" ? rifleKind : weapon) : p.weapon),
+        ads: self ? ads && weapon === "rifle" : p.ads,
+        bash: self && bashT > 0 ? 1 - bashT / 0.42 : 0,
+        fov: (self ? ads && weapon === "rifle" : p.ads) ? 68 : 90,
+        kick: self ? gunKickZ : 0,
+        punchP: self ? punchP : 0,
+        punchY: self ? punchY : 0,
+        flash: self ? time < flashUntil : false,
+      };
+    });
+  }
   const poses: Pose[] = [
     {
       id: playerId,
@@ -1599,6 +1631,16 @@ function collectPoses(): Pose[] {
     });
   }
   return poses;
+}
+
+function ingestFeed(items: Snapshot["feed"]) {
+  for (const k of items) {
+    const t = k.t ?? time;
+    if (tape.kills.some((x) => x.killerId === k.killerId && x.victimId === k.victimId && Math.abs(x.t - t) < 0.08)) {
+      continue;
+    }
+    pushKill(tape, { t, killerId: k.killerId, victimId: k.victimId, victimName: k.victimName });
+  }
 }
 
 function recordSnap() {
@@ -1682,7 +1724,6 @@ function trySkipReel() {
 }
 
 function stopReel() {
-  if (match.phase !== "bestplay") return;
   document.body.classList.remove("bestplay");
   ghost.visible = false;
   for (const b of bots) {
@@ -1690,7 +1731,8 @@ function stopReel() {
     restoreHead(b);
   }
   reel = null;
-  concludeBestPlay(match);
+  reelPlayed = true;
+  if (net.role !== "client" && match.phase === "bestplay") concludeBestPlay(match);
 }
 
 function tickReel(dt: number) {
@@ -1732,30 +1774,46 @@ function tickReel(dt: number) {
 function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
   const youTeam = slotById(match, playerId)?.team ?? "ember";
   setPawnCloth((ghost.userData.cloth as THREE.Mesh[]) ?? [ghost.userData.body], teamCloth(youTeam));
-  for (const b of bots) {
-    const p = poses.get(b.id);
-    if (!p) continue;
-    b.x = p.x;
-    b.y = p.y;
-    b.z = p.z;
-    b.yaw = p.yaw;
-    b.hp = p.alive ? 100 : 0;
-    b.root.visible = b.id !== mvpId;
-    b.root.position.set(p.x, p.y, p.z);
-    b.root.rotation.y = p.yaw;
-    b.root.rotation.x = p.alive ? 0 : 1.25;
-    stepWalkFromPos(b.root, p.x, p.z, p.alive);
-    restoreHead(b);
-    setPawnCloth(b.cloth, p.alive ? teamCloth(b.team) : 0x2a3224);
-  }
-  for (const r of remotes.values()) {
-    const p = poses.get(r.slotId);
-    if (!p) continue;
-    r.root.visible = r.slotId !== mvpId;
-    r.root.position.set(p.x, p.y, p.z);
-    r.root.rotation.y = p.yaw;
-    r.root.rotation.x = p.alive ? 0 : 1.25;
-    stepWalkFromPos(r.root, p.x, p.z, p.alive);
+  const isClient = net.role !== "host";
+  if (isClient) {
+    for (const [id, g] of clientPawns) {
+      const p = poses.get(id);
+      if (!p) {
+        g.visible = false;
+        continue;
+      }
+      g.visible = id !== mvpId;
+      g.position.set(p.x, p.y, p.z);
+      g.rotation.y = p.yaw;
+      g.rotation.x = p.alive ? 0 : 1.25;
+      stepWalkFromPos(g, p.x, p.z, p.alive);
+    }
+  } else {
+    for (const b of bots) {
+      const p = poses.get(b.id);
+      if (!p) continue;
+      b.x = p.x;
+      b.y = p.y;
+      b.z = p.z;
+      b.yaw = p.yaw;
+      b.hp = p.alive ? 100 : 0;
+      b.root.visible = b.id !== mvpId;
+      b.root.position.set(p.x, p.y, p.z);
+      b.root.rotation.y = p.yaw;
+      b.root.rotation.x = p.alive ? 0 : 1.25;
+      stepWalkFromPos(b.root, p.x, p.z, p.alive);
+      restoreHead(b);
+      setPawnCloth(b.cloth, p.alive ? teamCloth(b.team) : 0x2a3224);
+    }
+    for (const r of remotes.values()) {
+      const p = poses.get(r.slotId);
+      if (!p) continue;
+      r.root.visible = r.slotId !== mvpId;
+      r.root.position.set(p.x, p.y, p.z);
+      r.root.rotation.y = p.yaw;
+      r.root.rotation.x = p.alive ? 0 : 1.25;
+      stepWalkFromPos(r.root, p.x, p.z, p.alive);
+    }
   }
   const you = poses.get(playerId);
   if (you && mvpId !== playerId) {
@@ -2035,10 +2093,11 @@ function nadeLos(x: number, y: number, z: number) {
   return !hit;
 }
 
-function applyNadePop(pop: NadePop) {
+function applyNadePop(pop: NadePop, fxOnly = false) {
   const pos = new THREE.Vector3(pop.x, pop.y, pop.z);
   if (pop.kind === "frag") {
     playBlast(pop.x, pop.y, pop.z);
+    if (fxOnly) return;
     const dYou = Math.hypot(px - pop.x, py - pop.y, pz - pop.z);
     if (alive && dYou < FRAG_R) {
       const fall = 1 - dYou / FRAG_R;
@@ -2215,6 +2274,7 @@ function frame(now: number) {
   }
 
   const isClient = net.role !== "host";
+  if (isClient && lastSnap) applyMatchSnap(match, lastSnap);
   const reeling = match.phase === "bestplay";
   const settling = match.phase === "settle";
   const froze =
@@ -2414,24 +2474,34 @@ function frame(now: number) {
   });
   }
 
-  if (!isClient && match.phase === "settle" && seenPhase !== "settle") {
+  if (match.phase === "settle" && seenPhase !== "settle") {
     const you = slotById(match, playerId);
     const win = !!you && match.lastWinner === you.team;
     setRoundResult(win ? "Round Victory!" : "Round Loss!", win);
     roundSting(win);
   }
-  if (!isClient && match.phase === "bestplay" && seenPhase !== "bestplay") {
+  if (match.phase === "bestplay" && seenPhase !== "bestplay") {
     recordSnap();
     setRoundResult(null);
+    reelPlayed = false;
   }
-  if (!isClient && match.phase === "freeze" && seenPhase !== "freeze") setRoundResult(null);
-  if (!isClient) seenPhase = match.phase;
+  if (match.phase === "freeze" && seenPhase !== "freeze") {
+    setRoundResult(null);
+    if (isClient) {
+      clearTape(tape);
+      lastRecord = -1;
+      nadeBag = { ...NADE_MAX };
+    }
+  }
+  seenPhase = match.phase;
 
-  if (!isClient && match.phase === "bestplay") {
+  if (match.phase === "bestplay") {
     if (!rules.highlights) {
       if (reel) stopReel();
-      else concludeBestPlay(match);
-    } else tickReel(dt);
+      else if (!isClient) concludeBestPlay(match);
+    } else if (!reelPlayed) tickReel(dt);
+  } else if (reel) {
+    stopReel();
   }
   const watching = reel !== null;
 
@@ -2452,19 +2522,22 @@ function frame(now: number) {
     if (snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
       loadMap(snapMap as MapId);
     }
-    syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt);
-    for (const b of bots) b.root.visible = false;
-    ghost.visible = false;
+    if (!reel) {
+      syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt);
+      for (const b of bots) b.root.visible = false;
+      ghost.visible = false;
+    }
     for (const p of lastSnap.pawns) {
       if (p.kills != null) applyLine(p.id, p.kills, p.assists ?? 0, p.deaths ?? 0);
     }
     const me = lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId);
-    if (me) {
-      playerId = me.id;
-      hp = me.hp;
-      alive = me.alive;
-      if (snapSeq !== appliedSeq) {
-        appliedSeq = snapSeq;
+    if (snapSeq !== appliedSeq) {
+      ingestFeed(lastSnap.feed);
+      for (const pop of lastSnap.pops ?? []) applyNadePop(pop, true);
+      if (me) {
+        playerId = me.id;
+        hp = me.hp;
+        alive = me.alive;
         if (!me.alive) {
           px = me.x;
           py = me.y;
@@ -2476,6 +2549,12 @@ function frame(now: number) {
           pz = n.z;
         }
       }
+      appliedSeq = snapSeq;
+    }
+    if (me) {
+      playerId = me.id;
+      hp = me.hp;
+      alive = me.alive;
       if (me.kills != null) {
         kills = me.kills;
         deaths = me.deaths ?? deaths;
@@ -2641,8 +2720,10 @@ function frame(now: number) {
 
   setCook(alive && isNade(weapon) && smokeHeld, smokeCharge);
 
-  if (isClient) applyCloudSnap(scene, lastSnap?.clouds ?? []);
-  else updateSmoke(scene, dt, world.colliders, applyNadePop);
+  if (isClient) {
+    applyNadeSnap(scene, lastSnap?.nades ?? []);
+    applyCloudSnap(scene, lastSnap?.clouds ?? []);
+  } else updateSmoke(scene, dt, world.colliders, applyNadePop);
   updateGore(scene, dt);
 
   if (match.wire.mode === "carried") {
@@ -2778,7 +2859,8 @@ function frame(now: number) {
     smokeMax: NADE_MAX.smoke,
     nades: nadeBag,
     nadeKind,
-    clouds: activeClouds(),
+    clouds: lastSnap?.clouds ?? activeClouds(),
+    air: lastSnap?.nades ?? activeNades(),
     weapon: weapon === "rifle" ? rifleKind : weapon,
     rifleName: RIFLES[rifleKind].name,
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
