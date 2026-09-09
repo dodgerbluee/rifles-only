@@ -104,10 +104,10 @@ function poseWalk(rig: WalkRig, phase: number, moving: boolean, body?: THREE.Mes
     return;
   }
   const s = Math.sin(phase);
-  rig.lHip.rotation.x = -s * 0.58;
-  rig.rHip.rotation.x = s * 0.58;
-  rig.lKnee.rotation.x = 0.1 + Math.max(0, -s) * 0.82;
-  rig.rKnee.rotation.x = 0.1 + Math.max(0, s) * 0.82;
+  rig.lHip.rotation.x = s * 0.58;
+  rig.rHip.rotation.x = -s * 0.58;
+  rig.lKnee.rotation.x = -0.1 - Math.max(0, -s) * 0.82;
+  rig.rKnee.rotation.x = -0.1 - Math.max(0, s) * 0.82;
   if (body) body.position.y = BODY_REST_Y + Math.abs(s) * 0.028;
 }
 
@@ -390,7 +390,7 @@ function makeLeg(side: 1 | -1, k: Kit, extras: THREE.Mesh[]) {
   const shin = bone(0, 0, 0, 0, -shinLen, 0, 0.078, k.pants);
   knee.add(shin);
   const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.22), k.boot);
-  foot.position.set(0, -shinLen - 0.045, 0.08);
+  foot.position.set(0, -shinLen - 0.045, -0.08);
   foot.castShadow = true;
   knee.add(foot);
   return { hip, knee, cloth: [thigh, shin], hits: [thigh, shin, foot] };

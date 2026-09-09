@@ -97,6 +97,7 @@ export type Snapshot = {
   feed: KillFeedItem[];
   events: NetEvent[];
   clouds?: { x: number; y: number; z: number; radius: number; opacity: number }[];
+  mapId?: string;
 };
 
 export type NetHandle = {

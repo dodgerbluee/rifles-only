@@ -931,6 +931,45 @@ body.settings #settings {
   color: #e8d9a8;
 }
 
+#team-pick,
+#set-team {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px 0 8px;
+}
+
+#set-team {
+  justify-content: flex-start;
+  margin: 0;
+}
+
+#team-pick button,
+#set-team button {
+  background: #2a2c24;
+  color: #e6dfd0;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 8px 18px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+
+#team-pick button[data-team="ember"].on,
+#set-team button[data-team="ember"].on {
+  border-color: #c45a3a;
+  color: #f0a090;
+}
+
+#team-pick button[data-team="stone"].on,
+#set-team button[data-team="stone"].on {
+  border-color: #6a90b4;
+  color: #a8c8e0;
+}
+
+#settings .admin-knob:has(#set-team) {
+  grid-template-columns: 70px 1fr;
+}
+
 #scoreboard {
   display: none;
   position: fixed;

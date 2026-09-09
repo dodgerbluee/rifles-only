@@ -49,6 +49,7 @@ import {
   tickMatch,
   watchingTeam,
   type Slot,
+  type Team,
 } from "./match";
 import { bindAdmin, rules } from "./admin";
 import { buildPawn, pawnStyle, setPawnCloth, stepWalkFromPos, teamCloth } from "./pawn";
@@ -147,7 +148,7 @@ const match = createMatch();
   setNetName(prefs.name);
 }
 const bots = createBots(scene, world, match);
-const playerId = humanSlot(match)?.id ?? 0;
+let playerId = humanSlot(match)?.id ?? 0;
 let possessId: number | null = null;
 let specId: number | null = null;
 
@@ -188,15 +189,23 @@ net.onEvent((peerId, event) => {
     else throwSmoke(scene, origin, new THREE.Vector3(event.dx, event.dy, event.dz), event.power, kind);
     return;
   }
-  if (event.kind === "joinTeam" && r) {
-    /* seated on peerJoin */
+  if (event.kind === "joinTeam") {
+    reseatPeer(peerId, event.name, event.team);
+    return;
   }
 });
 net.onRole((role, peerId) => {
   if (role !== "client") {
     for (const g of clientPawns.values()) scene.remove(g);
     clientPawns.clear();
-    for (const b of bots) b.root.visible = true;
+    if (bots.length === 0) bots.push(...createBots(scene, world, match));
+    for (const b of bots) {
+      if (!b.root.parent) scene.add(b.root);
+      b.root.visible = true;
+    }
+  }
+  if (role === "client" && prefs.team) {
+    net.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
   }
   if (role === "host" && lastSnap) {
     for (const p of lastSnap.pawns) {
@@ -339,20 +348,92 @@ function paintMapPick() {
   if (key && world.sites[0] && world.sites[1]) {
     key.textContent = `you · ember · stone · A ${world.sites[0].name} / B ${world.sites[1].name}`;
   }
+  const mapTitle = document.querySelector(".map-head span");
+  if (mapTitle && world.title) mapTitle.textContent = world.title;
   document.querySelectorAll("#map-pick button").forEach((b) => {
     b.classList.toggle("on", (b as HTMLButtonElement).dataset.id === mapId);
   });
   const sel = document.querySelector<HTMLSelectElement>("#admin-map");
   if (sel && sel.value !== mapId) sel.value = mapId;
+  paintTeamPick();
+}
+
+function paintTeamPick() {
+  let team: Team = prefs.team ?? "ember";
+  if (net.role === "client") {
+    const me =
+      lastSnap && net.peerId != null
+        ? lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId)
+        : undefined;
+    team = prefs.team ?? me?.team ?? "ember";
+  } else {
+    team = slotById(match, playerId)?.team ?? prefs.team ?? "ember";
+  }
+  document.querySelectorAll("#team-pick button, #set-team button").forEach((b) => {
+    b.classList.toggle("on", (b as HTMLButtonElement).dataset.team === team);
+  });
+}
+
+function reseatPeer(peerId: number, name: string, team: Team) {
+  const cur = remotes.get(peerId);
+  if (cur?.team === team) return;
+  if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
+  seatPeer(scene, world, match, bots, remotes, peerId, name, team);
+}
+
+function pickTeam(team: Team) {
+  prefs.team = team;
+  savePrefs();
+  if (net.role === "client") {
+    net.sendEvent({ kind: "joinTeam", team, name: prefs.name });
+    paintTeamPick();
+    return;
+  }
+  switchLocalTeam(team);
+}
+
+function switchLocalTeam(team: Team) {
+  const you = slotById(match, playerId);
+  if (!you || you.team === team) {
+    paintTeamPick();
+    return;
+  }
+  you.kind = "bot";
+  bots.push(spawnBot(scene, world, match, you));
+  const seat = claimSlot(match, team, prefs.name.trim() || "You");
+  if (!seat) {
+    despawnBot(scene, bots, you.id);
+    you.kind = "human";
+    you.name = prefs.name.trim() || "You";
+    paintTeamPick();
+    return;
+  }
+  despawnBot(scene, bots, seat.id);
+  playerId = seat.id;
+  const gfig = buildPawn(ghost, team);
+  ghost.userData.body = gfig.body;
+  ghost.userData.cloth = gfig.cloth;
+  roundSpawn();
+  paintTeamPick();
 }
 
 function loadMap(id: MapId) {
+  if (id === mapId && net.role !== "client") {
+    paintMapPick();
+    return;
+  }
   mapId = id;
   clearCow();
-  for (const b of [...bots]) despawnBot(scene, bots, b.id);
-  for (const g of clientPawns.values()) scene.remove(g);
-  clientPawns.clear();
-  const keep = new Set<THREE.Object3D>([camera, ghost, wirePack]);
+  if (net.role !== "client") {
+    for (const b of [...bots]) despawnBot(scene, bots, b.id);
+  }
+  const keep = new Set<THREE.Object3D>([
+    camera,
+    ghost,
+    wirePack,
+    ...[...remotes.values()].map((r) => r.root),
+    ...clientPawns.values(),
+  ]);
   for (const c of [...scene.children]) {
     if (!keep.has(c)) scene.remove(c);
   }
@@ -362,6 +443,19 @@ function loadMap(id: MapId) {
   for (const b of blasts) scene.remove(b.mesh, b.light);
   blasts.length = 0;
   world = buildMap(scene, id);
+  for (const r of remotes.values()) {
+    if (!r.root.parent) scene.add(r.root);
+    r.root.visible = true;
+  }
+  for (const g of clientPawns.values()) {
+    if (!g.parent) scene.add(g);
+    g.visible = true;
+  }
+  if (net.role === "client") {
+    for (const b of bots) b.root.visible = false;
+    paintMapPick();
+    return;
+  }
   bots.push(...createBots(scene, world, match));
   restartRoom();
   paintMapPick();
@@ -566,6 +660,23 @@ startEl.addEventListener("click", lock);
     b.addEventListener("click", () => loadMap(m.id));
     pick.append(b);
   }
+  const fillTeams = (root: Element) => {
+    root.addEventListener("click", (e) => e.stopPropagation());
+    for (const [id, label] of [
+      ["ember", "Ember"],
+      ["stone", "Stone"],
+    ] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.team = id;
+      b.textContent = label;
+      b.addEventListener("click", () => pickTeam(id));
+      root.append(b);
+    }
+  };
+  fillTeams(document.querySelector("#team-pick")!);
+  const setTeam = document.querySelector("#set-team");
+  if (setTeam) fillTeams(setTeam);
   const adminMap = document.querySelector<HTMLSelectElement>("#admin-map")!;
   for (const m of MAPS) {
     const o = document.createElement("option");
@@ -574,6 +685,9 @@ startEl.addEventListener("click", lock);
     adminMap.append(o);
   }
   adminMap.addEventListener("change", () => loadMap(adminMap.value as MapId));
+  if (prefs.team && prefs.team !== (slotById(match, playerId)?.team ?? "ember")) {
+    switchLocalTeam(prefs.team);
+  }
   paintMapPick();
 }
 canvas.addEventListener("click", () => {
@@ -2230,6 +2344,10 @@ function frame(now: number) {
 
   if (isClient && lastSnap && net.peerId != null) {
     applyMatchSnap(match, lastSnap);
+    const snapMap = lastSnap.mapId;
+    if (snapMap && MAPS.some((m) => m.id === snapMap) && snapMap !== mapId) {
+      loadMap(snapMap as MapId);
+    }
     syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns);
     for (const b of bots) b.root.visible = false;
     ghost.visible = false;
@@ -2238,6 +2356,7 @@ function frame(now: number) {
     }
     const me = lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId);
     if (me) {
+      playerId = me.id;
       px = me.x;
       py = me.y;
       pz = me.z;
@@ -2247,6 +2366,7 @@ function frame(now: number) {
         kills = me.kills;
         deaths = me.deaths ?? deaths;
       }
+      paintTeamPick();
     }
   }
 
@@ -2523,7 +2643,20 @@ function frame(now: number) {
     kills,
     deaths,
     yaw,
-    bots,
+    bots:
+      isClient && lastSnap
+        ? lastSnap.pawns
+            .filter((p) => (p.netId ?? 0) !== (net.peerId ?? -1))
+            .map((p) => ({ x: p.x, z: p.z, team: p.team, hp: p.alive ? p.hp : 0 }))
+        : [
+            ...bots.map((b) => ({ x: b.x, z: b.z, team: b.team, hp: b.hp })),
+            ...[...remotes.values()].map((r) => ({
+              x: r.x,
+              z: r.z,
+              team: r.team,
+              hp: r.alive ? r.hp : 0,
+            })),
+          ],
     world,
     smokes: nadeBag.smoke,
     smokeMax: NADE_MAX.smoke,
@@ -2563,6 +2696,7 @@ function frame(now: number) {
         },
         bots,
         remotes,
+        mapId,
       ),
     );
   }

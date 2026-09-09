@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { collideXZ, groundHeight, inSite, rayShot, spawnYaw, type Aabb, type World } from "./world";
+import { collideXZ, groundHeight, hasLos, inSite, spawnYaw, type Aabb, type World } from "./world";
 import {
   plantingTeam,
   pickupWire,
@@ -43,6 +43,7 @@ export type Bot = {
   pauseUntil: number;
   lastX: number;
   lastZ: number;
+  seeT: number;
 };
 
 export const HEAD_POP_RATE = 1;
@@ -118,6 +119,7 @@ function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bo
     pauseUntil: 0,
     lastX: spawn.x,
     lastZ: spawn.z,
+    seeT: 0,
   };
 }
 
@@ -225,7 +227,9 @@ export function updateBots(
     const wirePos = wireAim(match, world, b);
     const onCutDuty = match.wire.mode === "planted" && b.team === watch;
     const onPlantDuty = match.wire.mode === "carried" && match.wire.carrierId === b.id;
-    const closeThreat = !!enemy && enemyDist < (onCutDuty || onPlantDuty ? 6.5 : 26);
+    const closeThreat = !!enemy && enemyDist < (onCutDuty || onPlantDuty ? 5.5 : 16);
+    if (closeThreat) b.seeT += dt;
+    else b.seeT = 0;
 
     b.aim = closeThreat;
     if (closeThreat && enemy) {
@@ -235,14 +239,19 @@ export function updateBots(
       const horiz = Math.hypot(dx, dz) || 1;
       b.lookPitch = -Math.atan2(dy, horiz);
       const want = Math.atan2(-dx, -dz);
-      b.yaw = dampAngle(b.yaw, want, dt * 6);
-      const interval = 0.62 + (b.id % 5) * 0.11;
-      if (time - b.lastShot > interval) {
+      b.yaw = dampAngle(b.yaw, want, dt * 3.2);
+      const interval = 1.05 + (b.id % 5) * 0.18;
+      const err = angleErr(b.yaw, want);
+      if (b.seeT > 0.55 && err < 0.2 && time - b.lastShot > interval) {
         b.lastShot = time;
-        const dir = new THREE.Vector3(enemy.x - b.x, enemy.y - 1.45, enemy.z - b.z).normalize();
-        dir.x += (Math.random() - 0.5) * 0.055;
-        dir.y += (Math.random() - 0.5) * 0.04;
-        dir.z += (Math.random() - 0.5) * 0.055;
+        const dir = new THREE.Vector3(
+          -Math.sin(b.yaw) * Math.cos(b.lookPitch),
+          -Math.sin(b.lookPitch),
+          -Math.cos(b.yaw) * Math.cos(b.lookPitch),
+        );
+        dir.x += (Math.random() - 0.5) * 0.16;
+        dir.y += (Math.random() - 0.5) * 0.1;
+        dir.z += (Math.random() - 0.5) * 0.16;
         dir.normalize();
         onShoot(new THREE.Vector3(b.x, b.y + 1.45, b.z), dir, enemy, b.id);
       }
@@ -393,6 +402,7 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     b.pauseUntil = 0;
     b.lastX = spawn.x;
     b.lastZ = spawn.z;
+    b.seeT = 0;
     setPawnCloth(b.cloth, teamCloth(b.team));
   }
 }
@@ -470,7 +480,7 @@ function nearestVisible(
   smokeBlocks: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => boolean,
 ): Fighter | null {
   let best: Fighter | null = null;
-  let bestD = 26;
+  let bestD = 16;
   for (const f of fighters) {
     if (!f.alive || f.team === b.team || f.id === b.id) continue;
     const d = Math.hypot(f.x - b.x, f.z - b.z);
@@ -483,23 +493,11 @@ function nearestVisible(
   return best;
 }
 
-function hasLos(
-  x0: number,
-  y0: number,
-  z0: number,
-  x1: number,
-  y1: number,
-  z1: number,
-  colliders: Aabb[],
-) {
-  const origin = new THREE.Vector3(x0, y0, z0);
-  const dest = new THREE.Vector3(x1, y1, z1);
-  const dir = dest.clone().sub(origin);
-  const dist = dir.length();
-  if (dist < 0.2) return true;
-  dir.multiplyScalar(1 / dist);
-  const hit = rayShot(origin, dir, dist - 0.4, colliders);
-  return !hit;
+function angleErr(cur: number, want: number) {
+  let d = want - cur;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
 }
 
 function dampAngle(cur: number, want: number, k: number) {

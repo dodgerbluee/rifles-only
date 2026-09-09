@@ -214,6 +214,7 @@ export function buildSnapshot(
   local: Pawn,
   bots: Bot[],
   remotes: Map<number, Remote>,
+  mapId?: string,
 ): Snapshot {
   const pawns: Pawn[] = [
     local,
@@ -282,6 +283,7 @@ export function buildSnapshot(
     feed: [],
     events: [],
     clouds: activeClouds(),
+    mapId,
   };
 }
 

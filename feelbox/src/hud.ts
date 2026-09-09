@@ -1,5 +1,4 @@
 import type { World } from "./world";
-import type { Bot } from "./bots";
 import { formatTime, plantingTeam, type Match } from "./match";
 import { tuning } from "./tuning";
 import { kd, line, topThree } from "./stats";
@@ -138,7 +137,7 @@ export function updateHud(opts: {
   kills: number;
   deaths: number;
   yaw: number;
-  bots: Bot[];
+  bots: { x: number; z: number; team: string; hp: number }[];
   world: World;
   smokes: number;
   smokeMax: number;
@@ -201,7 +200,7 @@ function drawMinimap(
   px: number,
   pz: number,
   yaw: number,
-  bots: Bot[],
+  bots: { x: number; z: number; team: string; hp: number }[],
   alive: boolean,
   clouds: { x: number; z: number; radius: number; opacity: number }[],
 ) {
