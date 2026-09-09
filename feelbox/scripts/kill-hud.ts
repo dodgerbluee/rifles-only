@@ -27,12 +27,23 @@ const aimedKar = killWayIcons("aimed").html;
 const aimedMosin = killWayIcons("aimed", false, "mosin").html;
 const noscope = killWayIcons("noscope").html;
 const nade = killWayIcons("nade").html;
-check("aimed icon is kar U-notch, not a scope ring", aimedKar.includes("M4.2 5.4") && aimedKar.includes("M10 4") && !aimedKar.includes("circle"));
-check("aimed mosin is a peep ring", aimedMosin.includes("circle"));
-check("noscope icon has crosshair lines", noscope.includes("M10 2.2") && noscope.includes("M2.2 10") && noscope.includes("h5.4"));
+check(
+  "aimed icon is the old scope ring",
+  aimedKar.includes("circle") && aimedKar.includes("r=\"6.2\"") && aimedKar.includes("M10 2.2v2.4") && !aimedKar.includes("M4.2 5.4"),
+);
+check("aimed mosin uses the same scope ring", aimedMosin === aimedKar);
+check(
+  "noscope icon is a wide moving crosshair",
+  noscope.includes("M10 1v5") && noscope.includes("M1 10h5") && noscope.includes("stroke-width=\"0.75\""),
+);
 check("headshot icon includes a bullet path", killWayIcons("noscope", true).html.includes("M18 6.2"));
 check("nade icon is not text", !nade.includes("nade"));
 check("nade icon is a pineapple frag", nade.includes("3.6-2.15") && nade.includes("circle"));
+const knife = killWayIcons("knife").html;
+check(
+  "knife icon is an open butterfly",
+  knife.includes("M8.8 12.1") && knife.includes("cx=\"12.3\"") && knife.includes("Q4.2 16.2") && !knife.includes("M4 14.5"),
+);
 check(
   "taken bot shows bot then player",
   actorTag("Cal", "Reed") === "Cal (Reed)",

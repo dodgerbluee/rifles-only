@@ -80,22 +80,14 @@ function svg(body: string) {
   return `<svg viewBox="0 0 20 20" aria-hidden="true">${body}</svg>`;
 }
 
-/** Kar98 tangent rear: open U-notch with the front post in the gap. Default aimed. */
-const AIMED_KAR = svg(
-  `<path d="M4.2 5.4v10.8h11.6V5.4" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<path d="M10 4v9.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
-);
-
-/** Mosin 91/30 rear: peep ring you look through. */
-const AIMED_MOSIN = svg(
-  `<circle cx="10" cy="10" r="6.3" fill="none" stroke="currentColor" stroke-width="1.55"/>` +
-    `<circle cx="10" cy="10" r="2.15" fill="none" stroke="currentColor" stroke-width="1.25"/>`,
-);
-
 const ICONS: Record<KillWay, string> = {
-  aimed: AIMED_KAR,
+  aimed: svg(
+    `<circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+      `<circle cx="10" cy="10" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3"/>` +
+      `<path d="M10 2.2v2.4M10 15.4v2.4M2.2 10h2.4M15.4 10h2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>`,
+  ),
   noscope: svg(
-    `<path d="M10 2.2v5.4M10 12.4v5.4M2.2 10h5.4M12.4 10h5.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`,
+    `<path d="M10 1v5M10 14v5M1 10h5M14 10h5" fill="none" stroke="currentColor" stroke-width="0.75" stroke-linecap="round"/>`,
   ),
   nade: svg(
     `<path d="M6.4 8.5c0-1.35 1.55-2.15 3.6-2.15s3.6.8 3.6 2.15v6.5c0 1.75-1.55 2.65-3.6 2.65s-3.6-.9-3.6-2.65Z" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round"/>` +
@@ -104,8 +96,13 @@ const ICONS: Record<KillWay, string> = {
       `<circle cx="13.6" cy="4.2" r="1.5" fill="none" stroke="currentColor" stroke-width="1.2"/>`,
   ),
   knife: svg(
-    `<path d="M4 14.5l9.5-9.5 2.2 2.2-9.5 9.5H4v-2.2Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>` +
-      `<path d="M11.2 6.8l2.4-2.4 2 2-2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.3"/>`,
+    `<path d="M8.8 12.1 11.4 5.6 14.8 2.2 18 1.4 14.6 5.5 11.4 11.1 9.2 13.1Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>` +
+      `<circle cx="12.3" cy="6.5" r="1.2" fill="none" stroke="currentColor" stroke-width="1.15"/>` +
+      `<path d="M6.6 13.4Q4.2 16.2 3 19.2" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/>` +
+      `<path d="M10.8 13Q8.4 15.8 7.2 18.8" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/>` +
+      `<path d="M6.6 13.4 10.8 13M3 19.2 7.2 18.8M5.4 16.3 8.6 15.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>` +
+      `<circle cx="8.4" cy="12.4" r=".55" fill="currentColor"/>` +
+      `<circle cx="9.8" cy="11.8" r=".55" fill="currentColor"/>`,
   ),
   bomb: svg(
     `<rect x="4.6" y="8.2" width="10.8" height="7.4" rx="1.3" fill="none" stroke="currentColor" stroke-width="1.45"/>` +
@@ -126,9 +123,9 @@ const HEAD_ICON = svg(
     `<circle cx="12.6" cy="9.2" r="0.7" fill="currentColor"/>`,
 );
 
-export function killWayIcons(way?: KillWay, head = false, rifle?: "kar" | "mosin") {
+export function killWayIcons(way?: KillWay, head = false, _rifle?: "kar" | "mosin") {
   const parts: string[] = [];
-  if (way === "aimed") parts.push(rifle === "mosin" ? AIMED_MOSIN : AIMED_KAR);
+  if (way === "aimed") parts.push(ICONS.aimed);
   else if (way === "noscope" && !head) parts.push(ICONS.noscope);
   else if (way && way !== "noscope") parts.push(ICONS[way]);
   if (head) parts.push(HEAD_ICON);

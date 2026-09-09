@@ -237,6 +237,16 @@ body.started #killfeed {
   display: block;
 }
 
+.kill-row .way.noscope svg {
+  width: 22px;
+  height: 22px;
+}
+
+.kill-row .way.knife svg {
+  width: 22px;
+  height: 22px;
+}
+
 .kill-row .way.aimed { color: #e8d9a8; }
 .kill-row .way.noscope { color: #a8c4d8; }
 .kill-row .way.nade { color: #c4844a; }

@@ -61,6 +61,19 @@ function part(
   return m;
 }
 
+function extrude(shape: THREE.Shape, depth: number, mat: THREE.Material, curveSegments = 16) {
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: depth * 0.12,
+    bevelSize: depth * 0.1,
+    bevelSegments: 1,
+    curveSegments,
+  });
+  geo.translate(0, 0, -depth / 2);
+  return new THREE.Mesh(geo, mat);
+}
+
 function place(parent: THREE.Object3D, mesh: THREE.Mesh, x: number, y: number, z: number) {
   mesh.position.set(x, y, z);
   parent.add(mesh);
@@ -229,58 +242,78 @@ export function makeMosin(): RifleView {
   return { id: "mosin", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
-/** One open balisong handle: U-channel rails, spacers, pivot knuckles. `z` is half-thickness. */
-function baliHandle(parent: THREE.Group, z: number, dark: THREE.Material, accent: THREE.Material) {
-  const railW = 0.0054;
-  const railT = 0.0056;
-  const x = 0.013;
-  part(parent, -x, -0.078, z, railW, 0.122, railT, dark);
-  part(parent, x, -0.078, z, railW, 0.122, railT, dark);
-  for (const sy of [-0.028, -0.074, -0.12]) {
-    part(parent, 0, sy, z, x * 2 + 0.003, 0.0085, railT * 0.88, accent);
+/** CS Gargoyle handle: chunky curved D-frame with two oval windows. */
+function baliHandle(
+  parent: THREE.Group,
+  z: number,
+  dark: THREE.Material,
+  accent: THREE.Material,
+  latch: boolean,
+) {
+  const g = new THREE.Group();
+  g.position.z = z;
+  parent.add(g);
+
+  const s = new THREE.Shape();
+  s.moveTo(-0.019, 0.02);
+  s.quadraticCurveTo(-0.016, -0.024, 0.002, -0.072);
+  s.quadraticCurveTo(0.018, -0.118, 0.04, -0.16);
+  s.quadraticCurveTo(0.058, -0.172, 0.07, -0.152);
+  s.quadraticCurveTo(0.056, -0.122, 0.04, -0.078);
+  s.quadraticCurveTo(0.024, -0.028, 0.019, 0.02);
+  s.lineTo(-0.019, 0.02);
+  s.closePath();
+
+  const h1 = new THREE.Path();
+  h1.absellipse(0.002, -0.04, 0.0072, 0.026, 0, Math.PI * 2, true, 0.18);
+  const h2 = new THREE.Path();
+  h2.absellipse(0.03, -0.112, 0.0068, 0.024, 0, Math.PI * 2, true, 0.52);
+  s.holes.push(h1, h2);
+  g.add(extrude(s, 0.011, dark, 20));
+
+  place(g, cylZ(0.0066, 0.012, dark, 10), -0.006, 0.01, 0);
+  place(g, cylZ(0.0066, 0.012, dark, 10), 0.01, 0.008, 0);
+
+  if (latch) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.03, 0.0048), accent);
+    arm.position.set(0.052, -0.168, 0);
+    arm.rotation.z = 0.55;
+    g.add(arm);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.0065, 0.0048), accent);
+    bar.position.set(0.064, -0.156, 0);
+    bar.rotation.z = -0.2;
+    g.add(bar);
   }
-  part(parent, 0, -0.152, z, 0.033, 0.016, railT * 1.2, dark);
-  place(parent, cylZ(0.0056, railT * 1.08, dark, 8), -0.007, 0.004, z);
-  place(parent, cylZ(0.0056, railT * 1.08, dark, 8), 0.007, 0.004, z);
+}
+
+function knifeBlade(mat: THREE.Material) {
+  const s = new THREE.Shape();
+  s.moveTo(-0.015, -0.01);
+  s.lineTo(0.015, -0.01);
+  s.lineTo(0.015, 0.02);
+  s.quadraticCurveTo(0.034, 0.07, 0.032, 0.12);
+  s.quadraticCurveTo(0.024, 0.172, 0.005, 0.228);
+  s.quadraticCurveTo(-0.01, 0.19, -0.016, 0.138);
+  s.lineTo(-0.016, 0.02);
+  s.closePath();
+  const hole = new THREE.Path();
+  hole.absarc(0, 0.046, 0.008, 0, Math.PI * 2, true);
+  s.holes.push(hole);
+  return extrude(s, 0.0046, mat, 20);
 }
 
 export function makeKnife(): THREE.Group {
   const root = new THREE.Group();
-  const bright = new THREE.MeshStandardMaterial({ color: 0xe4e7ee, roughness: 0.12, metalness: 0.96 });
-  const edge = new THREE.MeshStandardMaterial({ color: 0xf7f8fc, roughness: 0.05, metalness: 0.98 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.38, metalness: 0.82 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0x4a4e56, roughness: 0.28, metalness: 0.88 });
-  const pin = new THREE.MeshStandardMaterial({ color: 0xc5c9d2, roughness: 0.16, metalness: 0.94 });
-  const voidMat = new THREE.MeshStandardMaterial({ color: 0x07080a, roughness: 1, metalness: 0 });
+  const bright = new THREE.MeshStandardMaterial({ color: 0xd2d6de, roughness: 0.4, metalness: 0.28 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x4a4e56, roughness: 0.5, metalness: 0.28 });
+  const accent = new THREE.MeshStandardMaterial({ color: 0x6a6e76, roughness: 0.46, metalness: 0.3 });
+  const pin = new THREE.MeshStandardMaterial({ color: 0xdee2e8, roughness: 0.32, metalness: 0.4 });
 
-  part(root, 0, 0.02, 0, 0.022, 0.032, 0.0042, bright);
-  part(root, 0, 0.105, 0, 0.026, 0.14, 0.0036, bright);
-  const spear = new THREE.Mesh(new THREE.ConeGeometry(0.0135, 0.09, 6), bright);
-  spear.scale.set(1, 1, 0.2);
-  spear.position.set(0, 0.218, 0);
-  root.add(spear);
-  part(root, 0.0122, 0.11, 0, 0.0026, 0.14, 0.004, edge);
-
-  const holeY = 0.062;
-  const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.0084, 0.0084, 0.007, 16), voidMat);
-  hole.rotation.x = Math.PI / 2;
-  hole.position.set(0, holeY, 0);
-  root.add(hole);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.0088, 0.0013, 6, 20), pin);
-  rim.position.set(0, holeY, 0);
-  root.add(rim);
-
-  baliHandle(root, 0.0062, dark, accent);
-  baliHandle(root, -0.0062, dark, accent);
-
-  part(root, 0, -0.148, -0.01, 0.016, 0.028, 0.004, accent);
-  part(root, 0.011, -0.14, -0.005, 0.018, 0.008, 0.004, accent);
-
-  place(root, cylZ(0.0038, 0.024, pin, 8), -0.007, 0.004, 0);
-  place(root, cylZ(0.0038, 0.024, pin, 8), 0.007, 0.004, 0);
-  for (const sy of [-0.028, -0.074, -0.12]) {
-    place(root, cylZ(0.0018, 0.02, pin, 6), 0, sy, 0);
-  }
+  root.add(knifeBlade(bright));
+  baliHandle(root, 0.0082, dark, accent, false);
+  baliHandle(root, -0.0082, dark, accent, true);
+  place(root, cylZ(0.0046, 0.032, pin, 8), -0.006, 0.01, 0);
+  place(root, cylZ(0.0046, 0.032, pin, 8), 0.01, 0.008, 0);
 
   root.position.set(0.3, -0.3, -0.22);
   return root;
