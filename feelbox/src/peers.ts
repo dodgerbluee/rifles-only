@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { collideXZ, groundHeight, type World } from "./world";
-import { addBotSlot, claimSlot, plantingTeam, slotById, type Match, type Team } from "./match";
+import { addBotSlot, claimSlot, plantingTeam, slotById, vacateSlot, type Match, type Team } from "./match";
 import { despawnBot, spawnBot, type Bot } from "./bots";
 import type { NetHandle, Pawn, PlayerInput, Snapshot, Weapon } from "./net";
 import { activeClouds, activeNades, drainPops } from "./smoke";
 
-import { line } from "./stats";
+import { line, swapLines } from "./stats";
 import { tuning } from "./tuning";
 import { emptyQueue, type FireQueue } from "./fireQueue";
 import { buildPawn, stepWalk, stepWalkFromPos } from "./pawn";
@@ -15,6 +15,7 @@ const RADIUS = 0.32;
 export type Remote = {
   peerId: number;
   slotId: number;
+  homeId: number;
   name: string;
   team: Team;
   x: number;
@@ -57,6 +58,7 @@ export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, t
   return {
     peerId,
     slotId,
+    homeId: slotId,
     name,
     team,
     x: spawn.x,
@@ -120,6 +122,7 @@ export function seatPeer(
     const extra = addBotSlot(match, team);
     extra.kind = "human";
     extra.name = name;
+    extra.occupant = undefined;
     slot = extra;
   }
   despawnBot(scene, bots, slot.id);
@@ -132,6 +135,55 @@ export function seatPeer(
   return r;
 }
 
+export function reseatPeer(
+  scene: THREE.Scene,
+  world: World,
+  match: Match,
+  bots: Bot[],
+  remotes: Map<number, Remote>,
+  peerId: number,
+  name: string,
+  team: Team,
+) {
+  const cur = remotes.get(peerId);
+  if (cur?.team === team) return cur;
+  const oldId = cur?.homeId ?? cur?.slotId;
+  if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
+  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team);
+  if (oldId != null && oldId !== seated.slotId) swapLines(oldId, seated.slotId);
+  return seated;
+}
+
+export function creditId(remotes: Map<number, Remote> | Iterable<Remote>, slotId: number) {
+  const list = remotes instanceof Map ? remotes.values() : remotes;
+  for (const r of list) {
+    if (r.slotId === slotId || r.homeId === slotId) return r.homeId;
+  }
+  return slotId;
+}
+
+export function restoreHomeSeat(match: Match, r: Remote) {
+  if (r.slotId === r.homeId) return;
+  const taken = slotById(match, r.slotId);
+  if (taken) {
+    taken.kind = "bot";
+    taken.occupant = undefined;
+    taken.alive = true;
+  }
+  const home = slotById(match, r.homeId);
+  if (home) {
+    home.kind = "human";
+    home.name = r.name;
+    home.occupant = undefined;
+    home.alive = true;
+  }
+  r.slotId = r.homeId;
+}
+
+export function restoreHomeSeats(match: Match, remotes: Map<number, Remote>) {
+  for (const r of remotes.values()) restoreHomeSeat(match, r);
+}
+
 export function dropPeer(
   scene: THREE.Scene,
   world: World,
@@ -142,13 +194,18 @@ export function dropPeer(
 ) {
   const r = remotes.get(peerId);
   if (!r) return;
+  const takenId = r.slotId !== r.homeId ? r.slotId : null;
+  restoreHomeSeat(match, r);
   scene.remove(r.root);
   remotes.delete(peerId);
-  const slot = match.slots.find((s) => s.id === r.slotId);
-  if (slot) {
-    slot.kind = "bot";
-    slot.name = r.name;
-    bots.push(spawnBot(scene, world, match, slot));
+  const home = match.slots.find((s) => s.id === r.homeId);
+  if (home) {
+    vacateSlot(match, home);
+    bots.push(spawnBot(scene, world, match, home));
+  }
+  if (takenId != null) {
+    const taken = match.slots.find((s) => s.id === takenId);
+    if (taken && !bots.some((b) => b.id === takenId)) bots.push(spawnBot(scene, world, match, taken));
   }
 }
 
@@ -164,16 +221,26 @@ export function takeoverPeer(
   if (!r || r.alive) return false;
   const bot = bots.find((b) => b.id === slotId);
   if (!bot || bot.hp <= 0 || bot.team !== r.team) return false;
-  const oldSlot = match.slots.find((s) => s.id === r.slotId);
   const newSlot = match.slots.find((s) => s.id === bot.id);
   if (!newSlot) return false;
   despawnBot(scene, bots, bot.id);
-  if (oldSlot) {
-    oldSlot.kind = "bot";
-    oldSlot.alive = false;
+  if (r.slotId !== r.homeId && r.slotId !== bot.id) {
+    const prev = slotById(match, r.slotId);
+    if (prev) {
+      prev.kind = "bot";
+      prev.occupant = undefined;
+    }
   }
-  newSlot.kind = "human";
+  const home = slotById(match, r.homeId);
+  if (home) {
+    home.kind = "human";
+    home.name = r.name;
+    home.occupant = undefined;
+    home.alive = true;
+  }
+  newSlot.kind = "bot";
   newSlot.alive = true;
+  newSlot.occupant = r.name;
   r.slotId = bot.id;
   r.x = bot.x;
   r.y = bot.y;
@@ -259,14 +326,20 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   stepWalkFromPos(r.root, r.x, r.z, grounded && len > 0);
 }
 
-export function fillAbsentSlots(match: Match, pawns: Pawn[]) {
+export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<number, Remote>) {
   const have = new Set(pawns.map((p) => p.id));
+  const occupied = new Set(
+    remotes
+      ? [...remotes.values()].filter((r) => r.slotId !== r.homeId).map((r) => r.slotId)
+      : [],
+  );
   for (const s of match.slots) {
-    if (have.has(s.id)) continue;
+    if (have.has(s.id) || occupied.has(s.id)) continue;
     pawns.push({
       id: s.id,
       netId: 0,
       name: s.name,
+      occupant: s.occupant,
       team: s.team,
       x: 0,
       y: 0,
@@ -295,9 +368,10 @@ export function buildSnapshot(
     local,
     ...[...remotes.values()].map(
       (r): Pawn => ({
-        id: r.slotId,
+        id: r.homeId,
         netId: r.peerId,
-        name: slotById(match, r.slotId)?.name ?? r.name,
+        name: r.name,
+        occupant: undefined,
         team: r.team,
         x: r.x,
         y: r.y,
@@ -308,9 +382,9 @@ export function buildSnapshot(
         alive: r.alive,
         weapon: r.weapon,
         ads: r.ads,
-        kills: line(r.slotId).kills,
-        assists: line(r.slotId).assists,
-        deaths: line(r.slotId).deaths,
+        kills: line(r.homeId).kills,
+        assists: line(r.homeId).assists,
+        deaths: line(r.homeId).deaths,
         ping: r.ping,
       }),
     ),
@@ -319,6 +393,7 @@ export function buildSnapshot(
         id: b.id,
         netId: 0,
         name: match.slots.find((s) => s.id === b.id)?.name ?? "bot",
+        occupant: match.slots.find((s) => s.id === b.id)?.occupant,
         team: b.team,
         x: b.x,
         y: b.y,
@@ -336,7 +411,7 @@ export function buildSnapshot(
       }),
     ),
   ];
-  fillAbsentSlots(match, pawns);
+  fillAbsentSlots(match, pawns, remotes);
   return {
     phase: match.phase,
     round: match.round,
@@ -393,6 +468,7 @@ export function applyMatchSnap(match: Match, snap: Snapshot) {
       team: p.team,
       kind: (p.netId ?? 0) > 0 ? "human" : "bot",
       name: p.name,
+      occupant: p.occupant,
       alive: p.alive,
     }));
   }

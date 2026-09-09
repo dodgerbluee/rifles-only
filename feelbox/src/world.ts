@@ -111,12 +111,12 @@ export function buildWorld(scene: THREE.Scene): World {
   siteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
 
   const plantSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
-  const watchSpawns = [v(38, 9), v(38, 11), v(38, 13), v(36, 10), v(36, 14)];
+  const watchSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
 
   return {
     id: "wharf",
     title: "Wharf",
-    blurb: "Winter dockyard. Plant the Wire at A Ice or B Slip.",
+    blurb: "Winter dockyard. Plant the Wire at A or B.",
     colliders,
     shootables,
     playerSpawn: plantSpawns[2]!,
@@ -138,14 +138,14 @@ function v(x: number, z: number, y = 0) {
 
 function wharfWays() {
   return [
-    [v(-28, 13.4), v(-20, 13), v(-12, 13.2), v(-10.5, 17, 3.35), v(-9, 20.5, 3.35)],
-    [v(-28, 13.4), v(-24, 6), v(-20, -4), v(-8, -8), v(4, -12), v(10, -16)],
-    [v(28, 4.7), v(18, 5), v(12, 8), v(12, 13), v(-2, 13), v(-9, 20.5, 3.35)],
-    [v(28, 4.7), v(20, 2), v(14, -6), v(10, -14), v(10, -16)],
-    [v(-22, 8), v(-8, 6), v(2, 8), v(12, 8), v(20, 8)],
+    [v(-26, 6), v(-18, 12), v(-12, 13.2), v(-10.5, 17, 3.35), v(-9, 20.5, 3.35)],
+    [v(-26, 4), v(-20, -4), v(-8, -8), v(4, -12), v(10, -16)],
+    [v(26, 4), v(14, 4), v(12, 13), v(-2, 13), v(-9, 20.5, 3.35)],
+    [v(26, 4), v(20, 2), v(14, -6), v(10, -14), v(10, -16)],
+    [v(-22, 4), v(-8, 6), v(2, 8), v(12, 8), v(20, 8)],
     [v(-16, 2), v(-8, -4), v(2, -8), v(12, -10)],
     [v(8, 16, 3.35), v(-2, 16, 3.35), v(-9, 20.5, 3.35)],
-    [v(22, 12, 3.35), v(20, 10), v(12, 4), v(10, -8)],
+    [v(22, 4), v(20, 2), v(12, 4), v(10, -8)],
   ];
 }
 
@@ -252,29 +252,20 @@ function buildWharf(box: BoxFn, mat: MatFn, scene: THREE.Scene, tex: TexPack) {
 }
 
 function buildEmberDock(box: BoxFn, mat: MatFn) {
-  box(-38, 3.2, 18.15, 12.2, 6.4, 0.45, mat("brick", 10, 6));
-  box(-38, 3.2, 0.15, 12.2, 6.4, 0.45, mat("brick", 10, 6));
-  // West warehouse: roofed tunnel at z=13.4. South wing kills the quay wrap.
-  box(-30, 3.2, 6.05, 4.4, 6.4, 12.1, mat("brick", 4, 6));
+  // Open west yard: cover north/south of a wide walk-out, no boxed spawn.
   box(-30, 3.2, 16.65, 4.4, 6.4, 4.3, mat("brick", 4, 6));
-  box(-30, 5.5, 13.3, 4.4, 1.8, 2.6, mat("brick", 4, 2));
   box(-30, 3.2, -4.2, 4.4, 6.4, 8.5, mat("brick", 4, 6));
   box(-28, 3.2, -8.4, 8.2, 6.4, 0.5, mat("brick", 7, 6));
-  box(-38, 0.55, 10, 1.6, 1.1, 1.4, mat("wood", 1.4, 1), true, true);
-  box(-36.5, 0.5, 14, 1.3, 1.0, 1.1, mat("wood", 1.2, 0.9), true, true);
-  box(-35.5, 1.75, 13.4, 1.15, 3.5, 5.6, mat("brick", 1, 3));
+  box(-32.2, 0.55, 14.4, 1.6, 1.1, 1.4, mat("wood", 1.4, 1), true, true);
+  box(-32.2, 0.5, 0.9, 1.3, 1.0, 1.1, mat("wood", 1.2, 0.9), true, true);
 }
 
 function buildStoneDock(box: BoxFn, mat: MatFn) {
-  box(38, 3.2, 18.15, 12.2, 6.4, 0.45, mat("brick", 10, 6));
-  box(38, 3.2, 0.15, 12.2, 6.4, 0.45, mat("brick", 10, 6));
-  // East warehouse: tunnel at z=4.7 so it is not a mirror of Ember's alley
-  box(30, 3.2, 12.4, 4.4, 6.4, 13.0, mat("brick", 4, 6));
-  box(30, 3.2, 1.75, 4.4, 6.4, 3.5, mat("brick", 4, 6));
-  box(30, 5.5, 4.7, 4.4, 1.8, 2.6, mat("brick", 4, 2));
-  box(38, 0.55, 10, 1.6, 1.1, 1.4, mat("wood", 1.4, 1), true, true);
-  box(36.5, 0.5, 14, 1.3, 1.0, 1.1, mat("wood", 1.2, 0.9), true, true);
-  box(35.5, 1.75, 4.7, 1.15, 3.5, 5.6, mat("brick", 1, 3));
+  box(30, 3.2, 16.65, 4.4, 6.4, 4.3, mat("brick", 4, 6));
+  box(30, 3.2, -4.2, 4.4, 6.4, 8.5, mat("brick", 4, 6));
+  box(28, 3.2, -8.4, 8.2, 6.4, 0.5, mat("brick", 7, 6));
+  box(32.2, 0.55, 14.4, 1.6, 1.1, 1.4, mat("wood", 1.4, 1), true, true);
+  box(32.2, 0.5, 0.9, 1.3, 1.0, 1.1, mat("wood", 1.2, 0.9), true, true);
 }
 
 function buildIce(box: BoxFn, mat: MatFn, gold: THREE.Material) {
@@ -320,7 +311,7 @@ function buildSlip(box: BoxFn, mat: MatFn, gold: THREE.Material) {
 function buildBoatShed(box: BoxFn, mat: MatFn) {
   const h = 6.1;
   wallZ(box, mat, 16, 6.5, 18, h, [{ z0: 10.2, z1: 12.0, y0: 0, y1: 2.15 }]);
-  wallZ(box, mat, 27.4, 6.5, 18, h, [{ z0: 11.0, z1: 12.6, y0: 3.5, y1: 5.1 }]);
+  wallZ(box, mat, 27.4, 6.5, 18, h, [{ z0: 10.2, z1: 12.0, y0: 0, y1: 2.15 }]);
   wallX(box, mat, 6.5, 16, 27.4, h, [{ x0: 20.2, x1: 22.0, y0: 0, y1: 2.15 }]);
   wallX(box, mat, 18, 16, 27.4, h, []);
   box(21.7, 3.28, 14.8, 11.0, 0.16, 6.4, mat("wood", 10, 6, 0.8, 0.02), true, true);

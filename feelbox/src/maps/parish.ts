@@ -51,7 +51,7 @@ export function buildParish(scene: THREE.Scene): World {
   return finish(kit, {
     id: "parish",
     title: "Parish",
-    blurb: "Norman streets. Plant the Wire at A Chapel or B Gardens.",
+    blurb: "Norman streets. Plant the Wire at A or B.",
     plantSpawns: [v(-6, -20), v(-4, -20), v(-2, -20), v(-6, -18), v(0, -18)],
     watchSpawns: [v(8, 28), v(10, 28), v(12, 28), v(8, 26), v(12, 26)],
     waypoints: [

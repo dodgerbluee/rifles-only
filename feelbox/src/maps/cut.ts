@@ -49,7 +49,7 @@ export function buildCut(scene: THREE.Scene): World {
   return finish(kit, {
     id: "cut",
     title: "The Cut",
-    blurb: "Limestone quarry at last light. Plant the Wire at A Rim or B Kiln.",
+    blurb: "Limestone quarry at last light. Plant the Wire at A or B.",
     plantSpawns: [v(-38, 8, 6.4), v(-38, 10, 6.4), v(-38, 12, 6.4), v(-36, 9, 6.4), v(-36, 11, 6.4)],
     watchSpawns: [v(34, 6), v(36, 8), v(36, 10), v(34, 8), v(32, 11)],
     waypoints: [

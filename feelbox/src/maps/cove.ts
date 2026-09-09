@@ -57,7 +57,7 @@ export function buildCove(scene: THREE.Scene): World {
   return finish(kit, {
     id: "cove",
     title: "Harbor",
-    blurb: "Watchers hold A Yard and B Crates. Planters walk in from the east lot.",
+    blurb: "Watchers hold A and B. Planters walk in from the east lot.",
     plantSpawns: [v(40, 4), v(40, 8), v(38, 6), v(41, 2), v(39, 10)],
     watchSpawns: [v(-36, -12), v(-36, -8), v(-34, -10), v(-32, -14), v(-32, -6)],
     waypoints: [

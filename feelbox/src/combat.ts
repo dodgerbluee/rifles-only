@@ -19,6 +19,7 @@ export type RemoteTarget = {
   alive: boolean;
   team: Team;
   slotId: number;
+  homeId?: number;
   root: THREE.Object3D;
 };
 
@@ -116,7 +117,7 @@ export function remoteTargets(
 ): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   for (const r of remotes) {
-    if (!r.alive || skipIds.includes(r.slotId)) continue;
+    if (!r.alive || skipIds.includes(r.slotId) || (r.homeId != null && skipIds.includes(r.homeId))) continue;
     if (enemyOf && r.team === enemyOf) continue;
     out.push(...pawnHitMeshes(r.root));
   }

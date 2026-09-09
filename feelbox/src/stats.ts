@@ -42,6 +42,14 @@ export function applyLine(id: number, kills: number, assists: number, deaths: nu
   l.deaths = deaths;
 }
 
+export function swapLines(a: number, b: number) {
+  if (a === b) return;
+  const left = { ...line(a) };
+  const right = { ...line(b) };
+  applyLine(a, right.kills, right.assists, right.deaths);
+  applyLine(b, left.kills, left.assists, left.deaths);
+}
+
 export function kd(l: Line) {
   if (l.deaths <= 0) return l.kills === 0 ? "0.00" : l.kills.toFixed(2);
   return (l.kills / l.deaths).toFixed(2);

@@ -96,6 +96,7 @@ body {
 #death,
 #match-bar,
 #round-tag,
+#killfeed,
 #prompt,
 #roster,
 #join-note {
@@ -106,6 +107,7 @@ body.started #hud-left,
 body.started #hud-right,
 body.started #match-bar,
 body.started #round-tag,
+body.started #killfeed,
 body.started #prompt,
 body.started #roster,
 body.started #join-note {
@@ -175,6 +177,51 @@ body.started #match-bar {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #cfc6b2;
+}
+
+#killfeed {
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 16;
+}
+
+body.started #killfeed {
+  display: flex;
+}
+
+.kill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(16, 17, 12, 0.78);
+  border: 1px solid rgba(232, 217, 168, 0.22);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.kill-row .who {
+  font-weight: 650;
+}
+
+.kill-row .who.ember {
+  color: #d07048;
+}
+
+.kill-row .who.stone {
+  color: #7aa0c4;
+}
+
+.kill-row .sep {
+  color: #8d8676;
+  font-size: 11px;
 }
 
 #round-result {
@@ -720,7 +767,8 @@ body.bestplay #match-bar,
 body.bestplay #round-tag,
 body.bestplay #round-result,
 body.bestplay #prompt,
-body.bestplay #join-note {
+body.bestplay #join-note,
+body.bestplay #killfeed {
   display: none !important;
 }
 

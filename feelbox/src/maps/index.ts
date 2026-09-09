@@ -8,10 +8,10 @@ import type { MapId } from "./kit";
 export type { MapId } from "./kit";
 
 export const MAPS: { id: MapId; title: string; blurb: string }[] = [
-  { id: "wharf", title: "Wharf", blurb: "Winter dockyard. Plant the Wire at A Ice or B Slip." },
-  { id: "cove", title: "Harbor", blurb: "Industrial quay. Plant the Wire at A Yard or B Crates." },
-  { id: "parish", title: "Parish", blurb: "Norman streets. Plant the Wire at A Chapel or B Gardens." },
-  { id: "cut", title: "The Cut", blurb: "Limestone quarry at last light. Plant the Wire at A Rim or B Kiln." },
+  { id: "wharf", title: "Wharf", blurb: "Winter dockyard. Plant the Wire at A or B." },
+  { id: "cove", title: "Harbor", blurb: "Industrial quay. Plant the Wire at A or B." },
+  { id: "parish", title: "Parish", blurb: "Norman streets. Plant the Wire at A or B." },
+  { id: "cut", title: "The Cut", blurb: "Limestone quarry at last light. Plant the Wire at A or B." },
 ];
 
 export function buildMap(scene: THREE.Scene, id: MapId): World {

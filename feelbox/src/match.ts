@@ -10,6 +10,7 @@ export type Slot = {
   kind: "human" | "bot";
   name: string;
   alive: boolean;
+  occupant?: string;
 };
 
 export type WireState = {
@@ -91,8 +92,33 @@ export function claimSlot(m: Match, team: Team, name: string): Slot | null {
   if (!bot) return null;
   bot.kind = "human";
   bot.name = name;
+  bot.occupant = undefined;
   m.lastJoin = `${name} took ${team === "ember" ? "Ember" : "Stone"} · ${bot.id < 5 ? EMBER_NAMES[bot.id] : STONE_NAMES[bot.id - 5]} left`;
   return bot;
+}
+
+export function vacateSlot(m: Match, slot: Slot) {
+  slot.kind = "bot";
+  slot.occupant = undefined;
+  slot.name = restBotName(slot);
+}
+
+function restBotName(slot: Slot) {
+  if (slot.team === "ember" && slot.id >= 0 && slot.id < 5) return EMBER_NAMES[slot.id]!;
+  if (slot.team === "stone" && slot.id >= 5 && slot.id < 10) return STONE_NAMES[slot.id - 5]!;
+  return botName(slot.team, slot.id);
+}
+
+export function actorTag(name: string | undefined | null, occupant?: string | null) {
+  const n = (name ?? "").trim() || "Rifle";
+  const o = occupant?.trim();
+  if (o && o !== n) return `${n} (${o})`;
+  return n;
+}
+
+export function slotTag(slot: Slot | undefined, occupant?: string | null) {
+  if (!slot) return actorTag("Rifle", occupant);
+  return actorTag(slot.name, occupant ?? slot.occupant);
 }
 
 export function humanSlot(m: Match): Slot | undefined {
@@ -394,5 +420,5 @@ export function siteCall(site: SiteId | "ice" | "slip" | null | undefined) {
 }
 
 export function plantedTag(m: Match) {
-  return `Wire live · ${siteCall(m.wire.site)} · ${formatTime(m.bombTime)}`;
+  return `Wire live · ${formatTime(m.bombTime)}`;
 }

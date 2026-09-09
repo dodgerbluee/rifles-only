@@ -17,6 +17,7 @@ import {
   showDeath,
   showPodium,
   showSpawn,
+  syncKillFeed,
   tickBanners,
   updateHud,
   updateMatchHud,
@@ -49,8 +50,8 @@ import {
   plantingTeam,
   plantWire,
   slotById,
-  siteCall,
   tickMatch,
+  vacateSlot,
   watchingTeam,
   type Slot,
   type Team,
@@ -109,6 +110,7 @@ import {
   collectInput,
   dropPeer,
   reconcilePos,
+  restoreHomeSeats,
   seatPeer,
   statusLine,
   syncClientPawns,
@@ -116,7 +118,7 @@ import {
   type Remote,
 } from "./peers";
 import { prefs, savePrefs } from "./prefs";
-import { applyLine, noteHit, noteKill, line, resetStats } from "./stats";
+import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
 import { jumpSpeed, tuning } from "./tuning";
 
 const RADIUS = 0.32;
@@ -375,7 +377,7 @@ function paintMapPick() {
   if (blurb) blurb.textContent = world.blurb ?? "";
   const key = document.querySelector(".map-key");
   if (key && world.sites[0] && world.sites[1]) {
-    key.textContent = `you · ember · stone · A ${world.sites[0].name} / B ${world.sites[1].name}`;
+    key.textContent = `you · ember · stone · A / B`;
   }
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle && world.title) mapTitle.textContent = world.title;
@@ -403,13 +405,6 @@ function paintTeamPick() {
   });
 }
 
-function reseatPeer(peerId: number, name: string, team: Team) {
-  const cur = remotes.get(peerId);
-  if (cur?.team === team) return;
-  if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
-  seatPeer(scene, world, match, bots, remotes, peerId, name, team);
-}
-
 function pickTeam(team: Team) {
   prefs.team = team;
   savePrefs();
@@ -425,16 +420,20 @@ function switchLocalTeam(team: Team) {
     paintTeamPick();
     return;
   }
-  you.kind = "bot";
+  const oldId = you.id;
+  const oldName = you.name;
+  vacateSlot(match, you);
   bots.push(spawnBot(scene, world, match, you));
   const seat = claimSlot(match, team, prefs.name.trim() || "You");
   if (!seat) {
-    despawnBot(scene, bots, you.id);
+    despawnBot(scene, bots, oldId);
     you.kind = "human";
-    you.name = prefs.name.trim() || "You";
+    you.name = oldName;
+    you.occupant = undefined;
     paintTeamPick();
     return;
   }
+  swapLines(oldId, seat.id);
   despawnBot(scene, bots, seat.id);
   playerId = seat.id;
   const gfig = buildPawn(ghost, team);
@@ -1828,6 +1827,7 @@ function trySkipReel() {
 
 function stopReel() {
   document.body.classList.remove("bestplay");
+  lastReelAds = false;
   ghost.visible = false;
   for (const b of bots) {
     b.root.visible = true;
@@ -2115,6 +2115,7 @@ function roundSpawn() {
   paintNadeView();
   flashT = 0;
   stunT = 0;
+  restoreHomeSeats(match, remotes);
   setRoundResult(null);
   hideDeath();
   resetBots(bots, world, match);
@@ -2591,10 +2592,9 @@ function frame(now: number) {
   }
   if (match.phase === "planted" && seenPhase !== "planted") {
     playPlanted();
-    const site = siteCall(match.wire.site);
     const you = slotById(match, playerId);
     const win = !!you && you.team === plantingTeam(match);
-    setRoundResult(`Wire planted · ${site}`, win);
+    setRoundResult("Wire planted", win);
     plantBannerUntil = time + 3.4;
   }
   const holdingPlant = match.wire.plantHold > 0.02;
@@ -2648,6 +2648,7 @@ function frame(now: number) {
     stopReel();
   }
   const watching = reel !== null;
+  document.body.classList.toggle("ads", watching ? lastReelAds : ads);
 
   if (net.role === "host" && !reeling) {
     for (const r of remotes.values()) {
@@ -2966,16 +2967,17 @@ function frame(now: number) {
   else if (match.wire.mode === "carried" && match.wire.carrierId === viewId) {
     const site = inSite(world, "loft", px, pz, py) ? "ICE" : inSite(world, "well", px, pz, py) ? "SLIP" : "";
     prompt = site
-      ? `HOLD F · PLANT ${site}`
-      : "You have the Wire · gold pad at A Ice (2F) or B Slip";
+      ? "HOLD F · PLANT"
+      : "You have the Wire · gold pad at A or B";
   } else if (match.wire.mode === "ground" && youTeam === planter) {
     if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.4) prompt = "HOLD F · PICK UP THE WIRE";
   } else if (match.wire.mode === "planted" && youTeam !== planter) {
     if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE WIRE";
   } else if (match.phase === "planted") {
-    prompt = `Wire live · ${match.wire.site === "loft" ? "Ice" : "Slip"}`;
+    prompt = "Wire live";
   }
   updateMatchHud(match, prompt);
+  syncKillFeed(lastSnap?.feed, lastSnap?.time ?? time);
   const shiftBoard =
     (keys.has("ShiftLeft") || keys.has("ShiftRight")) &&
     !document.body.classList.contains("settings") &&

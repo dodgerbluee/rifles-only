@@ -13,6 +13,7 @@ import {
   removeBotSlot,
   restartMatch,
   slotById,
+  slotTag,
   tickMatch,
   type Team,
 } from "./match";
@@ -33,10 +34,13 @@ import { pickBodyVictim, meleeTarget, remoteTargets, type LiveBody } from "./com
 import type { ClientEvent, KillFeedItem, Pawn, PlayerInput, Snapshot } from "./net";
 import {
   dropPeer,
+  reseatPeer,
   seatPeer,
   takeoverPeer,
   tickRemote,
   fillAbsentSlots,
+  creditId,
+  restoreHomeSeats,
   type Remote,
 } from "./peers";
 import {
@@ -122,6 +126,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     roundKills.length = 0;
     pendingHeads.length = 0;
     restartMatch(match, world.plantSpawns[2]!);
+    restoreHomeSeats(match, remotes);
     resetBots(bots, world, match);
     roundSpawnHumans();
     seenRound = match.round;
@@ -173,22 +178,37 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     return oneShot ? 200 : head ? 100 : 50;
   }
 
+  function credit(id: number) {
+    return creditId(remotes, id);
+  }
+
+  function actorName(id: number, fallback = "Rifle") {
+    const slot = slotById(match, id);
+    const remote = [...remotes.values()].find((x) => x.slotId === id || x.homeId === id);
+    return slotTag(slot, slot?.occupant ?? (remote && remote.slotId === id ? remote.name : undefined)) || fallback;
+  }
+
   function frag(killerId: number, victimId: number, victimName: string, x: number, y: number, z: number) {
-    noteKill(killerId, victimId, time);
+    const killer = credit(killerId);
+    const victim = credit(victimId);
+    noteKill(killer, victim, time);
     markDead(match, victimId, x, y, z);
+    if (victim !== victimId) markDead(match, victim, x, y, z);
     roundKills.push({
       t: time,
-      killerId,
-      killerName: slotById(match, killerId)?.name ?? "Rifle",
-      victimId,
-      victimName,
+      killerId: killer,
+      killerName: actorName(killerId),
+      killerTeam: slotById(match, killerId)?.team ?? slotById(match, killer)?.team,
+      victimId: victim,
+      victimName: actorName(victimId, victimName),
+      victimTeam: slotById(match, victimId)?.team ?? slotById(match, victim)?.team,
     });
   }
 
   function hurtRemote(r: Remote, dmg: number, killerId: number) {
     if (!r.alive) return false;
     const amount = oneShot ? Math.max(dmg, 200) : dmg;
-    noteHit(killerId, r.slotId, time);
+    noteHit(credit(killerId), credit(r.slotId), time);
     r.hp = Math.max(0, r.hp - amount);
     if (r.hp <= 0) {
       r.alive = false;
@@ -202,7 +222,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
   function shotPeople(origin: THREE.Vector3, dir: THREE.Vector3, worldHit: ReturnType<typeof rayShot>, shooterId: number) {
     const youTeam = slotById(match, shooterId)?.team;
     const skip = friendlyFire ? undefined : youTeam;
-    const skipIds = [shooterId];
+    const skipIds = [shooterId, credit(shooterId)];
     for (const b of bots) b.root.updateMatrixWorld(true);
     for (const r of remotes.values()) r.root.updateMatrixWorld(true);
     raycaster.set(origin, dir);
@@ -219,16 +239,16 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       const dmg = gunDmg(head);
       const bot = bots.find((b) => b.id === hid);
       if (bot && bot.hp > 0 && (friendlyFire || bot.team !== youTeam)) {
-        noteHit(shooterId, bot.id, time);
+        noteHit(credit(shooterId), bot.id, time);
         const killed = hurtBot(bot, dmg, time);
         if (head && killed) pendingHeads.push(bot.id);
         if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
         return true;
       }
-      const remote = [...remotes.values()].find((x) => x.slotId === hid);
+      const remote = [...remotes.values()].find((x) => x.slotId === hid || x.homeId === hid);
       if (remote && remote.alive && (friendlyFire || remote.team !== youTeam)) {
         const killed = hurtRemote(remote, dmg, shooterId);
-        if (head && killed) pendingHeads.push(remote.slotId);
+        if (head && killed) pendingHeads.push(remote.homeId);
         return true;
       }
     }
@@ -238,7 +258,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     if (!bodyHit) return false;
     const bot = bots.find((b) => b.id === bodyHit.body.id);
     if (bot && bot.hp > 0) {
-      noteHit(shooterId, bot.id, time);
+      noteHit(credit(shooterId), bot.id, time);
       if (hurtBot(bot, gunDmg(false), time)) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
       return true;
     }
@@ -258,11 +278,11 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
     r.lastMelee = time;
     const reach = tuning.melee;
     const youTeam = slotById(match, r.slotId)?.team;
-    const body = meleeTarget(origin, dir, liveBodies(), reach, youTeam, friendlyFire, [r.slotId]);
+    const body = meleeTarget(origin, dir, liveBodies(), reach, youTeam, friendlyFire, [r.slotId, r.homeId]);
     if (!body) return false;
     const bot = bots.find((b) => b.id === body.id);
     if (bot && bot.hp > 0) {
-      noteHit(r.slotId, bot.id, time);
+      noteHit(credit(r.slotId), bot.id, time);
       if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z);
       return true;
     }
@@ -342,10 +362,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
   }
 
   function reseat(peerId: number, playerName: string, team: Team) {
-    const cur = remotes.get(peerId);
-    if (cur?.team === team) return;
-    if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
-    seatPeer(scene, world, match, bots, remotes, peerId, playerName, team);
+    reseatPeer(scene, world, match, bots, remotes, peerId, playerName, team);
   }
 
   return {
@@ -419,6 +436,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         seenRound = match.round;
         roundKills.length = 0;
         pendingHeads.length = 0;
+        restoreHomeSeats(match, remotes);
         resetBots(bots, world, match);
         roundSpawnHumans();
         for (const s of match.slots) s.alive = true;
@@ -481,7 +499,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
         return;
       }
       if (event.kind === "kick") {
-        const remote = [...remotes.values()].find((x) => x.slotId === event.slotId);
+        const remote = [...remotes.values()].find((x) => x.slotId === event.slotId || x.homeId === event.slotId);
         if (remote) dropPeer(scene, world, match, bots, remotes, remote.peerId);
         return;
       }
@@ -538,9 +556,10 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
       const pawns: Pawn[] = [
         ...[...remotes.values()].map(
           (r): Pawn => ({
-            id: r.slotId,
+            id: r.homeId,
             netId: r.peerId,
-            name: slotById(match, r.slotId)?.name ?? r.name,
+            name: r.name,
+            occupant: undefined,
             team: r.team,
             x: r.x,
             y: r.y,
@@ -551,9 +570,9 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
             alive: r.alive,
             weapon: r.weapon,
             ads: r.ads,
-            kills: line(r.slotId).kills,
-            assists: line(r.slotId).assists,
-            deaths: line(r.slotId).deaths,
+            kills: line(r.homeId).kills,
+            assists: line(r.homeId).assists,
+            deaths: line(r.homeId).deaths,
             ping: r.ping,
           }),
         ),
@@ -562,6 +581,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
             id: b.id,
             netId: 0,
             name: match.slots.find((s) => s.id === b.id)?.name ?? "bot",
+            occupant: match.slots.find((s) => s.id === b.id)?.occupant,
             team: b.team,
             x: b.x,
             y: b.y,
@@ -578,7 +598,7 @@ export function createSim(opts?: { mapId?: MapId; name?: string; id?: string }):
           }),
         ),
       ];
-      fillAbsentSlots(match, pawns);
+      fillAbsentSlots(match, pawns, remotes);
       return {
         phase: match.phase,
         round: match.round,

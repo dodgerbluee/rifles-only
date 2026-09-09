@@ -1,8 +1,9 @@
 import type { World } from "./world";
-import { formatTime, plantedTag, plantingTeam, type Match } from "./match";
+import { actorTag, formatTime, plantedTag, plantingTeam, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { kd, line, topThree } from "./stats";
+import type { KillFeedItem } from "./net";
 
 const deathEl = document.querySelector<HTMLElement>("#death")!;
 const deathBy = document.querySelector("#death-by")!;
@@ -36,6 +37,7 @@ const cookFill = document.querySelector<HTMLElement>("#cook-fill")!;
 const specEl = document.querySelector<HTMLElement>("#spec")!;
 const rosterEl = document.querySelector("#roster")!;
 const joinNote = document.querySelector("#join-note")!;
+const killFeedEl = document.querySelector<HTMLElement>("#killfeed");
 
 const MAP_W = 220;
 const MAP_H = 176;
@@ -93,7 +95,7 @@ export function showDeath(opts: {
     opts.remain < 0 ? "Out this round" : secs <= 0 ? "Deploying now" : `Deploying in ${secs}`;
   deathWhere.textContent =
     opts.remain < 0
-      ? "Click next teammate · E take over a bot (kills stay on the bot)"
+      ? "Click next teammate · E take over a bot"
       : `${opts.spawnName} · full health · 5 rounds · 2 smokes`;
   if (opts.remain < 0) window.setTimeout(() => deathEl.classList.add("dim"), 2400);
 }
@@ -353,7 +355,7 @@ export function renderScoreboard(
     const el = document.createElement("div");
     el.className = `board-row${s.id === youId ? " you" : ""}`;
     const ping = pingOf(s.id);
-    el.innerHTML = `<span>${s.name}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span>${ping == null ? "—" : Math.round(ping)}</span>`;
+    el.innerHTML = `<span>${actorTag(s.name, s.occupant)}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span>${ping == null ? "—" : Math.round(ping)}</span>`;
     return el;
   };
   for (const s of m.slots.filter((s) => s.team === "ember")) ember.append(row(s));
@@ -386,4 +388,25 @@ export function showPodium(m: Match) {
 export function hidePodium() {
   document.body.classList.remove("podium");
   document.querySelector("#podium-first")?.classList.remove("on");
+}
+
+export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {
+  if (!killFeedEl) return;
+  const recent = (items ?? []).filter((k) => now - (k.t ?? now) < 6.5).slice(-6);
+  killFeedEl.replaceChildren();
+  for (const k of recent) {
+    const row = document.createElement("div");
+    row.className = "kill-row";
+    const killer = document.createElement("span");
+    killer.className = `who${k.killerTeam ? ` ${k.killerTeam}` : ""}`;
+    killer.textContent = k.killerName;
+    const sep = document.createElement("span");
+    sep.className = "sep";
+    sep.textContent = "▸";
+    const victim = document.createElement("span");
+    victim.className = `who${k.victimTeam ? ` ${k.victimTeam}` : ""}`;
+    victim.textContent = k.victimName;
+    row.append(killer, sep, victim);
+    killFeedEl.append(row);
+  }
 }

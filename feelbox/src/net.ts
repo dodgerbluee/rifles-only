@@ -30,6 +30,7 @@ export type Pawn = {
   id: number;
   netId?: number;
   name: string;
+  occupant?: string;
   team: Team;
   x: number;
   y: number;
@@ -61,8 +62,10 @@ export type KillFeedItem = {
   t?: number;
   killerId: number;
   killerName: string;
+  killerTeam?: Team;
   victimId: number;
   victimName: string;
+  victimTeam?: Team;
 };
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */
