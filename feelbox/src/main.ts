@@ -62,37 +62,50 @@ import {
 } from "./match";
 import { bindAdmin, rules } from "./admin";
 import {
-  TOOLS,
+  BUILD_IDS,
+  KIT_IDS,
   addOpening,
+  aimGround,
   applyOrbit,
   blankSpec,
   canvasNdc,
   cellKey,
   clampBuildSize,
   defaultOrbit,
+  deleteItem,
   downloadSpec,
   ghostSize,
-  growLot,
-  isBuildTool,
+  isAccessoryTool,
   isOpeningTool,
+  isRectTool,
+  itemBox,
   loadStored,
-  LOT_STEP,
+  makeLotHandles,
   makeStudioGrid,
+  moveItem,
   nearestBuildingWall,
   openingPose,
   orbitDrag,
   panDrag,
-  pickBuildingWall,
+  paletteOf,
   pickGround,
+  pickItem,
+  pickLotEdge,
   place,
   placeBuildingRect,
   postDraft,
   resizeNearestBuilding,
   saveStored,
+  setLotEdge,
   snap,
+  surfaceAt,
   toolFromCode,
+  toolsFor,
   turnYaw,
   zoomOrbit,
+  type LotEdge,
+  type PaletteId,
+  type StudioItem,
   type ToolId,
 } from "./maps/studio";
 import { buildPawn, pawnStyle, poseStance, setPawnCloth, SKINS, stepWalkFromPos, teamCloth } from "./pawn";
@@ -196,11 +209,21 @@ const studioGhost = new THREE.Mesh(
 studioGhost.visible = false;
 studioGhost.frustumCulled = false;
 scene.add(studioGhost);
+const studioSel = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 1, 1),
+  new THREE.MeshBasicMaterial({ color: 0xe8d9a8, transparent: true, opacity: 0.22, depthWrite: false }),
+);
+studioSel.visible = false;
+studioSel.frustumCulled = false;
+scene.add(studioSel);
 const studioAim = new THREE.Vector3();
 const studio = {
   on: false,
   spec: blankSpec(),
-  tool: "building" as ToolId,
+  tool: "select" as ToolId,
+  palette: "build" as PaletteId,
+  lastKit: "crate" as ToolId,
+  sel: null as StudioItem | null,
   bw: 12,
   bd: 10,
   cam: defaultOrbit(blankSpec().bounds),
@@ -211,7 +234,18 @@ const studio = {
   orbiting: false,
   panning: false,
   walk: false,
-  drag: null as null | { x0: number; z0: number; x1: number; z1: number },
+  drag: null as null | {
+    mode: "rect" | "move" | "lot";
+    x0: number;
+    z0: number;
+    x1: number;
+    z1: number;
+    y: number;
+    edge?: LotEdge;
+    item?: StudioItem;
+    ox?: number;
+    oz?: number;
+  },
   lastCell: "",
 };
 const lockerPawn = new THREE.Group();
@@ -617,6 +651,7 @@ function wipeMapMeshes() {
     ghost,
     wirePack,
     studioGhost,
+    studioSel,
     lockerPawn,
     ...[...remotes.values()].map((r) => r.root),
     ...clientPawns.values(),
@@ -633,6 +668,7 @@ function wipeMapMeshes() {
 
 function afterMapLoad() {
   if (!studioGhost.parent) scene.add(studioGhost);
+  if (!studioSel.parent) scene.add(studioSel);
   if (!lockerPawn.parent) scene.add(lockerPawn);
   lockerPawn.visible = locker.on;
   for (const r of remotes.values()) {
@@ -645,12 +681,22 @@ function afterMapLoad() {
   }
 }
 
+function setStudioTool(id: ToolId) {
+  studio.tool = id;
+  studio.palette = paletteOf(id);
+  if (isAccessoryTool(id)) studio.lastKit = id;
+  if (studio.walk && !isAccessoryTool(id) && id !== "select") leaveWalk();
+  paintStudio();
+}
+
 function paintStudio() {
   document.body.classList.toggle("studio", studio.on);
   document.body.classList.toggle("studio-walk", studio.on && studio.walk);
+  document.querySelector("#studio-pal-build")?.classList.toggle("on", studio.palette === "build");
+  document.querySelector("#studio-pal-kit")?.classList.toggle("on", studio.palette === "kit");
   const tools = document.querySelector("#studio-tools")!;
   tools.replaceChildren();
-  for (const t of TOOLS) {
+  for (const t of toolsFor(studio.palette)) {
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.tool = t.id;
@@ -658,8 +704,7 @@ function paintStudio() {
     b.classList.toggle("on", t.id === studio.tool);
     b.addEventListener("click", (e) => {
       e.stopPropagation();
-      studio.tool = t.id;
-      paintStudio();
+      setStudioTool(t.id);
     });
     tools.append(b);
   }
@@ -668,16 +713,19 @@ function paintStudio() {
     walkBtn.classList.toggle("on", studio.walk);
     walkBtn.textContent = studio.walk ? "Orbit" : "Walk";
   }
+  const del = document.querySelector<HTMLButtonElement>("#studio-delete");
+  if (del) del.disabled = !studio.sel;
   const hint = document.querySelector("#studio-hint");
   if (hint) {
     hint.textContent = studio.walk
-      ? "WASD move · click lock look · O/G/V openings on the wall you aim · Esc orbit"
-      : "LMB paint · drag to size a building · Lot+/− · Walk to explore · [ ] size · R turn · Esc leave";
+      ? "WASD move · click lock look · click to drop accessories · Esc orbit"
+      : "Build in orbit · drag lot rims · Select then drag or Delete · Walk drops accessories · Esc leave";
   }
   const status = document.querySelector("#studio-status");
   const b = studio.spec.bounds;
   if (status) {
-    status.textContent = `${studio.spec.title} · lot ${b.maxX - b.minX}×${b.maxZ - b.minZ} · build ${studio.bw}×${studio.bd}`;
+    const sel = studio.sel ? ` · ${studio.sel.kind}` : "";
+    status.textContent = `${studio.spec.title} · lot ${b.maxX - b.minX}×${b.maxZ - b.minZ}${sel}`;
   }
 }
 
@@ -685,8 +733,11 @@ function rebuildStudio() {
   wipeMapMeshes();
   world = compileLayout(scene, studio.spec, { clay: !studio.walk });
   afterMapLoad();
-  if (!studio.walk) scene.add(makeStudioGrid(studio.spec.bounds));
-  studioGhost.visible = !studio.walk;
+  if (!studio.walk) {
+    scene.add(makeStudioGrid(studio.spec.bounds));
+    scene.add(makeLotHandles(studio.spec.bounds));
+  }
+  studioGhost.visible = true;
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle) mapTitle.textContent = studio.spec.title || "Studio";
   if (studio.walk) {
@@ -703,6 +754,9 @@ function enterStudio() {
   studio.on = true;
   studio.walk = false;
   studio.drag = null;
+  studio.sel = null;
+  studio.tool = "select";
+  studio.palette = "build";
   studio.spec = loadStored() ?? blankSpec();
   studio.cam = defaultOrbit(studio.spec.bounds);
   studio.faceYaw = 0;
@@ -727,11 +781,13 @@ function leaveStudio() {
   studio.on = false;
   studio.walk = false;
   studio.drag = null;
+  studio.sel = null;
   studio.painting = false;
   studio.orbiting = false;
   studio.panning = false;
   studio.lastCell = "";
   studioGhost.visible = false;
+  studioSel.visible = false;
   document.body.classList.remove("studio", "studio-nav", "studio-walk");
   camera.near = 0.05;
   camera.far = 85;
@@ -866,6 +922,8 @@ function enterWalk() {
   studio.orbiting = false;
   studio.panning = false;
   studio.drag = null;
+  studio.sel = null;
+  if (!isAccessoryTool(studio.tool)) setStudioTool(studio.lastKit);
   const spawn = walkSpawn();
   px = spawn.x;
   pz = spawn.z;
@@ -887,28 +945,30 @@ function leaveWalk() {
   applyOrbit(camera, studio.cam);
 }
 
-function bumpLot(delta: number) {
-  const next = growLot(studio.spec, delta);
+function bumpLotEdge(edge: LotEdge, value: number) {
+  const next = setLotEdge(studio.spec, edge, value);
   if (next === studio.spec) return;
   studio.spec = next;
   saveStored(studio.spec);
-  const b = next.bounds;
-  studio.cam.tx = (b.minX + b.maxX) / 2;
-  studio.cam.tz = (b.minZ + b.maxZ) / 2;
+  rebuildStudio();
+  paintStudio();
+}
+
+function deleteStudioSel() {
+  if (!studio.sel) return;
+  const next = deleteItem(studio.spec, studio.sel);
+  if (next === studio.spec) return;
+  studio.spec = next;
+  studio.sel = null;
+  saveStored(studio.spec);
   rebuildStudio();
   paintStudio();
 }
 
 function stampOpening() {
   if (!isOpeningTool(studio.tool)) return;
-  let hit = null as ReturnType<typeof pickBuildingWall>;
-  if (studio.walk) {
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    hit = pickBuildingWall(studio.spec, camera.position, dir);
-  } else {
-    const ground = studioHit();
-    if (ground) hit = nearestBuildingWall(studio.spec, ground.x, ground.z);
-  }
+  const ground = studioHit();
+  const hit = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z, surfaceAt(studio.spec, ground.x, ground.z)) : null;
   const status = document.querySelector("#studio-status");
   if (!hit) {
     if (status) status.textContent = "aim a building wall";
@@ -926,11 +986,11 @@ function commitBuildDrag() {
   studio.drag = null;
   studio.painting = false;
   studio.lastCell = "";
-  if (!drag) return;
+  if (!drag || drag.mode !== "rect") return;
   const w = Math.abs(drag.x1 - drag.x0);
   const d = Math.abs(drag.z1 - drag.z0);
   if (w >= 4 || d >= 4) {
-    studio.spec = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw);
+    studio.spec = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y);
     studio.bw = clampBuildSize(w);
     studio.bd = clampBuildSize(d);
   } else {
@@ -938,6 +998,7 @@ function commitBuildDrag() {
       yaw: studio.faceYaw,
       bw: studio.bw,
       bd: studio.bd,
+      y: drag.y,
     });
   }
   saveStored(studio.spec);
@@ -952,24 +1013,42 @@ function studioHit() {
   return pickGround(camera, ndc.x, ndc.y);
 }
 
-function stampStudio(erase = false) {
+function stampStudio() {
+  if (studio.tool === "select" || isRectTool(studio.tool) || isOpeningTool(studio.tool)) return;
   const hit = studioHit();
   if (!hit) return;
   const gx = snap(hit.x);
   const gz = snap(hit.z);
-  const key = cellKey(erase ? "erase" : studio.tool, gx, gz);
+  const key = cellKey(studio.tool, gx, gz);
   if (key === studio.lastCell) return;
   studio.lastCell = key;
-  studio.spec = place(studio.spec, erase ? "erase" : studio.tool, gx, gz, {
+  studio.spec = place(studio.spec, studio.tool, gx, gz, {
     yaw: studio.faceYaw,
     bw: studio.bw,
     bd: studio.bd,
+    y: surfaceAt(studio.spec, gx, gz),
   });
   saveStored(studio.spec);
   rebuildStudio();
   paintStudio();
   const status = document.querySelector("#studio-status");
-  if (status) status.textContent = erase ? "erased" : `placed ${studio.tool}`;
+  if (status) status.textContent = `placed ${studio.tool}`;
+}
+
+function stampWalkAccessory() {
+  if (!isAccessoryTool(studio.tool)) return;
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const hit = aimGround(camera.position, dir);
+  if (!hit) return;
+  const gx = snap(hit.x);
+  const gz = snap(hit.z);
+  studio.spec = place(studio.spec, studio.tool, gx, gz, {
+    yaw: studio.faceYaw,
+    y: surfaceAt(studio.spec, gx, gz),
+  });
+  saveStored(studio.spec);
+  rebuildStudio();
+  paintStudio();
 }
 
 async function saveStudio() {
@@ -1094,18 +1173,27 @@ bindAdmin({
     e.stopPropagation();
     leaveStudio();
   });
-  document.querySelector("#studio-lot-plus")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    bumpLot(LOT_STEP);
-  });
-  document.querySelector("#studio-lot-minus")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    bumpLot(-LOT_STEP);
-  });
   document.querySelector("#studio-walk")?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (studio.walk) leaveWalk();
     else enterWalk();
+  });
+  document.querySelector("#studio-delete")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteStudioSel();
+  });
+  document.querySelector("#studio-pal-build")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (studio.walk) leaveWalk();
+    studio.palette = "build";
+    if (!BUILD_IDS.includes(studio.tool)) studio.tool = "select";
+    paintStudio();
+  });
+  document.querySelector("#studio-pal-kit")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    studio.palette = "kit";
+    if (!KIT_IDS.includes(studio.tool)) studio.tool = studio.lastKit;
+    paintStudio();
   });
   document.querySelector("#studio")?.addEventListener("mousedown", (e) => e.stopPropagation());
 }
@@ -1450,11 +1538,8 @@ addEventListener("keydown", (e) => {
   }
   if (studio.on) {
     const moveKeys = studio.walk && ["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "Space", "KeyF"].includes(e.code);
-    const tool = moveKeys ? null : toolFromCode(e.code);
-    if (tool) {
-      studio.tool = tool;
-      paintStudio();
-    }
+    const tool = moveKeys ? null : toolFromCode(e.code, studio.palette);
+    if (tool) setStudioTool(tool);
     if (e.code === "KeyR" && !e.repeat) {
       studio.faceYaw = turnYaw(studio.faceYaw);
       const status = document.querySelector("#studio-status");
@@ -1464,8 +1549,9 @@ addEventListener("keydown", (e) => {
       if (studio.walk) leaveWalk();
       else enterWalk();
     }
-    if (e.code === "Minus" || e.code === "NumpadSubtract") bumpLot(-LOT_STEP);
-    if (e.code === "Equal" || e.code === "NumpadAdd") bumpLot(LOT_STEP);
+    if (e.code === "Delete" || e.code === "Backspace" || e.code === "KeyX") {
+      deleteStudioSel();
+    }
     if (e.code === "BracketLeft" || e.code === "BracketRight") {
       const dw = e.code === "BracketRight" ? 2 : -2;
       const ground = studio.walk ? { x: px, z: pz } : studioHit();
@@ -1482,7 +1568,10 @@ addEventListener("keydown", (e) => {
       paintStudio();
     }
     if (e.code === "Escape") {
-      if (studio.walk) leaveWalk();
+      if (studio.sel) {
+        studio.sel = null;
+        paintStudio();
+      } else if (studio.walk) leaveWalk();
       else leaveStudio();
     }
     return;
@@ -1534,27 +1623,53 @@ addEventListener("mousedown", (e) => {
         canvas.requestPointerLock();
         return;
       }
-      if (e.button === 0 && isOpeningTool(studio.tool)) stampOpening();
+      if (e.button === 0 && isAccessoryTool(studio.tool)) stampWalkAccessory();
       return;
     }
     if (e.button === 0) {
       studio.lastCell = "";
+      const hit = studioHit();
+      if (!hit) return;
+      const gx = snap(hit.x);
+      const gz = snap(hit.z);
+      const edge = pickLotEdge(studio.spec.bounds, hit.x, hit.z);
+      if (edge) {
+        studio.drag = { mode: "lot", x0: gx, z0: gz, x1: gx, z1: gz, y: 0, edge };
+        studio.painting = true;
+        return;
+      }
+      if (studio.tool === "select") {
+        const item = pickItem(studio.spec, gx, gz);
+        studio.sel = item;
+        if (item) {
+          const pos = itemBox(studio.spec, item);
+          studio.drag = {
+            mode: "move",
+            x0: gx,
+            z0: gz,
+            x1: gx,
+            z1: gz,
+            y: 0,
+            item,
+            ox: pos?.x ?? gx,
+            oz: pos?.z ?? gz,
+          };
+          studio.painting = true;
+        }
+        paintStudio();
+        return;
+      }
       if (isOpeningTool(studio.tool)) {
         stampOpening();
         return;
       }
-      if (isBuildTool(studio.tool)) {
-        const hit = studioHit();
-        if (hit) {
-          const gx = snap(hit.x);
-          const gz = snap(hit.z);
-          studio.drag = { x0: gx, z0: gz, x1: gx, z1: gz };
-          studio.painting = true;
-        }
+      if (isRectTool(studio.tool)) {
+        studio.drag = { mode: "rect", x0: gx, z0: gz, x1: gx, z1: gz, y: surfaceAt(studio.spec, gx, gz) };
+        studio.painting = true;
         return;
       }
       studio.painting = true;
-      stampStudio(studio.tool === "erase");
+      stampStudio();
     }
     if (e.button === 2) studio.orbiting = true;
     if (e.button === 1) studio.panning = true;
@@ -1589,7 +1704,13 @@ addEventListener("mouseup", (e) => {
   }
   if (studio.on) {
     if (e.button === 0) {
-      if (studio.drag) commitBuildDrag();
+      if (studio.drag?.mode === "rect") commitBuildDrag();
+      else if (studio.drag?.mode === "move" || studio.drag?.mode === "lot") {
+        studio.drag = null;
+        saveStored(studio.spec);
+        rebuildStudio();
+        paintStudio();
+      }
       studio.painting = false;
       studio.lastCell = "";
     }
@@ -1647,10 +1768,23 @@ addEventListener("mousemove", (e) => {
     else if (studio.drag && studio.painting) {
       const hit = studioHit();
       if (hit) {
-        studio.drag.x1 = snap(hit.x);
-        studio.drag.z1 = snap(hit.z);
+        const gx = snap(hit.x);
+        const gz = snap(hit.z);
+        studio.drag.x1 = gx;
+        studio.drag.z1 = gz;
+        if (studio.drag.mode === "lot" && studio.drag.edge) {
+          bumpLotEdge(studio.drag.edge, studio.drag.edge === "n" || studio.drag.edge === "s" ? hit.z : hit.x);
+        } else if (studio.drag.mode === "move" && studio.drag.item) {
+          const dx = gx - studio.drag.x0;
+          const dz = gz - studio.drag.z0;
+          const next = moveItem(studio.spec, studio.drag.item, (studio.drag.ox ?? 0) + dx, (studio.drag.oz ?? 0) + dz);
+          if (next !== studio.spec) {
+            studio.spec = next;
+            rebuildStudio();
+          }
+        }
       }
-    } else if (studio.painting) stampStudio(studio.tool === "erase");
+    } else if (studio.painting) stampStudio();
     return;
   }
   if (!locked || !alive) return;
@@ -4041,49 +4175,60 @@ function frame(now: number) {
       hold.root.updateMatrixWorld(true);
       arm.root.visible = true;
       poseArm(arm, rifleWrist(hold, 0));
-      if (isOpeningTool(studio.tool)) {
+      if (isAccessoryTool(studio.tool)) {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
-        const wall = pickBuildingWall(studio.spec, camera.position, studioAim);
-        if (wall) {
-          const pose = openingPose(wall, studio.tool);
+        const ground = aimGround(camera.position, studioAim);
+        if (ground) {
+          const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
           studioGhost.visible = true;
-          studioGhost.scale.set(pose.sx, pose.sy, pose.sz);
-          studioGhost.position.set(pose.x, pose.y, pose.z);
+          studioGhost.scale.set(sx, sy, sz);
+          studioGhost.position.set(snap(ground.x), surfaceAt(studio.spec, ground.x, ground.z) + sy / 2, snap(ground.z));
         } else studioGhost.visible = false;
       } else studioGhost.visible = false;
+      studioSel.visible = false;
     } else {
       showRifle(rifleKind, false);
       arm.root.visible = false;
       applyOrbit(camera, studio.cam);
-      if (studio.drag) {
+      const box = studio.sel ? itemBox(studio.spec, studio.sel) : null;
+      studioSel.visible = !!box;
+      if (box) {
+        studioSel.scale.set(box.sx + 0.2, box.sy + 0.2, box.sz + 0.2);
+        studioSel.position.set(box.x, box.y, box.z);
+      }
+      if (studio.drag?.mode === "rect") {
         const w = Math.max(2, Math.abs(studio.drag.x1 - studio.drag.x0));
         const d = Math.max(2, Math.abs(studio.drag.z1 - studio.drag.z0));
-        const sy = studio.tool === "third" ? 8.4 : studio.tool === "loft" ? 5.6 : 3.2;
+        const [sx, sy, sz] = ghostSize(studio.tool, w, d);
         studioGhost.visible = true;
         studioGhost.scale.set(w, sy, d);
-        studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
+        studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, studio.drag.y + sy / 2, (studio.drag.z0 + studio.drag.z1) / 2);
       } else if (isOpeningTool(studio.tool)) {
         const ground = studioHit();
-        const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z) : null;
+        const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z, surfaceAt(studio.spec, ground.x, ground.z)) : null;
         if (wall) {
           const pose = openingPose(wall, studio.tool);
           studioGhost.visible = true;
           studioGhost.scale.set(pose.sx, pose.sy, pose.sz);
           studioGhost.position.set(pose.x, pose.y, pose.z);
         } else studioGhost.visible = false;
+      } else if (studio.tool === "select") {
+        studioGhost.visible = false;
       } else {
         const hit = studioHit();
-        const show = !!hit && studio.tool !== "erase";
+        const show = !!hit;
         studioGhost.visible = show;
         if (hit && show) {
           const [sx, sy, sz] = ghostSize(studio.tool, studio.bw, studio.bd);
+          const y = isRectTool(studio.tool) ? surfaceAt(studio.spec, hit.x, hit.z) : 0;
           studioGhost.scale.set(sx, sy, sz);
-          studioGhost.position.set(snap(hit.x), sy / 2, snap(hit.z));
+          studioGhost.position.set(snap(hit.x), y + sy / 2, snap(hit.z));
         }
       }
     }
   } else {
     studioGhost.visible = false;
+    studioSel.visible = false;
     lockerPawn.visible = false;
   }
 

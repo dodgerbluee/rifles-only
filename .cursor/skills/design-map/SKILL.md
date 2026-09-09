@@ -9,7 +9,7 @@ The human **paints the lot**. You **finalize**. Do not start from a pile of `box
 
 ## Map studio
 
-Home (server list) → **Map studio**. Orbit paint, drag to size buildings, Lot+/−, doors/windows, 2F/3F, and **Walk** to explore in first person. Does not join a match. **Save for agent**.
+Home (server list) → **Map studio**. Orbit to draw buildings and floors, drag lot rims, Select then move or delete. **Walk** drops accessories in first person. Does not join a match. **Save for agent**.
 
 That writes `feelbox/studio-draft.json` (and a download + localStorage). If that file exists, skip ASCII and start at **Finalize**.
 
@@ -33,7 +33,7 @@ That writes `feelbox/studio-draft.json` (and a download + localStorage). If that
    - Site names from the intake card. Keep two sites `loft` (A) and `well` (B).
    - 5 planter + 5 watcher spawns, open to mid
    - ≥3 bot `routes`; at least one starts near each spawn side. You write routes — studio does not.
-   - 2F only where they stamped a loft or the ASCII showed a climb
+   - 2F only where they laid a floor and built on it, or the ASCII showed a climb
    - Recipes live in `feelbox/src/maps/layout.ts` (`buildings`, `cover`, `climbs`, `sites`, `spawns`, `routes`).
    Done when the file has no raw `box()` / `climb()` except what `compileLayout` emits.
 

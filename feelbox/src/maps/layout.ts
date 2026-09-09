@@ -15,12 +15,23 @@ export type BuildingSpec = {
   z: number;
   w: number;
   d: number;
+  /** Wall-base height. Stack another volume on a slab by setting this to the slab top. */
+  y?: number;
   h?: number;
-  floors?: 1 | 2 | 3;
+  floors?: number;
   doors?: WallOpening[];
   windows?: WallOpening[];
   stairs?: DoorWall;
   mat?: "brick" | "plaster" | "wood" | "metal";
+};
+
+export type SlabSpec = {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  /** Walk-surface height (top of the deck). */
+  y: number;
 };
 
 export type CoverSpec = {
@@ -48,6 +59,7 @@ export type LayoutSpec = {
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   wallH?: number;
   buildings?: BuildingSpec[];
+  slabs?: SlabSpec[];
   cover?: CoverSpec[];
   climbs?: ClimbSpec[];
   sites: { id: Site["id"]; call: string; name: string; x: number; z: number; y?: number; r?: number }[];
@@ -103,10 +115,18 @@ export const STOREY = 2.88;
 const WIN_SILL = 1.05;
 const WIN_HEAD = 2.35;
 
+export function buildingFloors(b: BuildingSpec) {
+  return Math.max(1, Math.min(12, Math.round(b.floors ?? 1)));
+}
+
 export function buildingHeight(b: BuildingSpec, wallH = 6.2) {
-  const floors = b.floors ?? 1;
+  const floors = buildingFloors(b);
   if (floors === 1) return b.h ?? wallH - 0.4;
   return floors * STOREY;
+}
+
+export function buildingBase(b: BuildingSpec) {
+  return b.y ?? 0;
 }
 
 function alongOf(b: BuildingSpec, wall: DoorWall) {
@@ -257,16 +277,17 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
 
   for (const b of spec.buildings ?? []) {
     const mat = kit.mat(b.mat ?? theme.wall, b.w / 2, H / 2);
-    const floors = b.floors ?? 1;
+    const floors = buildingFloors(b);
+    const y0 = buildingBase(b);
     const stairWall = floors > 1 ? (b.stairs ?? facingCenter(b, cx, cz)) : undefined;
     if (floors === 1) {
-      buildStorey(kit, b, b.h ?? H - 0.4, mat, 0, 0);
+      buildStorey(kit, b, b.h ?? H - 0.4, mat, y0, 0);
     } else {
       for (let f = 0; f < floors; f++) {
-        const y0 = f * STOREY;
-        buildStorey(kit, b, STOREY - (f < floors - 1 ? 0.08 : 0), mat, y0, f, stairWall);
+        const fy = y0 + f * STOREY;
+        buildStorey(kit, b, STOREY - (f < floors - 1 ? 0.08 : 0), mat, fy, f, stairWall);
         if (f < floors - 1) {
-          kit.box(b.x, y0 + STOREY - 0.08, b.z, b.w - T, 0.16, b.d - T, kit.mat("wood", b.w / 2, b.d / 2), true, true);
+          kit.box(b.x, fy + STOREY - 0.08, b.z, b.w - T, 0.16, b.d - T, kit.mat("wood", b.w / 2, b.d / 2), true, true);
         }
       }
       const side = stairWall!;
@@ -277,9 +298,13 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
         const shift = (flight - (floors - 2) / 2) * 2.6;
         const sx = along === "x" ? b.x + shift : b.x + (side === "e" ? out : -out);
         const sz = along === "z" ? b.z + shift : b.z + (side === "n" ? out : -out);
-        kit.climb(sx, sz, dir, 2.8, 2.2, flight * 2.8);
+        kit.climb(sx, sz, dir, 2.8, 2.2, y0 + flight * 2.8);
       }
     }
+  }
+
+  for (const s of spec.slabs ?? []) {
+    kit.box(s.x, s.y - 0.08, s.z, s.w, 0.16, s.d, kit.mat("wood", s.w / 2, s.d / 2), true, true);
   }
 
   for (const c of spec.cover ?? []) coverAt(kit, c);

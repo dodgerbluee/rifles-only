@@ -1740,6 +1740,7 @@ body.studio.studio-walk.playing #view {
 }
 
 #studio-bar,
+#studio-palettes,
 #studio-tools {
   display: flex;
   flex-wrap: wrap;
@@ -1749,6 +1750,10 @@ body.studio.studio-walk.playing #view {
 }
 
 #studio-bar {
+  margin-bottom: 8px;
+}
+
+#studio-palettes {
   margin-bottom: 8px;
 }
 
@@ -1772,9 +1777,14 @@ body.studio.studio-walk.playing #view {
 }
 
 #studio-tools button.on,
+#studio-palettes button.on,
 #studio-walk.on {
   border-color: #e8d9a8;
   color: #e8d9a8;
+}
+
+#studio-delete:disabled {
+  opacity: 0.35;
 }
 
 #studio-hint,

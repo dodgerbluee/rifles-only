@@ -6,6 +6,8 @@ import * as THREE from "three";
 import {
   STOREY,
   YARD_SPEC,
+  buildingBase,
+  buildingFloors,
   buildingHeight,
   type ClimbDir,
   type CoverSpec,
@@ -18,12 +20,13 @@ import {
 export const STUDIO_STORE = "rifles-studio-spec";
 export const GRID = 2;
 
+export type PaletteId = "build" | "kit";
+
 export type ToolId =
+  | "select"
   | "building"
-  | "loft"
-  | "third"
+  | "floor"
   | "door"
-  | "wide"
   | "window"
   | "crate"
   | "low"
@@ -35,18 +38,21 @@ export type ToolId =
   | "watch"
   | "climb"
   | "lamp"
-  | "tree"
-  | "erase";
+  | "tree";
 
-export type OpeningKind = "door" | "wide" | "window";
+export type OpeningKind = "door" | "window";
 
-export const TOOLS: { id: ToolId; key: string; label: string }[] = [
-  { id: "building", key: "1", label: "Build" },
-  { id: "loft", key: "2", label: "Loft" },
-  { id: "third", key: "F", label: "3F" },
+export type ToolDef = { id: ToolId; key: string; label: string };
+
+export const BUILD_TOOLS: ToolDef[] = [
+  { id: "select", key: "Q", label: "Select" },
+  { id: "building", key: "1", label: "Building" },
+  { id: "floor", key: "2", label: "Floor" },
   { id: "door", key: "O", label: "Door" },
-  { id: "wide", key: "G", label: "Wide" },
   { id: "window", key: "V", label: "Window" },
+];
+
+export const KIT_TOOLS: ToolDef[] = [
   { id: "crate", key: "3", label: "Crate" },
   { id: "low", key: "4", label: "Low" },
   { id: "high", key: "5", label: "High" },
@@ -58,26 +64,60 @@ export const TOOLS: { id: ToolId; key: string; label: string }[] = [
   { id: "climb", key: "C", label: "Climb" },
   { id: "lamp", key: "L", label: "Lamp" },
   { id: "tree", key: "T", label: "Tree" },
-  { id: "erase", key: "X", label: "Erase" },
 ];
 
-export const BUILD_TOOLS: ToolId[] = ["building", "loft", "third"];
-export const OPENING_TOOLS: OpeningKind[] = ["door", "wide", "window"];
+export const TOOLS: ToolDef[] = [...BUILD_TOOLS, ...KIT_TOOLS];
 
-export function isBuildTool(tool: ToolId) {
-  return BUILD_TOOLS.includes(tool);
+export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
+export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
+export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
+export const RECT_TOOLS: ToolId[] = ["building", "floor"];
+
+export function paletteOf(tool: ToolId): PaletteId {
+  return KIT_IDS.includes(tool) ? "kit" : "build";
+}
+
+export function toolsFor(palette: PaletteId) {
+  return palette === "kit" ? KIT_TOOLS : BUILD_TOOLS;
+}
+
+export function isRectTool(tool: ToolId) {
+  return RECT_TOOLS.includes(tool);
+}
+
+export function isBuildPaletteTool(tool: ToolId) {
+  return BUILD_IDS.includes(tool);
+}
+
+export function isAccessoryTool(tool: ToolId) {
+  return KIT_IDS.includes(tool);
 }
 
 export function isOpeningTool(tool: ToolId): tool is OpeningKind {
   return OPENING_TOOLS.includes(tool as OpeningKind);
 }
 
+export type StudioItem =
+  | { kind: "building"; i: number }
+  | { kind: "slab"; i: number }
+  | { kind: "cover"; i: number }
+  | { kind: "climb"; i: number }
+  | { kind: "site"; i: number }
+  | { kind: "plant"; i: number }
+  | { kind: "watch"; i: number }
+  | { kind: "lamp"; i: number }
+  | { kind: "tree"; i: number };
+
+export type LotEdge = DoorWall;
+
 export const LOT_STEP = 8;
 export const LOT_MIN = { w: 40, d: 28 };
 export const LOT_MAX = { w: 160, d: 120 };
+export const LOT_BAND = 3.2;
 export const BUILD_MIN = 6;
 export const BUILD_MAX = 80;
-export const DOOR_W = { door: 2.4, wide: 3.8, window: 1.8 };
+export const DOOR_W = { door: 2.4, window: 1.8 };
+export const SLAB_Y = 0.16;
 
 export const THEMES: ThemeId[] = ["dust", "winter", "harbor", "stone"];
 
@@ -89,6 +129,7 @@ export function blankSpec(): LayoutSpec {
     theme: "dust",
     bounds: { ...YARD_SPEC.bounds },
     buildings: [],
+    slabs: [],
     cover: [],
     climbs: [],
     sites: [
@@ -137,10 +178,6 @@ export function aimGround(origin: THREE.Vector3, dir: THREE.Vector3) {
   return origin.clone().addScaledVector(dir, t);
 }
 
-function near(ax: number, az: number, bx: number, bz: number, r: number) {
-  return Math.hypot(ax - bx, az - bz) <= r;
-}
-
 const COVER: CoverSpec["kind"][] = ["crate", "low", "high", "truck"];
 
 export function place(
@@ -148,7 +185,7 @@ export function place(
   tool: ToolId,
   x: number,
   z: number,
-  opts: { yaw?: number; bw?: number; bd?: number } = {},
+  opts: { yaw?: number; bw?: number; bd?: number; y?: number } = {},
 ): LayoutSpec {
   const next = cloneSpec(spec);
   const gx = snap(x);
@@ -157,21 +194,30 @@ export function place(
   const bd = opts.bd ?? 10;
   const dir = dirFromYaw(opts.yaw ?? 0);
 
-  if (tool === "erase") return eraseNear(next, gx, gz);
+  if (tool === "select") return next;
 
-  if (tool === "building" || tool === "loft" || tool === "third") {
-    const floors = tool === "third" ? 3 : tool === "loft" ? 2 : 1;
-    const stairs: DoorWall | undefined =
-      floors > 1 ? (dir === "+x" ? "e" : dir === "-x" ? "w" : dir === "+z" ? "n" : "s") : undefined;
+  if (tool === "building") {
     next.buildings = next.buildings ?? [];
     next.buildings.push({
       x: gx,
       z: gz,
       w: bw,
       d: bd,
-      floors,
+      y: opts.y ?? 0,
+      h: STOREY,
+      floors: 1,
       doors: [],
-      stairs,
+    });
+    return next;
+  }
+  if (tool === "floor") {
+    next.slabs = next.slabs ?? [];
+    next.slabs.push({
+      x: gx,
+      z: gz,
+      w: bw,
+      d: bd,
+      y: Math.max(SLAB_Y, opts.y ?? SLAB_Y),
     });
     return next;
   }
@@ -217,49 +263,313 @@ export function place(
 }
 
 export function eraseNear(spec: LayoutSpec, x: number, z: number, r = 3.2): LayoutSpec {
+  const item = pickItem(spec, x, z, r);
+  if (!item) return spec;
+  return deleteItem(spec, item);
+}
+
+export function deleteItem(spec: LayoutSpec, item: StudioItem): LayoutSpec {
   const next = cloneSpec(spec);
-  const hit = (ax: number, az: number) => near(x, z, ax, az, r);
-  const bi = (next.buildings ?? []).findIndex((b) => Math.abs(x - b.x) <= b.w / 2 + 0.6 && Math.abs(z - b.z) <= b.d / 2 + 0.6);
-  if (bi >= 0) {
-    next.buildings!.splice(bi, 1);
+  if (item.kind === "building") {
+    next.buildings?.splice(item.i, 1);
     return next;
   }
-  const ci = (next.cover ?? []).findIndex((c) => hit(c.x, c.z));
-  if (ci >= 0) {
-    next.cover!.splice(ci, 1);
+  if (item.kind === "slab") {
+    next.slabs?.splice(item.i, 1);
     return next;
   }
-  const li = (next.climbs ?? []).findIndex((c) => hit(c.x, c.z));
-  if (li >= 0) {
-    next.climbs!.splice(li, 1);
+  if (item.kind === "cover") {
+    next.cover?.splice(item.i, 1);
     return next;
   }
-  const si = next.sites.findIndex((s) => hit(s.x, s.z));
-  if (si >= 0 && next.sites.length > 0) {
-    next.sites.splice(si, 1);
+  if (item.kind === "climb") {
+    next.climbs?.splice(item.i, 1);
     return next;
   }
-  const pi = next.plantSpawns.findIndex(([sx, sz]) => hit(sx, sz));
-  if (pi >= 0 && next.plantSpawns.length > 1) {
-    next.plantSpawns.splice(pi, 1);
+  if (item.kind === "site") {
+    next.sites.splice(item.i, 1);
     return next;
   }
-  const wi = next.watchSpawns.findIndex(([sx, sz]) => hit(sx, sz));
-  if (wi >= 0 && next.watchSpawns.length > 1) {
-    next.watchSpawns.splice(wi, 1);
+  if (item.kind === "plant" && next.plantSpawns.length > 1) {
+    next.plantSpawns.splice(item.i, 1);
     return next;
   }
-  const lampi = (next.lamps ?? []).findIndex(([sx, sz]) => hit(sx, sz));
-  if (lampi >= 0) {
-    next.lamps!.splice(lampi, 1);
+  if (item.kind === "watch" && next.watchSpawns.length > 1) {
+    next.watchSpawns.splice(item.i, 1);
     return next;
   }
-  const ti = (next.trees ?? []).findIndex(([sx, sz]) => hit(sx, sz));
-  if (ti >= 0) {
-    next.trees!.splice(ti, 1);
+  if (item.kind === "lamp") {
+    next.lamps?.splice(item.i, 1);
     return next;
+  }
+  if (item.kind === "tree") {
+    next.trees?.splice(item.i, 1);
+    return next;
+  }
+  return spec;
+}
+
+export function containsXZ(x: number, z: number, cx: number, cz: number, w: number, d: number, pad = 0) {
+  return Math.abs(x - cx) <= w / 2 + pad && Math.abs(z - cz) <= d / 2 + pad;
+}
+
+export function surfaceAt(spec: LayoutSpec, x: number, z: number) {
+  let y = 0;
+  for (const s of spec.slabs ?? []) {
+    if (containsXZ(x, z, s.x, s.z, s.w, s.d)) y = Math.max(y, s.y);
+  }
+  for (const b of spec.buildings ?? []) {
+    if (containsXZ(x, z, b.x, b.z, b.w, b.d)) y = Math.max(y, buildingBase(b) + buildingHeight(b));
+  }
+  return y;
+}
+
+export function pickItem(spec: LayoutSpec, x: number, z: number, r = 3.2): StudioItem | null {
+  type Hit = { item: StudioItem; y: number; area: number; dist: number };
+  const hits: Hit[] = [];
+  const inside = (cx: number, cz: number, w: number, d: number) => containsXZ(x, z, cx, cz, w, d, 0.4);
+  for (let i = 0; i < (spec.buildings ?? []).length; i++) {
+    const b = spec.buildings![i]!;
+    if (inside(b.x, b.z, b.w, b.d)) {
+      hits.push({ item: { kind: "building", i }, y: buildingBase(b) + buildingHeight(b), area: b.w * b.d, dist: 0 });
+    }
+  }
+  for (let i = 0; i < (spec.slabs ?? []).length; i++) {
+    const s = spec.slabs![i]!;
+    if (inside(s.x, s.z, s.w, s.d)) {
+      hits.push({ item: { kind: "slab", i }, y: s.y, area: s.w * s.d, dist: 0 });
+    }
+  }
+  const stamp = (item: StudioItem, ax: number, az: number, y: number, area: number) => {
+    const dist = Math.hypot(x - ax, z - az);
+    if (dist <= r) hits.push({ item, y, area, dist });
+  };
+  for (let i = 0; i < (spec.cover ?? []).length; i++) {
+    const c = spec.cover![i]!;
+    stamp({ kind: "cover", i }, c.x, c.z, 1, 2);
+  }
+  for (let i = 0; i < (spec.climbs ?? []).length; i++) {
+    const c = spec.climbs![i]!;
+    stamp({ kind: "climb", i }, c.x, c.z, c.startY ?? 0, 4);
+  }
+  for (let i = 0; i < spec.sites.length; i++) {
+    const s = spec.sites[i]!;
+    stamp({ kind: "site", i }, s.x, s.z, s.y ?? 0, 9);
+  }
+  for (let i = 0; i < spec.plantSpawns.length; i++) {
+    const [sx, sz] = spec.plantSpawns[i]!;
+    stamp({ kind: "plant", i }, sx, sz, 0, 1.4);
+  }
+  for (let i = 0; i < spec.watchSpawns.length; i++) {
+    const [sx, sz] = spec.watchSpawns[i]!;
+    stamp({ kind: "watch", i }, sx, sz, 0, 1.4);
+  }
+  for (let i = 0; i < (spec.lamps ?? []).length; i++) {
+    const [sx, sz] = spec.lamps![i]!;
+    stamp({ kind: "lamp", i }, sx, sz, 0, 0.4);
+  }
+  for (let i = 0; i < (spec.trees ?? []).length; i++) {
+    const [sx, sz] = spec.trees![i]!;
+    stamp({ kind: "tree", i }, sx, sz, 0, 3);
+  }
+  hits.sort((a, b) => {
+    const aIn = a.dist === 0 ? 0 : 1;
+    const bIn = b.dist === 0 ? 0 : 1;
+    if (aIn !== bIn) return aIn - bIn;
+    const aPt = a.area < 10;
+    const bPt = b.area < 10;
+    if (aPt !== bPt) return aPt ? -1 : 1;
+    if (a.dist === 0 && b.dist === 0 && a.y !== b.y) return b.y - a.y;
+    if (a.dist === 0 && b.dist === 0 && a.area !== b.area) return a.area - b.area;
+    return a.dist - b.dist;
+  });
+  return hits[0]?.item ?? null;
+}
+
+export function itemPos(spec: LayoutSpec, item: StudioItem): { x: number; z: number } | null {
+  if (item.kind === "building") {
+    const b = spec.buildings?.[item.i];
+    return b ? { x: b.x, z: b.z } : null;
+  }
+  if (item.kind === "slab") {
+    const s = spec.slabs?.[item.i];
+    return s ? { x: s.x, z: s.z } : null;
+  }
+  if (item.kind === "cover") {
+    const c = spec.cover?.[item.i];
+    return c ? { x: c.x, z: c.z } : null;
+  }
+  if (item.kind === "climb") {
+    const c = spec.climbs?.[item.i];
+    return c ? { x: c.x, z: c.z } : null;
+  }
+  if (item.kind === "site") {
+    const s = spec.sites[item.i];
+    return s ? { x: s.x, z: s.z } : null;
+  }
+  if (item.kind === "plant") {
+    const p = spec.plantSpawns[item.i];
+    return p ? { x: p[0], z: p[1] } : null;
+  }
+  if (item.kind === "watch") {
+    const p = spec.watchSpawns[item.i];
+    return p ? { x: p[0], z: p[1] } : null;
+  }
+  if (item.kind === "lamp") {
+    const p = spec.lamps?.[item.i];
+    return p ? { x: p[0], z: p[1] } : null;
+  }
+  const p = spec.trees?.[item.i];
+  return p ? { x: p[0], z: p[1] } : null;
+}
+
+export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: number): LayoutSpec {
+  const next = cloneSpec(spec);
+  const gx = snap(x);
+  const gz = snap(z);
+  if (item.kind === "building") {
+    const b = next.buildings?.[item.i];
+    if (!b) return spec;
+    if (b.x === gx && b.z === gz) return spec;
+    b.x = gx;
+    b.z = gz;
+    return next;
+  }
+  if (item.kind === "slab") {
+    const s = next.slabs?.[item.i];
+    if (!s) return spec;
+    s.x = gx;
+    s.z = gz;
+    return next;
+  }
+  if (item.kind === "cover") {
+    const c = next.cover?.[item.i];
+    if (!c) return spec;
+    c.x = gx;
+    c.z = gz;
+    return next;
+  }
+  if (item.kind === "climb") {
+    const c = next.climbs?.[item.i];
+    if (!c) return spec;
+    c.x = gx;
+    c.z = gz;
+    return next;
+  }
+  if (item.kind === "site") {
+    const s = next.sites[item.i];
+    if (!s) return spec;
+    s.x = gx;
+    s.z = gz;
+    return next;
+  }
+  if (item.kind === "plant") {
+    if (!next.plantSpawns[item.i]) return spec;
+    next.plantSpawns[item.i] = [gx, gz];
+    return next;
+  }
+  if (item.kind === "watch") {
+    if (!next.watchSpawns[item.i]) return spec;
+    next.watchSpawns[item.i] = [gx, gz];
+    return next;
+  }
+  if (item.kind === "lamp") {
+    if (!next.lamps?.[item.i]) return spec;
+    next.lamps[item.i] = [gx, gz];
+    return next;
+  }
+  if (!next.trees?.[item.i]) return spec;
+  next.trees[item.i] = [gx, gz];
+  return next;
+}
+
+export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: number; z: number; sx: number; sy: number; sz: number } | null {
+  if (item.kind === "building") {
+    const b = spec.buildings?.[item.i];
+    if (!b) return null;
+    const h = buildingHeight(b);
+    const y0 = buildingBase(b);
+    return { x: b.x, y: y0 + h / 2, z: b.z, sx: b.w, sy: h, sz: b.d };
+  }
+  if (item.kind === "slab") {
+    const s = spec.slabs?.[item.i];
+    if (!s) return null;
+    return { x: s.x, y: s.y - 0.08, z: s.z, sx: s.w, sy: 0.16, sz: s.d };
+  }
+  if (item.kind === "cover") {
+    const c = spec.cover?.[item.i];
+    if (!c) return null;
+    const [sx, sy, sz] = ghostSize(c.kind, 12, 10);
+    return { x: c.x, y: sy / 2, z: c.z, sx, sy, sz };
+  }
+  if (item.kind === "climb") {
+    const c = spec.climbs?.[item.i];
+    if (!c) return null;
+    return { x: c.x, y: (c.startY ?? 0) + 0.2, z: c.z, sx: 2.2, sy: 0.4, sz: 7 };
+  }
+  if (item.kind === "site") {
+    const s = spec.sites[item.i];
+    if (!s) return null;
+    return { x: s.x, y: 0.06, z: s.z, sx: 3, sy: 0.12, sz: 3 };
+  }
+  const pos = itemPos(spec, item);
+  if (!pos) return null;
+  if (item.kind === "lamp") return { x: pos.x, y: 1.6, z: pos.z, sx: 0.2, sy: 3.2, sz: 0.2 };
+  if (item.kind === "tree") return { x: pos.x, y: 2, z: pos.z, sx: 1.8, sy: 4, sz: 1.8 };
+  return { x: pos.x, y: 0.12, z: pos.z, sx: 1.2, sy: 0.24, sz: 1.2 };
+}
+
+export function sameItem(a: StudioItem | null, b: StudioItem | null) {
+  return !!a && !!b && a.kind === b.kind && a.i === b.i;
+}
+
+export function pickLotEdge(bounds: LayoutSpec["bounds"], x: number, z: number, band = LOT_BAND): LotEdge | null {
+  const { minX, maxX, minZ, maxZ } = bounds;
+  const alongX = x >= minX - 1 && x <= maxX + 1;
+  const alongZ = z >= minZ - 1 && z <= maxZ + 1;
+  if (alongX && z > maxZ && z <= maxZ + band) return "n";
+  if (alongX && z < minZ && z >= minZ - band) return "s";
+  if (alongZ && x > maxX && x <= maxX + band) return "e";
+  if (alongZ && x < minX && x >= minX - band) return "w";
+  return null;
+}
+
+export function setLotEdge(spec: LayoutSpec, edge: LotEdge, value: number): LayoutSpec {
+  const next = cloneSpec(spec);
+  const b = next.bounds;
+  if (edge === "n") b.maxZ = Math.max(b.minZ + LOT_MIN.d, Math.min(b.minZ + LOT_MAX.d, snap(value)));
+  else if (edge === "s") b.minZ = Math.min(b.maxZ - LOT_MIN.d, Math.max(b.maxZ - LOT_MAX.d, snap(value)));
+  else if (edge === "e") b.maxX = Math.max(b.minX + LOT_MIN.w, Math.min(b.minX + LOT_MAX.w, snap(value)));
+  else b.minX = Math.min(b.maxX - LOT_MIN.w, Math.max(b.maxX - LOT_MAX.w, snap(value)));
+  if (
+    b.minX === spec.bounds.minX &&
+    b.maxX === spec.bounds.maxX &&
+    b.minZ === spec.bounds.minZ &&
+    b.maxZ === spec.bounds.maxZ
+  ) {
+    return spec;
   }
   return next;
+}
+
+export function makeLotHandles(bounds: LayoutSpec["bounds"]) {
+  const { minX, maxX, minZ, maxZ } = bounds;
+  const w = maxX - minX;
+  const d = maxZ - minZ;
+  const group = new THREE.Group();
+  group.name = "studio-lot";
+  const mat = new THREE.MeshBasicMaterial({ color: 0xc8c4bc, transparent: true, opacity: 0.55, depthWrite: false });
+  const bar = (x: number, z: number, sx: number, sz: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.28, sz), mat);
+    m.position.set(x, 0.2, z);
+    m.userData.lot = true;
+    group.add(m);
+  };
+  bar((minX + maxX) / 2, maxZ + 1.1, w + 2.2, 1.6);
+  bar((minX + maxX) / 2, minZ - 1.1, w + 2.2, 1.6);
+  bar(maxX + 1.1, (minZ + maxZ) / 2, 1.6, d);
+  bar(minX - 1.1, (minZ + maxZ) / 2, 1.6, d);
+  return group;
 }
 
 export function loadStored(): LayoutSpec | null {
@@ -301,11 +611,9 @@ export async function postDraft(spec: LayoutSpec) {
 }
 
 export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number, number] {
-  if (tool === "building") return [bw, 3.2, bd];
-  if (tool === "loft") return [bw, 5.6, bd];
-  if (tool === "third") return [bw, 8.4, bd];
+  if (tool === "building") return [bw, STOREY, bd];
+  if (tool === "floor") return [bw, 0.16, bd];
   if (tool === "door") return [2.4, 2.4, 0.28];
-  if (tool === "wide") return [3.8, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];
   if (tool === "crate") return [1.4, 1.1, 1.4];
   if (tool === "low") return [2.4, 0.9, 0.7];
@@ -421,12 +729,11 @@ export function makeStudioGrid(bounds: LayoutSpec["bounds"]) {
   return grid;
 }
 
-export function toolFromCode(code: string): ToolId | null {
-  if (code === "Digit1" || code === "Numpad1") return "building";
-  if (code === "Digit2" || code === "Numpad2") return "loft";
-  if (code === "KeyF") return "third";
+export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId | null {
+  if (code === "KeyQ") return "select";
+  if (code === "Digit1" || code === "Numpad1") return palette === "kit" ? "crate" : "building";
+  if (code === "Digit2" || code === "Numpad2" || code === "KeyF") return palette === "kit" ? "low" : "floor";
   if (code === "KeyO" || code === "KeyD") return "door";
-  if (code === "KeyG") return "wide";
   if (code === "KeyV") return "window";
   if (code === "Digit3" || code === "Numpad3") return "crate";
   if (code === "Digit4" || code === "Numpad4") return "low";
@@ -439,7 +746,6 @@ export function toolFromCode(code: string): ToolId | null {
   if (code === "KeyC") return "climb";
   if (code === "KeyL") return "lamp";
   if (code === "KeyT") return "tree";
-  if (code === "KeyX" || code === "Backspace") return "erase";
   return null;
 }
 
@@ -470,12 +776,6 @@ export function growLot(spec: LayoutSpec, delta: number): LayoutSpec {
 
 export function clampBuildSize(n: number) {
   return Math.max(BUILD_MIN, Math.min(BUILD_MAX, snap(Math.max(n, BUILD_MIN))));
-}
-
-export function floorsForTool(tool: ToolId): 1 | 2 | 3 {
-  if (tool === "third") return 3;
-  if (tool === "loft") return 2;
-  return 1;
 }
 
 export function nearestBuildingIndex(spec: LayoutSpec, x: number, z: number, r = 10) {
@@ -512,10 +812,12 @@ export function placeBuildingRect(
   z1: number,
   tool: ToolId,
   yaw: number,
+  y = 0,
 ): LayoutSpec {
   const w = clampBuildSize(Math.abs(x1 - x0));
   const d = clampBuildSize(Math.abs(z1 - z0));
-  return place(spec, isBuildTool(tool) ? tool : "building", (x0 + x1) / 2, (z0 + z1) / 2, { yaw, bw: w, bd: d });
+  const placeY = tool === "floor" ? Math.max(SLAB_Y, y || SLAB_Y) : y;
+  return place(spec, isRectTool(tool) ? tool : "building", (x0 + x1) / 2, (z0 + z1) / 2, { yaw, bw: w, bd: d, y: placeY });
 }
 
 function distToSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {
@@ -548,14 +850,15 @@ export function nearestBuildingWall(spec: LayoutSpec, x: number, z: number, y = 
   let dist = maxDist;
   for (let i = 0; i < (spec.buildings ?? []).length; i++) {
     const b = spec.buildings![i]!;
-    const floors = b.floors ?? 1;
-    const floor = floors === 1 ? 0 : Math.max(0, Math.min(floors - 1, Math.floor(y / STOREY)));
+    const floors = buildingFloors(b);
+    const base = buildingBase(b);
+    const floor = floors === 1 ? 0 : Math.max(0, Math.min(floors - 1, Math.floor((y - base) / STOREY)));
     for (const wall of ["n", "s", "e", "w"] as DoorWall[]) {
       const seg = wallSeg(b, wall);
       const hit = distToSeg(x, z, seg.ax, seg.az, seg.bx, seg.bz);
       if (hit.dist < dist) {
         dist = hit.dist;
-        best = { i, wall, at: atOnWall(b, wall, hit.x, hit.z), x: hit.x, y: floor * STOREY, z: hit.z, floor };
+        best = { i, wall, at: atOnWall(b, wall, hit.x, hit.z), x: hit.x, y: base + floor * STOREY, z: hit.z, floor };
       }
     }
   }
@@ -573,6 +876,7 @@ export function pickBuildingWall(
   for (let i = 0; i < (spec.buildings ?? []).length; i++) {
     const b = spec.buildings![i]!;
     const h = buildingHeight(b);
+    const y0 = buildingBase(b);
     const x0 = b.x - b.w / 2;
     const x1 = b.x + b.w / 2;
     const z0 = b.z - b.d / 2;
@@ -589,11 +893,11 @@ export function pickBuildingWall(
     for (const f of faces) {
       if (f.t < 0.2 || f.t >= dist) continue;
       const p = origin.clone().addScaledVector(dir, f.t);
-      if (p.y < 0.05 || p.y > h + 0.2) continue;
+      if (p.y < y0 - 0.05 || p.y > y0 + h + 0.2) continue;
       if (f.axis === "z" && (p.x < x0 - 0.05 || p.x > x1 + 0.05)) continue;
       if (f.axis === "x" && (p.z < z0 - 0.05 || p.z > z1 + 0.05)) continue;
-      const floors = b.floors ?? 1;
-      const floor = floors === 1 ? 0 : Math.max(0, Math.min(floors - 1, Math.floor(p.y / STOREY)));
+      const floors = buildingFloors(b);
+      const floor = floors === 1 ? 0 : Math.max(0, Math.min(floors - 1, Math.floor((p.y - y0) / STOREY)));
       dist = f.t;
       best = { i, wall: f.wall, at: atOnWall(b, f.wall, p.x, p.z), x: p.x, y: p.y, z: p.z, floor };
     }
@@ -623,8 +927,7 @@ export function addOpening(spec: LayoutSpec, kind: OpeningKind, hit: WallHit): L
 export function openingPose(hit: WallHit, kind: OpeningKind) {
   const w = DOOR_W[kind];
   const h = kind === "window" ? 1.3 : 2.4;
-  const y =
-    kind === "window" ? hit.floor * STOREY + 1.7 : hit.floor * STOREY + h / 2;
+  const y = kind === "window" ? hit.y + 1.7 : hit.y + h / 2;
   const sx = hit.wall === "n" || hit.wall === "s" ? w : 0.28;
   const sz = hit.wall === "e" || hit.wall === "w" ? w : 0.28;
   return { x: hit.x, y, z: hit.z, sx, sy: h, sz };
