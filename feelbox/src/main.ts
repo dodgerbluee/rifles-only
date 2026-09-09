@@ -97,7 +97,7 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { connectNet, setNetName, type Snapshot } from "./net";
+import { connectNet, fetchServers, playWsUrl, setNetName, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -159,70 +159,47 @@ const tape = createTape();
 const ghost = makeStandIn();
 scene.add(ghost);
 
-const net = connectNet();
+function idleNet(): NetHandle {
+  return {
+    role: "offline",
+    peerId: null,
+    pingMs: 0,
+    sendInput() {},
+    sendSnapshot() {},
+    sendEvent() {},
+    onRole() {},
+    onInput() {},
+    onSnapshot() {},
+    onEvent() {},
+    onPeerJoin() {},
+    onPeerLeave() {},
+    destroy() {},
+  };
+}
+
+let net: NetHandle = idleNet();
 const remotes = new Map<number, Remote>();
 const clientPawns = new Map<number, THREE.Group>();
 let lastSnap: Snapshot | null = null;
 
-net.onPeerJoin(({ id, name }) => {
-  if (net.role !== "host") return;
-  seatPeer(scene, world, match, bots, remotes, id, name);
-});
-net.onPeerLeave((id) => {
-  if (net.role !== "host") return;
-  dropPeer(scene, world, match, bots, remotes, id);
-});
-net.onInput((peerId, input) => {
-  const r = remotes.get(peerId);
-  if (r) r.input = input;
-});
-net.onSnapshot((snap) => {
-  lastSnap = snap;
-});
-net.onEvent((peerId, event) => {
-  if (net.role !== "host") return;
-  const r = remotes.get(peerId);
-  if (event.kind === "throwSmoke") {
-    const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
-    const kind = event.nade ?? "smoke";
-    if ((event.power ?? 0.55) <= 0) dropSmoke(scene, origin, kind);
-    else throwSmoke(scene, origin, new THREE.Vector3(event.dx, event.dy, event.dz), event.power, kind);
-    return;
-  }
-  if (event.kind === "joinTeam") {
-    reseatPeer(peerId, event.name, event.team);
-    return;
-  }
-});
-net.onRole((role, peerId) => {
-  if (role !== "client") {
-    for (const g of clientPawns.values()) scene.remove(g);
-    clientPawns.clear();
-    if (bots.length === 0) bots.push(...createBots(scene, world, match));
-    for (const b of bots) {
-      if (!b.root.parent) scene.add(b.root);
-      b.root.visible = true;
+function bindNet(handle: NetHandle) {
+  handle.onSnapshot((snap) => {
+    lastSnap = snap;
+  });
+  handle.onRole((role) => {
+    if (role === "client" && prefs.team) {
+      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
     }
-  }
-  if (role === "client" && prefs.team) {
-    net.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name });
-  }
-  if (role === "host" && lastSnap) {
-    for (const p of lastSnap.pawns) {
-      if (!p.netId || p.netId === peerId) continue;
-      const seated = seatPeer(scene, world, match, bots, remotes, p.netId, p.name, p.team);
-      if (!seated) continue;
-      seated.x = p.x;
-      seated.y = p.y;
-      seated.z = p.z;
-      seated.yaw = p.yaw;
-      seated.pitch = p.pitch;
-      seated.hp = p.hp;
-      seated.alive = p.alive;
-      seated.root.position.set(p.x, p.y, p.z);
-    }
-  }
-});
+  });
+}
+
+function joinGame() {
+  if (net.role === "client") return;
+  net.destroy();
+  net = connectNet(playWsUrl());
+  bindNet(net);
+}
+
 addEventListener("pagehide", () => net.destroy());
 
 const bestplayName = document.querySelector("#bestplay-name")!;
@@ -386,10 +363,8 @@ function pickTeam(team: Team) {
   savePrefs();
   if (net.role === "client") {
     net.sendEvent({ kind: "joinTeam", team, name: prefs.name });
-    paintTeamPick();
-    return;
   }
-  switchLocalTeam(team);
+  paintTeamPick();
 }
 
 function switchLocalTeam(team: Team) {
@@ -483,29 +458,20 @@ function rebuildPawns() {
 
 bindAdmin({
   match,
-  onAdd: (slot) => {
-    bots.push(spawnBot(scene, world, match, slot));
+  onAdd: (team) => {
+    net.sendEvent({ kind: "addBot", team });
   },
-  onRemove: (slot) => {
-    const b = bots.find((x) => x.id === slot.id);
-    if (b && match.wire.mode === "carried" && match.wire.carrierId === slot.id) {
-      dropWire(match, b.x, b.y, b.z);
-    }
-    despawnBot(scene, bots, slot.id);
+  onRemove: (team) => {
+    net.sendEvent({ kind: "removeBot", team });
   },
-  onRestart: () => restartRoom(),
+  onRestart: () => net.sendEvent({ kind: "restart" }),
   onKick: (slot) => {
     if (slot.id === playerId) return;
-    const remote = [...remotes.values()].find((x) => x.slotId === slot.id);
-    if (remote) dropPeer(scene, world, match, bots, remotes, remote.peerId);
-    else {
-      const b = bots.find((x) => x.id === slot.id);
-      if (b && match.wire.mode === "carried" && match.wire.carrierId === slot.id) dropWire(match, b.x, b.y, b.z);
-      despawnBot(scene, bots, slot.id);
-      match.slots.splice(match.slots.findIndex((s) => s.id === slot.id), 1);
-    }
+    net.sendEvent({ kind: "kick", slotId: slot.id });
   },
-  onCow: (slot) => applyCow(slot),
+  onCow: () => {
+    /* dedicated match does not cow */
+  },
   onPawnStyle: (classic) => {
     rules.classicPawn = classic;
     pawnStyle.current = classic ? "classic" : "limbs";
@@ -645,21 +611,43 @@ function overlayOpen() {
 
 function lock() {
   if (overlayOpen()) return;
+  if (net.role !== "client") return;
   canvas.requestPointerLock();
 }
 startEl.addEventListener("click", lock);
 {
-  const pick = document.querySelector("#map-pick")!;
-  pick.addEventListener("click", (e) => e.stopPropagation());
-  for (const m of MAPS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.dataset.id = m.id;
-    b.textContent = m.title;
-    b.title = m.blurb;
-    b.addEventListener("click", () => loadMap(m.id));
-    pick.append(b);
-  }
+  const list = document.querySelector("#server-list")!;
+  list.addEventListener("click", (e) => e.stopPropagation());
+  const paintServers = async () => {
+    const servers = await fetchServers();
+    list.replaceChildren();
+    if (!servers.length) {
+      const p = document.createElement("p");
+      p.className = "server-empty";
+      p.textContent = "No servers · start the game process";
+      list.append(p);
+      return;
+    }
+    for (const s of servers) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "server-row";
+      if (!s.online) row.disabled = true;
+      row.textContent = s.online
+        ? `${s.name} · ${s.mapTitle} · ${s.players}/${s.max}`
+        : `${s.name} · offline`;
+      row.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        joinGame();
+      });
+      list.append(row);
+    }
+  };
+  void paintServers();
+  window.setInterval(() => {
+    void paintServers();
+  }, 2000);
+
   const fillTeams = (root: Element) => {
     root.addEventListener("click", (e) => e.stopPropagation());
     for (const [id, label] of [
@@ -684,10 +672,9 @@ startEl.addEventListener("click", lock);
     o.textContent = m.title;
     adminMap.append(o);
   }
-  adminMap.addEventListener("change", () => loadMap(adminMap.value as MapId));
-  if (prefs.team && prefs.team !== (slotById(match, playerId)?.team ?? "ember")) {
-    switchLocalTeam(prefs.team);
-  }
+  adminMap.addEventListener("change", () => {
+    net.sendEvent({ kind: "changeMap", mapId: adminMap.value });
+  });
   paintMapPick();
 }
 canvas.addEventListener("click", () => {
@@ -2110,7 +2097,7 @@ function frame(now: number) {
     cowMesh.visible = cowId !== playerId || reel !== null;
   }
 
-  const isClient = net.role === "client";
+  const isClient = net.role !== "host";
   const reeling = match.phase === "bestplay";
   const settling = match.phase === "settle";
   const froze =

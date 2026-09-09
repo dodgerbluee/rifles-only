@@ -374,7 +374,6 @@ export function syncClientPawns(
 }
 
 export function statusLine(net: NetHandle) {
-  if (net.role === "host") return "Host · others join this IP";
-  if (net.role === "client") return "Joined · live with the host";
-  return "";
+  if (net.role === "client") return "Joined · dedicated match";
+  return "Lobby · pick a server";
 }

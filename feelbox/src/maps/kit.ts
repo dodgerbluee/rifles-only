@@ -83,6 +83,15 @@ export function makeKit(scene: THREE.Scene): Kit {
   const v = (x: number, z: number, y = 0) => new THREE.Vector3(x, y, z);
 
   const siteMarker = (pos: THREE.Vector3, letter: string) => {
+    if (typeof document === "undefined") {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 1.2),
+        new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
+      );
+      mesh.position.copy(pos);
+      root.add(mesh);
+      return;
+    }
     const c = document.createElement("canvas");
     c.width = c.height = 128;
     const g = c.getContext("2d")!;

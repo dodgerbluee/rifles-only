@@ -319,3 +319,10 @@ function segHitsSphere(
   const dz = az + abz * t - cz;
   return dx * dx + dy * dy + dz * dz < r * r;
 }
+
+export function clearNades(scene: THREE.Scene) {
+  for (const n of nades) scene.remove(n.mesh);
+  nades.length = 0;
+  for (const c of clouds) scene.remove(c.root);
+  clouds.length = 0;
+}

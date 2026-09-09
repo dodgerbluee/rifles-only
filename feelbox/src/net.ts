@@ -1,6 +1,6 @@
 /**
- * Host broadcasts snapshot each frame; clients render snapshot pawns and send
- * input. Extra humans take bot seats via claimSlot (wired from main.ts).
+ * Browser is always a client of a dedicated game process. Input goes out;
+ * snapshots come in.
  */
 export type NetRole = "host" | "client" | "offline";
 
@@ -80,7 +80,12 @@ export type ClientEvent =
   | { kind: "plant" }
   | { kind: "cut" }
   | { kind: "dropWire" }
-  | { kind: "pickupWire" };
+  | { kind: "pickupWire" }
+  | { kind: "changeMap"; mapId: string }
+  | { kind: "restart" }
+  | { kind: "addBot"; team: Team }
+  | { kind: "removeBot"; team: Team }
+  | { kind: "kick"; slotId: number };
 
 export type NetEvent = ClientEvent & { peerId?: number };
 
@@ -117,13 +122,38 @@ export type NetHandle = {
 };
 
 const INPUT_HZ = 20;
-const SNAP_HZ = 18;
 const BACKOFF = [400, 800, 1600, 3200, 5000];
 
 export function defaultNetUrl(): string {
-  if (typeof location === "undefined" || !location.host) return "ws://127.0.0.1:8080/ws";
+  return playWsUrl();
+}
+
+export function playWsUrl(): string {
+  if (typeof location === "undefined" || !location.host) return "ws://127.0.0.1:8081/ws";
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/ws`;
+  return `${proto}//${location.host}/play/ws`;
+}
+
+export type ListedServer = {
+  id: string;
+  name: string;
+  map: string;
+  mapTitle: string;
+  phase: string;
+  players: number;
+  max: number;
+  online: boolean;
+};
+
+export async function fetchServers(): Promise<ListedServer[]> {
+  try {
+    const res = await fetch("/api/servers");
+    if (!res.ok) return [];
+    const data = (await res.json()) as unknown;
+    return Array.isArray(data) ? (data as ListedServer[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 let helloName = "You";
@@ -133,15 +163,13 @@ export function setNetName(name: string) {
 }
 
 export function connectNet(url?: string): NetHandle {
-  const target = url ?? defaultNetUrl();
+  const target = url ?? playWsUrl();
   let ws: WebSocket | null = null;
   let dead = false;
   let tries = 0;
   let reconnectTimer = 0;
   let inputTimer = 0;
-  let snapTimer = 0;
   let latestInput: PlayerInput | null = null;
-  let latestSnap: Snapshot | null = null;
 
   const roleCbs: Array<(role: NetRole, peerId: number) => void> = [];
   const inputCbs: Array<(peerId: number, input: PlayerInput) => void> = [];
@@ -157,8 +185,8 @@ export function connectNet(url?: string): NetHandle {
     sendInput(input) {
       latestInput = input;
     },
-    sendSnapshot(snap) {
-      latestSnap = snap;
+    sendSnapshot() {
+      /* dedicated game process is the authority */
     },
     sendEvent(event) {
       rawSend({ type: "event", event });
@@ -185,7 +213,6 @@ export function connectNet(url?: string): NetHandle {
       dead = true;
       clearTimeout(reconnectTimer);
       clearInterval(inputTimer);
-      clearInterval(snapTimer);
       try {
         ws?.close();
       } catch {
@@ -232,7 +259,7 @@ export function connectNet(url?: string): NetHandle {
     }
     if (msg.type === "welcome") {
       const id = Number(msg.id);
-      const role = msg.role === "host" ? "host" : "client";
+      const role = "client";
       if (!Number.isFinite(id)) return;
       setRole(role, id);
       return;
@@ -305,11 +332,6 @@ export function connectNet(url?: string): NetHandle {
     if (handle.role !== "client" || !latestInput) return;
     rawSend({ type: "input", input: latestInput });
   }, 1000 / INPUT_HZ);
-
-  snapTimer = window.setInterval(() => {
-    if (handle.role !== "host" || !latestSnap) return;
-    rawSend({ type: "snapshot", snapshot: latestSnap });
-  }, 1000 / SNAP_HZ);
 
   open();
   return handle;

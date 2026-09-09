@@ -1,11 +1,33 @@
 services:
-  rifles:
+  lobby:
     image: ghcr.io/dodgerbluee/rifles-only:latest
-    container_name: rifles
+    container_name: rifles-lobby
     restart: unless-stopped
     environment:
       - TZ=America/Chicago
+      - ROLE=lobby
+      - PORT=8080
+      - GAME_STATIC=dist
+      - GAME_WS=ws://game:8081/ws
     ports:
       - "8080:8080"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+  game:
+    image: ghcr.io/dodgerbluee/rifles-only:latest
+    container_name: rifles-game
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+      - ROLE=game
+      - PORT=8081
+      - LOBBY_URL=http://lobby:8080
+      - GAME_NAME=Last Wire
+      - GAME_ID=default
+    expose:
+      - "8081"
+    depends_on:
+      - lobby
     volumes:
       - /etc/localtime:/etc/localtime:ro

@@ -418,6 +418,15 @@ function lamp(scene: THREE.Scene, x: number, z: number) {
 }
 
 function siteMarker(scene: THREE.Scene, pos: THREE.Vector3, letter: string) {
+  if (typeof document === "undefined") {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 1.2),
+      new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
+    );
+    mesh.position.copy(pos);
+    scene.add(mesh);
+    return;
+  }
   const c = document.createElement("canvas");
   c.width = 128;
   c.height = 128;

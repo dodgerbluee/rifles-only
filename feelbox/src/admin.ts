@@ -1,6 +1,4 @@
 import {
-  addBotSlot,
-  removeBotSlot,
   teamBotCount,
   type Match,
   type Slot,
@@ -18,8 +16,8 @@ export const rules = {
 
 export function bindAdmin(opts: {
   match: Match;
-  onAdd: (slot: Slot) => void;
-  onRemove: (slot: Slot) => void;
+  onAdd: (team: Team) => void;
+  onRemove: (team: Team) => void;
   onRestart: () => void;
   onKick: (slot: Slot) => void;
   onCow: (slot: Slot) => void;
@@ -97,13 +95,11 @@ export function bindAdmin(opts: {
   });
 
   const add = (team: Team) => {
-    const slot = addBotSlot(opts.match, team);
-    opts.onAdd(slot);
+    opts.onAdd(team);
     sync();
   };
   const sub = (team: Team) => {
-    const slot = removeBotSlot(opts.match, team);
-    if (slot) opts.onRemove(slot);
+    opts.onRemove(team);
     sync();
   };
 

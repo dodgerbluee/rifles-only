@@ -1,5 +1,17 @@
 import * as THREE from "three";
 
+function hasDom() {
+  return typeof document !== "undefined";
+}
+
+function dummyTex(): THREE.Texture {
+  const t = new THREE.DataTexture(new Uint8Array([160, 150, 140, 255]), 1, 1);
+  t.needsUpdate = true;
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
 function canvas(size: number) {
   const c = document.createElement("canvas");
   c.width = c.height = size;
@@ -35,6 +47,23 @@ function tex(c: HTMLCanvasElement, repeatX: number, repeatY: number) {
 }
 
 export function makeTextures() {
+  if (!hasDom()) {
+    const d = dummyTex();
+    return {
+      plaster: d,
+      brick: d,
+      asphalt: d,
+      dirt: d,
+      wood: d,
+      metal: d,
+      sand: d,
+      snow: d,
+      grass: d,
+      leaf: d,
+      cobble: d,
+      lime: d,
+    };
+  }
   const plaster = canvas(512);
   plaster.g.fillStyle = "#b7a790";
   plaster.g.fillRect(0, 0, 512, 512);

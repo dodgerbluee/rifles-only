@@ -48,7 +48,7 @@ export const SWAP_AFTER = 5;
 const EMBER_NAMES = ["Reed", "Cal", "Ivo", "Nesh", "Bram"];
 const STONE_NAMES = ["Osa", "Pell", "Kade", "Wren", "Sol"];
 
-export function createMatch(): Match {
+export function createMatch(opts?: { claimLocal?: boolean }): Match {
   const slots: Slot[] = [];
   for (let i = 0; i < 5; i++) {
     slots.push({ id: i, team: "ember", kind: "bot", name: EMBER_NAMES[i]!, alive: true });
@@ -72,7 +72,7 @@ export function createMatch(): Match {
     matchOverPending: false,
     lastWinner: null,
   };
-  claimSlot(m, "ember", "You");
+  if (opts?.claimLocal !== false) claimSlot(m, "ember", "You");
   giveWireToPlanter(m);
   return m;
 }
@@ -210,6 +210,15 @@ export function tickMatch(
     inSite: (site: SiteId, x: number, z: number, y: number) => boolean;
     holdingUse: boolean;
     actor: { id: number; team: Team; x: number; y: number; z: number; alive: boolean };
+    actors?: Array<{
+      id: number;
+      team: Team;
+      x: number;
+      y: number;
+      z: number;
+      alive: boolean;
+      holdingUse: boolean;
+    }>;
     spawnPlant: { x: number; y: number; z: number };
     onDetonate?: (x: number, y: number, z: number) => void;
     botCutting?: boolean;
@@ -259,32 +268,43 @@ export function tickMatch(
     if (m.wire.cutHold >= tuning.cut) return finish(m, watchingTeam(m), "The Wire was cut");
   }
 
-  const a = ctx.actor;
-  if (!a.alive) return;
+  const people =
+    ctx.actors ??
+    (ctx.actor
+      ? [{ ...ctx.actor, holdingUse: ctx.holdingUse }]
+      : []);
 
-  if (m.wire.mode === "ground") {
-    const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
-    if (d < 1.15 && a.team === plantingTeam(m) && ctx.holdingUse) pickupWire(m, a.id, a.team);
+  for (const a of people) {
+    if (!a.alive) continue;
+    if (m.wire.mode === "ground") {
+      const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
+      if (d < 1.15 && a.team === plantingTeam(m) && a.holdingUse) pickupWire(m, a.id, a.team);
+    }
   }
 
-  if (m.wire.mode === "carried" && m.wire.carrierId === a.id && m.phase === "live") {
-    if (ctx.holdingUse) {
-      const site = ctx.inSite("loft", a.x, a.z, a.y)
+  const carrier = people.find((a) => a.id === m.wire.carrierId);
+  if (m.wire.mode === "carried" && m.phase === "live" && carrier?.alive) {
+    if (carrier.holdingUse) {
+      const site = ctx.inSite("loft", carrier.x, carrier.z, carrier.y)
         ? "loft"
-        : ctx.inSite("well", a.x, a.z, a.y)
+        : ctx.inSite("well", carrier.x, carrier.z, carrier.y)
           ? "well"
           : null;
       if (site) {
         m.wire.plantHold += dt;
-        if (m.wire.plantHold >= tuning.plant) plantWire(m, site, a.x, a.y, a.z);
+        if (m.wire.plantHold >= tuning.plant) plantWire(m, site, carrier.x, carrier.y, carrier.z);
       } else m.wire.plantHold = 0;
     } else m.wire.plantHold = 0;
   }
 
-  if (m.wire.mode === "planted" && m.phase === "planted" && a.team === watchingTeam(m)) {
-    const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
-    const near = d < 1.35 && Math.abs(a.y - m.wire.y) < 1.6;
-    if (near && ctx.holdingUse && !ctx.botCutting) {
+  if (m.wire.mode === "planted" && m.phase === "planted" && !ctx.botCutting) {
+    let cutting = false;
+    for (const a of people) {
+      if (!a.alive || a.team !== watchingTeam(m) || !a.holdingUse) continue;
+      const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
+      if (d < 1.35 && Math.abs(a.y - m.wire.y) < 1.6) cutting = true;
+    }
+    if (cutting) {
       m.wire.cutHold += dt;
       if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Wire was cut");
     }
