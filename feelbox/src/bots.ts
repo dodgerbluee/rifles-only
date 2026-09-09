@@ -89,14 +89,29 @@ function spawnOf(world: World, match: Match, slot: Slot) {
   const list = slot.team === planter ? world.plantSpawns : world.watchSpawns;
   const mates = match.slots.filter((s) => s.team === slot.team);
   const idx = Math.max(0, mates.findIndex((s) => s.id === slot.id));
-  return list[idx % list.length]!.clone();
+  return clearPoint(world.colliders, list[idx % list.length]!);
+}
+
+function clearPoint(colliders: Aabb[], p: THREE.Vector3, pad = 0.1) {
+  const r = RADIUS + pad;
+  const c = collideXZ(colliders, p.x, p.z, r, p.y + 0.08, p.y + 1.7);
+  const d = Math.hypot(c.x - p.x, c.z - p.z);
+  if (d > 0.7) return p.clone();
+  if (d < 1e-4) return new THREE.Vector3(p.x, p.y, p.z);
+  return new THREE.Vector3(c.x + ((c.x - p.x) / d) * pad, p.y, c.z + ((c.z - p.z) / d) * pad);
+}
+
+function openPoint(colliders: Aabb[], p: THREE.Vector3) {
+  const c = collideXZ(colliders, p.x, p.z, RADIUS + 0.14, p.y + 0.08, p.y + 1.7);
+  if (Math.hypot(c.x - p.x, c.z - p.z) > 0.08) return null;
+  return new THREE.Vector3(p.x, p.y, p.z);
 }
 
 function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bot {
   const spawn = spawnOf(world, match, slot);
   const site: "loft" | "well" = slot.id % 2 === 0 ? "loft" : "well";
   const style = slot.id % 3;
-  const path = pathFor(slot.team, site, world, slot.id, match);
+  const path = pathFor(slot.team, site, world, slot.id, match, spawn);
   const root = new THREE.Group();
   root.position.copy(spawn);
   const fig = buildPawn(root, slot.team, slot.id);
@@ -138,37 +153,46 @@ function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bo
   };
 }
 
-function pathFor(team: Team, site: "loft" | "well", world: World, seed = 0, match?: Match): THREE.Vector3[] {
+function pathFor(
+  team: Team,
+  site: "loft" | "well",
+  world: World,
+  seed = 0,
+  match?: Match,
+  from?: THREE.Vector3,
+): THREE.Vector3[] {
   const dest = world.sites.find((s) => s.id === site)!;
-  const plantWest = world.plantSpawns[0]!.x <= world.watchSpawns[0]!.x;
+  const goal = new THREE.Vector3(dest.x, dest.y, dest.z);
   const isPlant = match ? team === plantingTeam(match) : team === "ember";
-  const fromWest = isPlant === plantWest;
+  const home = from ?? (isPlant ? world.plantSpawns[0]! : world.watchSpawns[0]!);
   const routes = world.waypoints.filter((r) => r.length >= 2);
-  const side = routes.filter((r) => (fromWest ? r[0]!.x < 4 : r[0]!.x > -4));
-  const pool = side.length ? side : routes;
-  const ranked = pool
-    .map((r) => {
-      const end = r[r.length - 1]!;
-      return { r, d: Math.hypot(end.x - dest.x, end.z - dest.z) };
-    })
-    .sort((a, b) => a.d - b.d);
-  const top = ranked.slice(0, Math.min(3, ranked.length));
-  const picked = top.length ? top[seed % top.length]!.r : null;
-  const jx = ((seed * 13) % 5) * 0.35 - 0.7;
-  const jz = ((seed * 9) % 3) * 0.35 - 0.35;
-  const raw = picked
-    ? picked.map((p, i) => {
-        if (i === picked.length - 1) return new THREE.Vector3(dest.x, dest.y, dest.z);
-        return new THREE.Vector3(p.x + jx, p.y, p.z + jz);
-      })
-    : [new THREE.Vector3(dest.x, dest.y, dest.z)];
-  if (Math.hypot(raw[raw.length - 1]!.x - dest.x, raw[raw.length - 1]!.z - dest.z) > 2) {
-    raw.push(new THREE.Vector3(dest.x, dest.y, dest.z));
-  }
-  return raw.map((p) => {
-    const c = collideXZ(world.colliders, p.x, p.z, RADIUS, p.y + 0.08, p.y + 1.7);
-    return new THREE.Vector3(c.x, p.y, c.z);
+  const ranked = routes.map((r) => {
+    const start = r[0]!;
+    const end = r[r.length - 1]!;
+    return {
+      r,
+      startD: Math.hypot(start.x - home.x, start.z - home.z),
+      endD: Math.hypot(end.x - goal.x, end.z - goal.z),
+    };
   });
+  const near = ranked.filter((x) => x.startD <= 16);
+  const toward = (near.length ? near : ranked).filter((x) => x.endD <= 18);
+  const pool = (toward.length ? toward : near.length ? near : ranked).sort((a, b) => a.endD - b.endD || a.startD - b.startD);
+  const top = pool.slice(0, Math.min(3, pool.length));
+  const picked = top.length ? top[seed % top.length]!.r : null;
+  const raw: THREE.Vector3[] = [home.clone()];
+  if (picked) {
+    for (const p of picked) {
+      const prev = raw[raw.length - 1]!;
+      if (Math.hypot(p.x - prev.x, p.z - prev.z) < 1.4) continue;
+      const open = openPoint(world.colliders, p);
+      if (open) raw.push(open);
+    }
+  }
+  const end = openPoint(world.colliders, goal) ?? goal.clone();
+  const last = raw[raw.length - 1]!;
+  if (Math.hypot(last.x - end.x, last.z - end.z) > 1.6) raw.push(end);
+  return raw;
 }
 
 export function botTargets(bots: Bot[], enemyOf?: Team, skipIds: number[] = []) {
@@ -295,12 +319,11 @@ export function updateBots(
         seek(b, wirePos, dt, colliders, time);
       }
     } else if (onPlantDuty) {
-      const prefer = world.sites.find((s) => s.id === b.site)!;
       if (inSite(world, b.site, b.x, b.z, b.y)) {
         match.wire.plantHold += dt;
         if (match.wire.plantHold >= tuning.plant) plantWire(match, b.site, b.x, b.y, b.z);
       } else {
-        seek(b, new THREE.Vector3(prefer.x, prefer.y, prefer.z), dt, colliders, time);
+        roam(b, dt, colliders, time);
       }
     } else if (match.wire.mode === "ground" && b.team === plant) {
       seek(b, new THREE.Vector3(match.wire.x, match.wire.y, match.wire.z), dt, colliders, time);
@@ -337,12 +360,59 @@ function wireAim(match: Match, world: World, b: Bot) {
   return s ? new THREE.Vector3(s.x, s.y, s.z) : null;
 }
 
+function unstickToward(b: Bot, target: THREE.Vector3, colliders: Aabb[]) {
+  const dist = Math.hypot(target.x - b.x, target.z - b.z) || 1;
+  let best: THREE.Vector3 | null = null;
+  let bestScore = -1e9;
+  for (const reach of [1.8, 2.6]) {
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const c = collideXZ(
+        colliders,
+        b.x + Math.cos(a) * reach,
+        b.z + Math.sin(a) * reach,
+        RADIUS,
+        b.y + 0.08,
+        b.y + 1.7,
+      );
+      const moved = Math.hypot(c.x - b.x, c.z - b.z);
+      if (moved < reach * 0.45) continue;
+      const dx = target.x - c.x;
+      const dz = target.z - c.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const step = collideXZ(
+        colliders,
+        c.x + (dx / len) * 0.45,
+        c.z + (dz / len) * 0.45,
+        RADIUS,
+        b.y + 0.08,
+        b.y + 1.7,
+      );
+      if (Math.hypot(step.x - c.x, step.z - c.z) < 0.14) continue;
+      const remain = Math.hypot(target.x - c.x, target.z - c.z);
+      const score = (dist - remain) * 2 + moved;
+      if (score > bestScore) {
+        bestScore = score;
+        best = new THREE.Vector3(c.x, b.y, c.z);
+      }
+    }
+  }
+  return best;
+}
+
 function seek(b: Bot, target: THREE.Vector3, dt: number, colliders: Aabb[], time: number) {
   const dx = target.x - b.x;
   const dz = target.z - b.z;
   const len = Math.hypot(dx, dz);
   if (len < 0.45) return;
-  const want = Math.atan2(-dx, -dz);
+  if (b.stuckT > 0.4) {
+    const around = unstickToward(b, target, colliders);
+    if (around) {
+      b.stuckT = 0;
+      target = around;
+    }
+  }
+  const want = Math.atan2(-(target.x - b.x), -(target.z - b.z));
   b.yaw = dampAngle(b.yaw, want, dt * 5);
   slideToward(b, target.x, target.z, dt, colliders, time);
 }
@@ -374,10 +444,13 @@ function roam(b: Bot, dt: number, colliders: Aabb[], time: number) {
       seek(b, target, dt, colliders, time);
       return;
     }
-  } else if (b.stuckT > 0.55 && b.wp < b.path.length - 1) {
-    b.wp += 1;
+  } else if (b.stuckT > 0.4) {
     b.stuckT = 0;
-    target = b.path[b.wp] ?? target;
+    const around = unstickToward(b, target, colliders);
+    if (around) {
+      seek(b, around, dt, colliders, time);
+      return;
+    }
   }
   seek(b, target, dt, colliders, time);
 }
@@ -396,10 +469,13 @@ function slideToward(b: Bot, tx: number, tz: number, dt: number, colliders: Aabb
   const stepLen = tuning.walk * 0.52 * dt;
   const base = Math.atan2(dz, dx);
   const sway = Math.sin(time * 1.1 + b.id) * 0.16;
-  const spreads = [0, 0.32, -0.32, 0.7, -0.7, 1.15, -1.15, 1.65, -1.65];
+  const spreads = [0, 0.32, -0.32, 0.7, -0.7, 1.15, -1.15, 1.65, -1.65, Math.PI / 2, -Math.PI / 2];
   let bestX = b.x;
   let bestZ = b.z;
   let bestScore = -1e9;
+  let bestMoved = 0;
+  let slideX = b.x;
+  let slideZ = b.z;
   for (const a of spreads) {
     const ang = base + a + sway * (a === 0 ? 1 : 0.2);
     const c = collideXZ(
@@ -411,6 +487,11 @@ function slideToward(b: Bot, tx: number, tz: number, dt: number, colliders: Aabb
       b.y + 1.7,
     );
     const moved = Math.hypot(c.x - b.x, c.z - b.z);
+    if (moved > bestMoved) {
+      bestMoved = moved;
+      slideX = c.x;
+      slideZ = c.z;
+    }
     if (moved < stepLen * 0.12) continue;
     const remain = Math.hypot(tx - c.x, tz - c.z);
     const score = (dist - remain) * 6 + moved * 0.4 - Math.abs(a) * 0.14;
@@ -419,6 +500,11 @@ function slideToward(b: Bot, tx: number, tz: number, dt: number, colliders: Aabb
       bestX = c.x;
       bestZ = c.z;
     }
+  }
+  if (bestScore < -1e8 && bestMoved > stepLen * 0.08) {
+    b.x = slideX;
+    b.z = slideZ;
+    return;
   }
   b.x = bestX;
   b.z = bestZ;
@@ -436,7 +522,7 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     b.z = spawn.z;
     b.spawn.copy(spawn);
     b.wp = 0;
-    b.path = pathFor(b.team, b.site, world, b.id + match.round * 3, match);
+    b.path = pathFor(b.team, b.site, world, b.id + match.round * 3, match, spawn);
     b.root.position.copy(spawn);
     b.root.rotation.x = 0;
     b.root.userData.gait = 0;
