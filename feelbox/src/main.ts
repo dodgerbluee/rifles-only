@@ -83,9 +83,7 @@ import {
   canvasNdc,
   cellKey,
   defaultOrbit,
-  dirFromYaw,
   cloneSpec,
-  deleteItem,
   deleteItems,
   downloadSpec,
   eraseNear,
@@ -112,7 +110,6 @@ import {
   paletteOf,
   pickBuildingWall,
   pickGround,
-  pickItem,
   pickStudioHit,
   place,
   placeBuildingRect,
@@ -120,12 +117,11 @@ import {
   postDraft,
   rectSurfaceY,
   resizeItem,
+  itemBox,
   sameItem,
   saveStored,
   setLotHandle,
   SLAB_Y,
-  STAMP,
-  snap,
   setBuildingInterior,
   snapFloor,
   studioBuildingIndex,
@@ -259,6 +255,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 let mapId: string = "wharf";
 let customSpec: LayoutSpec | null = null;
+let lobbyStudioMaps: { id: string; title: string }[] = [];
 let world = buildMap(scene, mapId as MapId);
 const studioGhost = new THREE.Mesh(
   new THREE.BoxGeometry(1, 1, 1),
@@ -720,10 +717,19 @@ function fillAdminMaps() {
   sel.append(stock);
   const mine = document.createElement("optgroup");
   mine.label = "Studio";
+  const seen = new Set<string>();
   for (const d of studio.lib.docs) {
     const o = document.createElement("option");
     o.value = `studio:${d.id}`;
     o.textContent = MAPS.some((m) => m.id === d.id) ? `${d.title} · studio` : d.title || "Untitled";
+    mine.append(o);
+    seen.add(d.id);
+  }
+  for (const d of lobbyStudioMaps) {
+    if (seen.has(d.id)) continue;
+    const o = document.createElement("option");
+    o.value = `studio:${d.id}`;
+    o.textContent = d.title || d.id;
     mine.append(o);
   }
   if (mine.childElementCount) sel.append(mine);
@@ -885,6 +891,32 @@ function specForStudioId(id: string): LayoutSpec | null {
   return doc ? cloneSpec(doc.spec) : specForMap(id) ?? null;
 }
 
+async function fetchStudioSpec(id: string): Promise<LayoutSpec | null> {
+  const local = specForStudioId(id);
+  if (local) return local;
+  try {
+    const res = await fetch(`/api/studio-maps/${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    return asLayoutSpec(await res.json());
+  } catch {
+    return null;
+  }
+}
+
+async function refreshLobbyStudioMaps() {
+  try {
+    const res = await fetch("/api/studio-maps");
+    if (!res.ok) return;
+    const list = (await res.json()) as { id: string; title: string }[];
+    if (Array.isArray(list)) {
+      lobbyStudioMaps = list.filter((d) => d?.id);
+      fillAdminMaps();
+    }
+  } catch {
+    /* lobby optional */
+  }
+}
+
 async function postStudioMap(spec: LayoutSpec) {
   try {
     await fetch("/api/studio-maps", {
@@ -892,6 +924,10 @@ async function postStudioMap(spec: LayoutSpec) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(spec),
     });
+    if (!lobbyStudioMaps.some((d) => d.id === spec.id)) {
+      lobbyStudioMaps = [...lobbyStudioMaps, { id: spec.id, title: spec.title || spec.id }];
+      fillAdminMaps();
+    }
   } catch {
     /* lobby optional */
   }
@@ -900,7 +936,7 @@ async function postStudioMap(spec: LayoutSpec) {
 async function sendAdminMap(value: string) {
   if (value.startsWith("studio:")) {
     const id = value.slice("studio:".length);
-    const spec = specForStudioId(id);
+    const spec = await fetchStudioSpec(id);
     if (!spec) return;
     const play = playableSpec(spec);
     await postStudioMap(play);
@@ -1147,6 +1183,17 @@ function rebuildStudio() {
   }
 }
 
+function refreshStudioGizmos(grid = false) {
+  const gizmo = scene.getObjectByName("studio-gizmos");
+  if (gizmo) scene.remove(gizmo);
+  if (grid) {
+    const old = scene.getObjectByName("studio-grid");
+    if (old) scene.remove(old);
+    if (!studio.walk) scene.add(makeStudioGrid(studio.spec.bounds));
+  }
+  if (!studio.walk) scene.add(makeStudioGizmos(studio.spec, studio.sels));
+}
+
 function enterStudio() {
   if (locker.on) leaveLocker(false);
   stopReel();
@@ -1162,6 +1209,7 @@ function enterStudio() {
   studio.palette = "hand";
   studio.lib = seedCatalog(readBrowserLibrary(blankSpec()), LAYOUT_SPECS);
   writeBrowserLibrary(studio.lib);
+  void refreshLobbyStudioMaps();
   const doc = activeDoc(studio.lib);
   studio.spec = cloneSpec(doc?.spec ?? blankSpec());
   studio.cam = defaultOrbit(studio.spec.bounds);
@@ -1580,8 +1628,6 @@ function stampWalkAccessory() {
     studioApply(
       place(studio.spec, "wall", gx, gz, {
         yaw,
-        bw: 4,
-        bd: 4,
         y: interiorYAt(studio.spec, gx, gz, py),
       }),
     );
@@ -1866,7 +1912,7 @@ bindIdentity({
     if (studio.walk) leaveWalk();
     else enterWalk();
   });
-  document.querySelector("#studio-peg")?.addEventListener("mousedown", (e) => {
+  document.querySelector<HTMLButtonElement>("#studio-peg")?.addEventListener("mousedown", (e) => {
     e.stopPropagation();
     e.preventDefault();
     if (studio.walk) return;
@@ -2567,13 +2613,13 @@ addEventListener("mousemove", (e) => {
           const next = setLotHandle(studio.base, studio.drag.handle, hit.x, hit.z);
           if (next !== studio.spec) {
             studio.spec = next;
-            rebuildStudio();
+            refreshStudioGizmos(true);
           }
         } else if (studio.drag.mode === "resize" && studio.drag.item && studio.drag.handle && studio.base) {
           const next = resizeItem(studio.base, studio.drag.item, studio.drag.handle, hit.x, hit.z);
           if (next !== studio.spec) {
             studio.spec = next;
-            rebuildStudio();
+            refreshStudioGizmos();
           }
         } else if (studio.drag.mode === "move" && studio.base) {
           const dx = hit.x - studio.drag.x0;
@@ -2581,7 +2627,7 @@ addEventListener("mousemove", (e) => {
           const next = moveItems(studio.base, studio.sels.length ? studio.sels : studio.drag.item ? [studio.drag.item] : [], dx, dz);
           if (next !== studio.spec) {
             studio.spec = next;
-            rebuildStudio();
+            refreshStudioGizmos();
           }
         } else if (studio.drag.mode === "peg") {
           studio.drag.x1 = hit.x;
@@ -5167,15 +5213,12 @@ function frame(now: number) {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
         const ground = aimGround(camera.position, studioAim);
         if (ground) {
-          const [lx, sy, tz] = ghostSize("wall", 6, 6);
-          const alongX = dirFromYaw(yaw) === "+z" || dirFromYaw(yaw) === "-z";
+          const foot = wallFootprint(ground.x, ground.z, ground.x, ground.z, yaw);
+          const y = interiorYAt(studio.spec, foot.x, foot.z, py);
+          const sy = wallHeightAt(studio.spec, foot.x, foot.z, y);
           studioGhost.visible = true;
-          studioGhost.scale.set(alongX ? lx : tz, sy, alongX ? tz : lx);
-          studioGhost.position.set(
-            snap(ground.x),
-            interiorYAt(studio.spec, ground.x, ground.z, py) + sy / 2,
-            snap(ground.z),
-          );
+          studioGhost.scale.set(foot.w, sy, foot.d);
+          studioGhost.position.set(foot.x, y + sy / 2, foot.z);
         } else studioGhost.visible = false;
       } else if (studio.tool === "floor" || studio.tool === "cut") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -5221,6 +5264,14 @@ function frame(now: number) {
         studioGhost.visible = true;
         studioGhost.scale.set(w, 0.12, d);
         studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, 0.08, (studio.drag.z0 + studio.drag.z1) / 2);
+      } else if (studio.drag?.mode === "move" || studio.drag?.mode === "resize") {
+        const item = studio.drag.item ?? studio.sels[0];
+        const box = item ? itemBox(studio.spec, item) : null;
+        if (box) {
+          studioGhost.visible = true;
+          studioGhost.scale.set(box.sx, box.sy, box.sz);
+          studioGhost.position.set(box.x, box.y, box.z);
+        } else studioGhost.visible = false;
       } else if (studio.drag?.mode === "rect") {
         if (studio.tool === "floor") {
           const fit = snapFloor(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1, studio.drag.y);
@@ -5235,7 +5286,7 @@ function frame(now: number) {
           studioGhost.scale.set(w, 0.16, d);
           studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, Math.max(SLAB_Y, y) - 0.08, (studio.drag.z0 + studio.drag.z1) / 2);
         } else if (studio.tool === "wall") {
-          const foot = wallFootprint(studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1);
+          const foot = wallFootprint(studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1, studio.faceYaw);
           const y = interiorYAt(studio.spec, foot.x, foot.z, studio.drag.y);
           const sy = wallHeightAt(studio.spec, foot.x, foot.z, y);
           studioGhost.visible = true;
@@ -5277,11 +5328,11 @@ function frame(now: number) {
             studioGhost.scale.set(sx, sy, sz);
             studioGhost.position.set(snap(hit.x), Math.max(SLAB_Y, surfaceAt(studio.spec, hit.x, hit.z)) - 0.08, snap(hit.z));
           } else if (studio.tool === "wall") {
-            const [sx, sy, sz] = ghostSize("wall", 4, 4);
-            const y = interiorYAt(studio.spec, hit.x, hit.z);
-            const h = wallHeightAt(studio.spec, hit.x, hit.z, y);
-            studioGhost.scale.set(sx, h, sz);
-            studioGhost.position.set(snap(hit.x), y + h / 2, snap(hit.z));
+            const foot = wallFootprint(hit.x, hit.z, hit.x, hit.z, studio.faceYaw);
+            const y = interiorYAt(studio.spec, foot.x, foot.z);
+            const h = wallHeightAt(studio.spec, foot.x, foot.z, y);
+            studioGhost.scale.set(foot.w, h, foot.d);
+            studioGhost.position.set(foot.x, y + h / 2, foot.z);
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
             const gx = studio.tool === "crate" ? snapCell(hit.x) : snap(hit.x);

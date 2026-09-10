@@ -107,13 +107,6 @@ export type Sim = {
   /** Scripted tests: drop a body through the same hurt/frag path as a fight. */
   slay: (id: number) => boolean;
 };
-  snapshot: () => Snapshot;
-  status: () => SimStatus;
-  /** Scripted tests: sit the Wire without walking to a pad. */
-  armWire: (site?: SiteId) => boolean;
-  /** Scripted tests: drop a body through the same hurt/frag path as a fight. */
-  slay: (id: number) => boolean;
-};
 
 export function createSim(opts?: {
   mapId?: MapId;

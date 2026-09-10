@@ -235,11 +235,11 @@ check("hand can pick a partition", wallItem?.kind === "partition");
 if (wallItem) rooms = deleteItem(rooms, wallItem);
 check("hand can delete a partition", (rooms.partitions?.length ?? 0) === 0);
 
-const walkWall = place(blankSpec(), "wall", 0, 0, { yaw: 0, bw: 6, bd: 6 });
+const walkWall = place(blankSpec(), "wall", 0, 0, { yaw: 0 });
 const walkPart = walkWall.partitions?.[0];
 check(
   "walk wall faces the look direction",
-  !!walkPart && Math.abs((walkPart.w ?? 0) - 6) < 0.02 && Math.abs((walkPart.d ?? 0) - T) < 0.02,
+  !!walkPart && Math.abs((walkPart.w ?? 0) - GRID) < 0.02 && Math.abs((walkPart.d ?? 0) - T) < 0.02,
 );
 
 let stackedHouse = blankSpec();
@@ -373,6 +373,20 @@ check(
   "1 block building compiles walls",
   hutWorld.colliders.some((c) => Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5 && c.max.y > 1),
 );
+const hutMid = pickStudioHit(hut, hut.buildings![0]!.x, hut.buildings![0]!.z, [{ kind: "building", i: 0 }]);
+check("selected 1-block body is a grab, not a resize", hutMid.type === "item");
+
+let neighbor = place(blankSpec(), "building", 0.1, 0);
+neighbor = place(neighbor, "building", 0.7, 0);
+const left = neighbor.buildings![0]!;
+const pickLeft = pickItem(neighbor, left.x, left.z);
+check("adjacent 1-block picks the cell under the cursor", pickLeft?.kind === "building" && pickLeft.i === 0);
+
+const clickWall = place(blankSpec(), "wall", 1.3, 2.1, { yaw: 0 });
+const wp = clickWall.partitions?.[0];
+check("click wall fills one cell", (wp?.w === GRID && Math.abs((wp?.d ?? 0) - T) < 0.02) || (wp?.d === GRID && Math.abs((wp?.w ?? 0) - T) < 0.02));
+check("click wall edges sit on grid lines", Math.abs(((wp?.x ?? 0) - (wp?.w ?? 0) / 2) / GRID - Math.round(((wp?.x ?? 0) - (wp?.w ?? 0) / 2) / GRID)) < 1e-6);
+
 const shrunken = resizeItem(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), { kind: "building", i: 0 }, "e", -6, 0);
 check("resize can shrink to one block", (shrunken.buildings?.[0]?.w ?? 0) === GRID, `w=${shrunken.buildings?.[0]?.w}`);
 
@@ -414,6 +428,7 @@ inside = placeBuildingRect(inside, -3, 0, 3, 0.1, "wall", 0);
 const inner = inside.partitions?.[0];
 check("interior wall sits on the floor", (inner?.y ?? -1) === 0);
 check("interior wall is not on the roof", (inner?.y ?? 9) < surfaceAt(inside, 0, 0) - 1);
+check("interior wall is not snapped to an outer face", Math.abs(inner?.z ?? 9) < 1);
 check("interiorYAt is ground inside a 1F house", interiorYAt(inside, 0, 0) === 0);
 
 const catalog = seedCatalog(emptyLibrary(blankSpec()), [SIDING_SPEC]);

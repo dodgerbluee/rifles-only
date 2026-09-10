@@ -32,8 +32,8 @@ import {
 export const STUDIO_STORE = "rifles-studio-spec";
 /** Quarter of the old 2m cell. Stamps sit in a cell; building edges sit on the lines. */
 export const GRID = 0.5;
-export const HANDLE_KNOB = 0.48;
-export const HANDLE_BAND = 0.72;
+export const HANDLE_KNOB = 0.18;
+export const HANDLE_BAND = 0.22;
 
 export type PaletteId = "hand" | "build" | "kit";
 
@@ -344,19 +344,16 @@ export function place(
     return cutCell(spec, gx, gz);
   }
   if (tool === "wall") {
-    const alongX = dir === "+z" || dir === "-z";
-    const length = Math.max(STAMP, alongX ? bw : bd);
-    const wx = gx;
-    const wz = gz;
-    const y = opts.y ?? interiorYAt(spec, wx, wz);
+    const foot = wallFootprint(x, z, x, z, opts.yaw);
+    const y = opts.y ?? interiorYAt(spec, foot.x, foot.z);
     next.partitions = next.partitions ?? [];
     next.partitions.push({
-      x: wx,
-      z: wz,
-      w: alongX ? length : T,
-      d: alongX ? T : length,
+      x: foot.x,
+      z: foot.z,
+      w: foot.w,
+      d: foot.d,
       y,
-      h: wallHeightAt(spec, wx, wz, y),
+      h: wallHeightAt(spec, foot.x, foot.z, y),
     });
     return next;
   }
@@ -408,7 +405,7 @@ export function place(
   return next;
 }
 
-export function eraseNear(spec: LayoutSpec, x: number, z: number, r = 3.2): LayoutSpec {
+export function eraseNear(spec: LayoutSpec, x: number, z: number, r = 1.1): LayoutSpec {
   const item = pickItem(spec, x, z, r);
   if (!item) return spec;
   return deleteItem(spec, item);
@@ -524,15 +521,28 @@ export function rectSurfaceY(spec: LayoutSpec, x0: number, z0: number, x1: numbe
   );
 }
 
-export function wallFootprint(x0: number, z0: number, x1: number, z1: number) {
+export function wallFootprint(x0: number, z0: number, x1: number, z1: number, yaw = 0) {
   const dx = x1 - x0;
   const dz = z1 - z0;
-  const alongX = Math.abs(dx) >= Math.abs(dz);
-  const a = alongX ? snap(x0) : snap(z0);
-  const b = alongX ? snap(x1) : snap(z1);
-  const length = Math.max(STAMP, Math.abs(b - a) || STAMP);
-  const mid = (a + b) / 2;
-  const thin = alongX ? snap(z0) : snap(x0);
+  const dragged = Math.abs(dx) >= GRID / 2 || Math.abs(dz) >= GRID / 2;
+  const dir = dirFromYaw(yaw);
+  const alongX = dragged ? Math.abs(dx) >= Math.abs(dz) : dir === "+z" || dir === "-z";
+  const a0 = alongX ? x0 : z0;
+  const a1 = alongX ? x1 : z1;
+  const a = snap(a0);
+  const b = snap(a1);
+  let mid: number;
+  let length: number;
+  if (Math.abs(b - a) < GRID / 2) {
+    mid = snapCell(a0);
+    length = STAMP;
+  } else {
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    length = Math.max(STAMP, hi - lo);
+    mid = (lo + hi) / 2;
+  }
+  const thin = snap(alongX ? z0 : x0);
   return {
     x: alongX ? mid : thin,
     z: alongX ? thin : mid,
@@ -690,10 +700,10 @@ export function playableSpec(spec: LayoutSpec): LayoutSpec {
   return next;
 }
 
-export function pickItem(spec: LayoutSpec, x: number, z: number, r = 3.2): StudioItem | null {
+export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): StudioItem | null {
   type Hit = { item: StudioItem; y: number; area: number; dist: number };
   const hits: Hit[] = [];
-  const inside = (cx: number, cz: number, w: number, d: number) => containsXZ(x, z, cx, cz, w, d, 0.4);
+  const inside = (cx: number, cz: number, w: number, d: number, pad = 0.06) => containsXZ(x, z, cx, cz, w, d, pad);
   for (let i = 0; i < (spec.buildings ?? []).length; i++) {
     const b = spec.buildings![i]!;
     if (inside(b.x, b.z, b.w, b.d)) {
@@ -708,36 +718,36 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 3.2): Studi
   }
   for (let i = 0; i < (spec.partitions ?? []).length; i++) {
     const p = spec.partitions![i]!;
-    if (inside(p.x, p.z, p.w, p.d)) {
+    if (inside(p.x, p.z, p.w, p.d, 0.2)) {
       hits.push({ item: { kind: "partition", i }, y: (p.y ?? 0) + (p.h ?? STOREY), area: p.w * p.d, dist: 0 });
     }
   }
-  const stamp = (item: StudioItem, ax: number, az: number, y: number, area: number) => {
+  const stamp = (item: StudioItem, ax: number, az: number, y: number, area: number, reach = r) => {
     const dist = Math.hypot(x - ax, z - az);
-    if (dist <= r) hits.push({ item, y, area, dist });
+    if (dist <= reach) hits.push({ item, y, area, dist });
   };
   for (let i = 0; i < (spec.cover ?? []).length; i++) {
     const c = spec.cover![i]!;
     const [sx, , sz] = COVER_SIZE[c.kind];
-    if (inside(c.x, c.z, sx, sz)) {
+    if (inside(c.x, c.z, sx, sz, 0.08)) {
       hits.push({ item: { kind: "cover", i }, y: COVER_SIZE[c.kind][1], area: sx * sz, dist: 0 });
-    } else stamp({ kind: "cover", i }, c.x, c.z, 1, sx * sz);
+    } else stamp({ kind: "cover", i }, c.x, c.z, 1, sx * sz, Math.max(sx, sz) / 2 + 0.2);
   }
   for (let i = 0; i < (spec.climbs ?? []).length; i++) {
     const c = spec.climbs![i]!;
-    stamp({ kind: "climb", i }, c.x, c.z, c.startY ?? 0, 4);
+    stamp({ kind: "climb", i }, c.x, c.z, c.startY ?? 0, 4, 1.4);
   }
   for (let i = 0; i < spec.sites.length; i++) {
     const s = spec.sites[i]!;
-    stamp({ kind: "site", i }, s.x, s.z, s.y ?? 0, 9);
+    stamp({ kind: "site", i }, s.x, s.z, s.y ?? 0, 9, 1.6);
   }
   for (let i = 0; i < spec.plantSpawns.length; i++) {
     const [sx, sz] = spec.plantSpawns[i]!;
-    stamp({ kind: "plant", i }, sx, sz, 0, 1.4);
+    stamp({ kind: "plant", i }, sx, sz, 0, 1.4, 0.8);
   }
   for (let i = 0; i < spec.watchSpawns.length; i++) {
     const [sx, sz] = spec.watchSpawns[i]!;
-    stamp({ kind: "watch", i }, sx, sz, 0, 1.4);
+    stamp({ kind: "watch", i }, sx, sz, 0, 1.4, 0.8);
   }
   for (let i = 0; i < (spec.lamps ?? []).length; i++) {
     const [sx, sz] = spec.lamps![i]!;
@@ -942,12 +952,18 @@ export function pickHandleOnBox(
   return pickHandleKnob(x, z, w, d, px, pz, band);
 }
 
-export function handleKnobs(x: number, z: number, w: number, d: number): { handle: Handle; x: number; z: number }[] {
+export function handleKnobs(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  handles?: Handle[],
+): { handle: Handle; x: number; z: number }[] {
   const x0 = x - w / 2;
   const x1 = x + w / 2;
   const z0 = z - d / 2;
   const z1 = z + d / 2;
-  return [
+  const all: { handle: Handle; x: number; z: number }[] = [
     { handle: "n", x, z: z1 },
     { handle: "s", x, z: z0 },
     { handle: "e", x: x1, z },
@@ -957,6 +973,7 @@ export function handleKnobs(x: number, z: number, w: number, d: number): { handl
     { handle: "se", x: x1, z: z0 },
     { handle: "sw", x: x0, z: z0 },
   ];
+  return handles ? all.filter((k) => handles.includes(k.handle)) : all;
 }
 
 export function pickHandleKnob(
@@ -967,10 +984,14 @@ export function pickHandleKnob(
   px: number,
   pz: number,
   band = HANDLE_BAND,
+  handles?: Handle[],
 ): Handle | null {
+  const { x0, x1, z0, z1 } = boxMinMax(x, z, w, d);
+  const inset = Math.min(band, Math.min(w, d) * 0.35);
+  if (px > x0 + inset && px < x1 - inset && pz > z0 + inset && pz < z1 - inset) return null;
   let best: Handle | null = null;
   let dist = band;
-  for (const k of handleKnobs(x, z, w, d)) {
+  for (const k of handleKnobs(x, z, w, d, handles)) {
     const n = Math.hypot(px - k.x, pz - k.z);
     if (n < dist) {
       dist = n;
@@ -1092,7 +1113,14 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
 export function pickResizeHandle(spec: LayoutSpec, item: StudioItem, x: number, z: number): Handle | null {
   const box = resizableBox(spec, item);
   if (!box) return null;
-  return pickHandleKnob(box.x, box.z, box.w, box.d, x, z, HANDLE_BAND);
+  return pickHandleKnob(box.x, box.z, box.w, box.d, x, z, HANDLE_BAND, resizeHandles(spec, item));
+}
+
+export function resizeHandles(spec: LayoutSpec, item: StudioItem): Handle[] | undefined {
+  if (item.kind !== "partition") return undefined;
+  const p = spec.partitions?.[item.i];
+  if (!p) return undefined;
+  return p.w >= p.d ? ["e", "w"] : ["n", "s"];
 }
 
 export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x: number, z: number): LayoutSpec {
@@ -1239,14 +1267,18 @@ export function makeLotHandles(bounds: LayoutSpec["bounds"]) {
   return group;
 }
 
-function addHandleKnobs(group: THREE.Group, x: number, y: number, z: number, w: number, d: number) {
+function addHandleKnobs(group: THREE.Group, x: number, y: number, z: number, w: number, d: number, handles?: Handle[]) {
   const mat = new THREE.MeshBasicMaterial({ color: 0xf2e6b8, transparent: true, opacity: 0.95, depthWrite: false });
+  const moveMat = new THREE.MeshBasicMaterial({ color: 0xf0c94a, transparent: true, opacity: 0.95, depthWrite: false });
   const s = HANDLE_KNOB;
-  for (const k of handleKnobs(x, z, w, d)) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(s, 0.4, s), mat);
+  for (const k of handleKnobs(x, z, w, d, handles)) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(s, 0.28, s), mat);
     m.position.set(k.x, y, k.z);
     group.add(m);
   }
+  const move = new THREE.Mesh(new THREE.BoxGeometry(s * 1.15, 0.28, s * 1.15), moveMat);
+  move.position.set(x, y, z);
+  group.add(move);
 }
 
 export function makeStudioGizmos(spec: LayoutSpec, sels: StudioItem[]) {
@@ -1256,11 +1288,21 @@ export function makeStudioGizmos(spec: LayoutSpec, sels: StudioItem[]) {
   for (const item of sels) {
     const box = itemBox(spec, item);
     if (!box) continue;
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(box.sx + 0.24, box.sy + 0.24, box.sz + 0.24), glow);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(box.sx + 0.12, box.sy + 0.12, box.sz + 0.12), glow);
     frame.position.set(box.x, box.y, box.z);
     group.add(frame);
     const resize = resizableBox(spec, item);
-    if (resize) addHandleKnobs(group, resize.x, box.y + box.sy / 2 + 0.2, resize.z, resize.w, resize.d);
+    if (resize) {
+      addHandleKnobs(
+        group,
+        resize.x,
+        box.y + box.sy / 2 + 0.16,
+        resize.z,
+        resize.w,
+        resize.d,
+        resizeHandles(spec, item),
+      );
+    }
   }
   return group;
 }
@@ -1308,7 +1350,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool === "building") return [bw, STOREY, bd];
   if (tool === "cut") return [GRID, 0.16, GRID];
   if (tool === "floor") return [bw, 0.16, bd];
-  if (tool === "wall") return [Math.max(bw, T), STOREY, T];
+  if (tool === "wall") return [Math.max(STAMP, T), STOREY, T];
   if (tool === "door") return [2.4, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];
   if (tool in COVER_SIZE) return COVER_SIZE[tool as CoverKind];
@@ -1434,7 +1476,6 @@ export function makePegMesh() {
   pin.rotation.x = Math.PI;
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.48, 8), yellow);
   body.position.y = 0.72;
-  body.position.y = 0.72;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), yellow);
   head.position.y = 1.12;
   const face = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), dark);
@@ -1538,7 +1579,7 @@ export function placeBuildingRect(
 ): LayoutSpec {
   if (tool === "cut") return cutSlabRect(spec, x0, z0, x1, z1);
   if (tool === "wall") {
-    const foot = wallFootprint(x0, z0, x1, z1);
+    const foot = wallFootprint(x0, z0, x1, z1, yaw);
     const next = cloneSpec(spec);
     const wy = interiorYAt(spec, foot.x, foot.z, y);
     next.partitions = next.partitions ?? [];
