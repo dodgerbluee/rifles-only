@@ -78,6 +78,7 @@ import {
   cellKey,
   clampBuildSize,
   defaultOrbit,
+  dirFromYaw,
   cloneSpec,
   deleteItem,
   deleteItems,
@@ -845,7 +846,7 @@ function fillStudioLists() {
 }
 
 function walkKeepsTool(id: ToolId) {
-  return isAccessoryTool(id) || id === "erase" || isOpeningTool(id);
+  return isAccessoryTool(id) || id === "erase" || id === "wall" || isOpeningTool(id);
 }
 
 function setStudioTool(id: ToolId) {
@@ -898,7 +899,7 @@ function paintStudio() {
   const hint = document.querySelector("#studio-hint");
   if (hint) {
     hint.textContent = studio.walk
-      ? "WASD move · click lock look · click to place accessories, doors, windows, or erase · Esc orbit"
+      ? "WASD move · I wall · O door · V window · click to place · Esc orbit"
       : "Middle-drag pans · Shift-click or drag-box to multi-select · Yellow corners resize the lot · Knobs resize buildings · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
@@ -1267,6 +1268,21 @@ function stampWalkAccessory() {
   if (!hit) return;
   if (studio.tool === "erase") {
     stampEraseAt(hit.x, hit.z);
+    return;
+  }
+  if (studio.tool === "wall") {
+    const gx = snap(hit.x);
+    const gz = snap(hit.z);
+    studioApply(
+      place(studio.spec, "wall", gx, gz, {
+        yaw,
+        bw: 6,
+        bd: 6,
+        y: surfaceAt(studio.spec, gx, gz),
+      }),
+    );
+    const status = document.querySelector("#studio-status");
+    if (status) status.textContent = "placed wall";
     return;
   }
   if (!isAccessoryTool(studio.tool)) return;
@@ -4542,6 +4558,20 @@ function frame(now: number) {
           studioGhost.visible = true;
           studioGhost.scale.set(pose.sx, pose.sy, pose.sz);
           studioGhost.position.set(pose.x, pose.y, pose.z);
+        } else studioGhost.visible = false;
+      } else if (studio.tool === "wall") {
+        studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
+        const ground = aimGround(camera.position, studioAim);
+        if (ground) {
+          const [lx, sy, tz] = ghostSize("wall", 6, 6);
+          const alongX = dirFromYaw(yaw) === "+z" || dirFromYaw(yaw) === "-z";
+          studioGhost.visible = true;
+          studioGhost.scale.set(alongX ? lx : tz, sy, alongX ? tz : lx);
+          studioGhost.position.set(
+            snap(ground.x),
+            surfaceAt(studio.spec, ground.x, ground.z) + sy / 2,
+            snap(ground.z),
+          );
         } else studioGhost.visible = false;
       } else if (isAccessoryTool(studio.tool) && studio.tool !== "erase") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);

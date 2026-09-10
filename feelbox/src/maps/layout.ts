@@ -366,7 +366,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     const mat = kit.mat(b.mat ?? theme.wall, b.w / 2, H / 2);
     const floors = buildingFloors(b);
     const y0 = buildingBase(b);
-    const stairWall = floors > 1 ? (b.stairs ?? facingCenter(b, cx, cz)) : undefined;
+    const stairWall = floors > 1 ? b.stairs : undefined;
     if (floors === 1) {
       buildStorey(kit, b, b.h ?? H - 0.4, mat, y0, 0);
     } else {
@@ -377,15 +377,17 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
           kit.box(b.x, fy + STOREY - 0.08, b.z, b.w - T, 0.16, b.d - T, kit.mat("wood", b.w / 2, b.d / 2), true, true);
         }
       }
-      const side = stairWall!;
-      const out = 1.1 + (side === "n" || side === "s" ? b.d / 2 : b.w / 2);
-      const dir = side === "n" ? "-z" : side === "s" ? "+z" : side === "e" ? "-x" : "+x";
-      const along = side === "n" || side === "s" ? "x" : "z";
-      for (let flight = 0; flight < floors - 1; flight++) {
-        const shift = (flight - (floors - 2) / 2) * 2.6;
-        const sx = along === "x" ? b.x + shift : b.x + (side === "e" ? out : -out);
-        const sz = along === "z" ? b.z + shift : b.z + (side === "n" ? out : -out);
-        kit.climb(sx, sz, dir, 2.8, 2.2, y0 + flight * 2.8);
+      if (stairWall) {
+        const side = stairWall;
+        const out = 1.1 + (side === "n" || side === "s" ? b.d / 2 : b.w / 2);
+        const dir = side === "n" ? "-z" : side === "s" ? "+z" : side === "e" ? "-x" : "+x";
+        const along = side === "n" || side === "s" ? "x" : "z";
+        for (let flight = 0; flight < floors - 1; flight++) {
+          const shift = (flight - (floors - 2) / 2) * 2.6;
+          const sx = along === "x" ? b.x + shift : b.x + (side === "e" ? out : -out);
+          const sz = along === "z" ? b.z + shift : b.z + (side === "n" ? out : -out);
+          kit.climb(sx, sz, dir, 2.8, 2.2, y0 + flight * 2.8);
+        }
       }
     }
   }

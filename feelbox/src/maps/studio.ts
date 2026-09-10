@@ -66,7 +66,7 @@ export const BUILD_TOOLS: ToolDef[] = [
   { id: "building", key: "1", label: "Building" },
   { id: "floor", key: "2", label: "Floor" },
   { id: "cut", key: "U", label: "Cut" },
-  { id: "wall", key: "W", label: "Wall" },
+  { id: "wall", key: "I", label: "Wall" },
   { id: "door", key: "O", label: "Door" },
   { id: "window", key: "V", label: "Window" },
 ];
@@ -1271,8 +1271,8 @@ export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId
   if (code === "Digit1" || code === "Numpad1") return palette === "kit" ? "crate" : "building";
   if (code === "Digit2" || code === "Numpad2" || code === "KeyF") return palette === "kit" ? "low" : "floor";
   if (code === "KeyU") return "cut";
-  if (code === "KeyW") return "wall";
-  if (code === "KeyO" || code === "KeyD") return "door";
+  if (code === "KeyI") return "wall";
+  if (code === "KeyO") return "door";
   if (code === "KeyV") return "window";
   if (code === "Digit3" || code === "Numpad3") return "crate";
   if (code === "KeyJ") return "jumpCrate";
@@ -1486,7 +1486,6 @@ export function addOpening(spec: LayoutSpec, kind: OpeningKind, hit: WallHit): L
   );
   if (dup >= 0) list.splice(dup, 1, entry);
   else list.push(entry);
-  if (kind !== "window" && (b.floors ?? 1) > 1) b.stairs = b.stairs ?? hit.wall;
   return next;
 }
 

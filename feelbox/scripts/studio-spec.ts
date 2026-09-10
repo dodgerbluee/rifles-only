@@ -76,6 +76,7 @@ check(
   (spec.buildings?.length ?? 0) === beforeStack && (raised?.floors ?? 1) >= 2,
   `floors=${raised?.floors} count=${spec.buildings?.length}`,
 );
+check("raising a storey does not invent stairs", !(raised?.stairs));
 
 const roomSpec = placeBuildingRect(spec, 0, 0, 4, 3, "building", 0, 0);
 const room = roomSpec.buildings?.find((b) => (b.y ?? 0) > 0 && (b.w ?? 0) < 10);
@@ -94,6 +95,7 @@ if (wall) {
 check("door stamped", (spec.buildings?.[0]?.doors?.length ?? 0) >= 1);
 check("second door sits beside the first", (spec.buildings?.[0]?.doors?.length ?? 0) >= 2);
 check("window stamped", (spec.buildings?.[0]?.windows?.length ?? 0) >= 1);
+check("a door does not invent stairs", !(spec.buildings?.[0]?.stairs));
 
 const grown = setLotEdge(spec, "e", spec.bounds.maxX + 8);
 check("east rim grows on its own", grown.bounds.maxX > spec.bounds.maxX && grown.bounds.minX === spec.bounds.minX);
@@ -156,7 +158,9 @@ spec = place(spec, "erase", 12, 6);
 check("erase tool stamps delete", !(spec.cover ?? []).some((c) => c.x === 12 && c.z === 6));
 
 check("cut lives on build", paletteOf("cut") === "build" && toolFromCode("KeyU") === "cut");
-check("wall lives on build", paletteOf("wall") === "build" && toolFromCode("KeyW") === "wall");
+check("wall lives on build", paletteOf("wall") === "build" && toolFromCode("KeyI") === "wall");
+check("wall does not steal W", toolFromCode("KeyW") !== "wall");
+check("door does not steal D", toolFromCode("KeyD") !== "door" && toolFromCode("KeyO") === "door");
 check("ladder lives on kit", paletteOf("ladder") === "kit" && toolFromCode("KeyN") === "ladder");
 check("erase still on X after new tools", toolFromCode("KeyX") === "erase" && paletteOf("erase") === "hand");
 
@@ -197,6 +201,35 @@ const wallItem = pickItem(rooms, 0, 0);
 check("hand can pick a partition", wallItem?.kind === "partition");
 if (wallItem) rooms = deleteItem(rooms, wallItem);
 check("hand can delete a partition", (rooms.partitions?.length ?? 0) === 0);
+
+const walkWall = place(blankSpec(), "wall", 0, 0, { yaw: 0, bw: 6, bd: 6 });
+const walkPart = walkWall.partitions?.[0];
+check(
+  "walk wall faces the look direction",
+  !!walkPart && Math.abs((walkPart.w ?? 0) - 6) < 0.02 && Math.abs((walkPart.d ?? 0) - T) < 0.02,
+);
+
+let stackedHouse = blankSpec();
+stackedHouse = place(stackedHouse, "building", 0, 0, { bw: 12, bd: 10 });
+stackedHouse = place(stackedHouse, "floor", 0, 0, { bw: 12 + T, bd: 10 + T, y: STOREY });
+stackedHouse = placeBuildingRect(stackedHouse, -6, -5, 6, 5, "building", 0, 0);
+const stacked = stackedHouse.buildings?.[0];
+check("2F house has no default stairs", !!stacked && (stacked.floors ?? 1) >= 2 && !stacked.stairs);
+const south = nearestBuildingWall(stackedHouse, 0, -6);
+if (south) stackedHouse = addOpening(stackedHouse, "door", { ...south, floor: 1 });
+check("2F door stays a single opening", (stackedHouse.buildings?.[0]?.doors?.length ?? 0) === 1);
+check("2F door still does not set stairs", !(stackedHouse.buildings?.[0]?.stairs));
+const noAuto = compileLayout(new THREE.Scene(), stackedHouse);
+const withStairs: typeof stackedHouse = {
+  ...stackedHouse,
+  buildings: stackedHouse.buildings?.map((b) => ({ ...b, stairs: "s" as const })),
+};
+const auto = compileLayout(new THREE.Scene(), withStairs);
+check(
+  "explicit stairs add climb geometry",
+  auto.colliders.length > noAuto.colliders.length,
+  `none=${noAuto.colliders.length} stairs=${auto.colliders.length}`,
+);
 
 let climbSpec = blankSpec();
 climbSpec = place(climbSpec, "building", 0, 0, { bw: 12, bd: 10 });
