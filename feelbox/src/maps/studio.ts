@@ -8,11 +8,15 @@ import {
   COVER_SIZE,
   HOLE_MIN,
   STOREY,
+  STOREY_MAX,
+  STOREY_MIN,
   YARD_SPEC,
   buildingBase,
   buildingFloors,
   buildingHeight,
+  buildingInterior,
   punchRects,
+  type BuildingInterior,
   type BuildingSpec,
   type ClimbDir,
   type CoverKind,
@@ -94,7 +98,7 @@ export const HAND_IDS: ToolId[] = HAND_TOOLS.map((t) => t.id);
 export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
 export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
 export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
-export const RECT_TOOLS: ToolId[] = ["building", "floor", "cut", "wall"];
+export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall"];
 
 export function paletteOf(tool: ToolId): PaletteId {
   if (tool === "select" || tool === "erase") return "hand";
@@ -109,6 +113,10 @@ export function toolsFor(palette: PaletteId) {
 
 export function isRectTool(tool: ToolId) {
   return RECT_TOOLS.includes(tool);
+}
+
+export function walkKeepsTool(tool: ToolId) {
+  return tool !== "building";
 }
 
 export function isHandTool(tool: ToolId) {
@@ -145,7 +153,7 @@ export const LOT_STEP = 8;
 export const LOT_MIN = { w: 40, d: 28 };
 export const LOT_MAX = { w: 160, d: 120 };
 export const LOT_BAND = 2.8;
-export const BUILD_MIN = 6;
+export const BUILD_MIN = GRID;
 export const BUILD_MAX = 80;
 export const DOOR_W = { door: 2.4, window: 1.8 };
 export const SLAB_Y = 0.16;
@@ -190,6 +198,43 @@ export function blankSpec(): LayoutSpec {
 
 export function cloneSpec(spec: LayoutSpec): LayoutSpec {
   return JSON.parse(JSON.stringify(spec)) as LayoutSpec;
+}
+
+export function studioBuildingIndex(sels: StudioItem[]) {
+  if (sels.length !== 1 || sels[0]!.kind !== "building") return -1;
+  return sels[0]!.i;
+}
+
+export function setBuildingStoreys(spec: LayoutSpec, i: number, floors: number): LayoutSpec {
+  const cur = spec.buildings?.[i];
+  if (!cur) return spec;
+  const n = Math.max(STOREY_MIN, Math.min(STOREY_MAX, Math.round(floors)));
+  const from = buildingFloors(cur);
+  const nextInterior = from === 1 && n > 1 && cur.interior === undefined ? "empty" : cur.interior;
+  const nextH = n === 1 ? (from === 1 && cur.h !== undefined ? cur.h : STOREY) : undefined;
+  if (from === n && cur.h === nextH && cur.interior === nextInterior) return spec;
+  const next = cloneSpec(spec);
+  const b = next.buildings![i]!;
+  b.floors = n;
+  if (n === 1) b.h = nextH;
+  else delete b.h;
+  if (nextInterior) b.interior = nextInterior;
+  return next;
+}
+
+export function bumpBuildingStoreys(spec: LayoutSpec, i: number, delta: number): LayoutSpec {
+  const b = spec.buildings?.[i];
+  if (!b) return spec;
+  return setBuildingStoreys(spec, i, buildingFloors(b) + delta);
+}
+
+export function setBuildingInterior(spec: LayoutSpec, i: number, interior: BuildingInterior): LayoutSpec {
+  const cur = spec.buildings?.[i];
+  if (!cur) return spec;
+  if (buildingInterior(cur) === interior) return spec;
+  const next = cloneSpec(spec);
+  next.buildings![i]!.interior = interior;
+  return next;
 }
 
 export function snap(n: number, grid = GRID) {
@@ -258,7 +303,7 @@ export function place(
     return next;
   }
   if (tool === "cut") {
-    return cutSlabRect(spec, gx - bw / 2, gz - bd / 2, gx + bw / 2, gz + bd / 2);
+    return cutCell(spec, gx, gz);
   }
   if (tool === "wall") {
     const alongX = dir === "+z" || dir === "-z";
@@ -432,6 +477,13 @@ export function raiseStoreyIfMatch(spec: LayoutSpec, x: number, z: number, w: nu
     return next;
   }
   return null;
+}
+
+export function cutCell(spec: LayoutSpec, x: number, z: number): LayoutSpec {
+  const gx = snap(x);
+  const gz = snap(z);
+  const h = GRID / 2;
+  return cutSlabRect(spec, gx - h, gz - h, gx + h, gz + h);
 }
 
 export function cutSlabRect(spec: LayoutSpec, x0: number, z0: number, x1: number, z1: number): LayoutSpec {
@@ -1149,7 +1201,8 @@ export async function postDraft(spec: LayoutSpec) {
 export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number, number] {
   if (tool === "erase") return [2, 0.2, 2];
   if (tool === "building") return [bw, STOREY, bd];
-  if (tool === "floor" || tool === "cut") return [bw, 0.16, bd];
+  if (tool === "cut") return [GRID, 0.16, GRID];
+  if (tool === "floor") return [bw, 0.16, bd];
   if (tool === "wall") return [Math.max(bw, T), STOREY, T];
   if (tool === "door") return [2.4, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];

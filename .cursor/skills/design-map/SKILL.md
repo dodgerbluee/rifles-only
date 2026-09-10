@@ -9,7 +9,7 @@ The human **paints the lot**. You **finalize**. Do not start from a pile of `box
 
 ## Map studio
 
-Home (server list) → **Map studio**. **Hand** grabs, **Erase** (X) paints delete, **Shift-click** / drag-box multi-selects, yellow **corners** resize the lot, knobs resize buildings. **Middle-drag** pans. **Walk** can place walls (I), doors (O), and windows. **Undo/Redo/Save** keep named maps and versions in the browser. **Build** stamps buildings, floors, **Cut** (U), **Wall** (I — not W, Walk uses WASD), doors, windows. **Accessories** stamps cover (crates fill a 2m square), **Climb** (C), **Ladder** (N). Raising a 2nd storey does not add stairs — place Climb/Ladder yourself. **Play** runs the sketch. **For agent** exports a draft to finalize.
+Home (server list) → **Map studio**. **Hand** grabs, **Erase** (X) paints delete, **Shift-click** / drag-box multi-selects, yellow **corners** resize the lot, knobs resize buildings. **Middle-drag** pans. **Walk** can place every tool except **Building** (that one returns to orbit). **Undo/Redo/Save** keep named maps and versions in the browser. **Build** stamps buildings, floors, **Cut** (U, one 2m grid square), **Wall** (I — not W, Walk uses WASD), doors, windows. Select a building for **Storeys** (1–10) and **Floors** vs **Empty** (hollow shell, no interior decks). Omitted `interior` keeps decks (Siding / Yard). Overlapping walk decks punch the later slab so walkways can cross a house without glowing. Raising a 2nd storey does not add stairs — place Climb/Ladder yourself. **Play** runs the sketch; **Map studio** on that session returns to the same lot. **For agent** exports a draft to finalize.
 
 That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play** does not need that file. If the file exists and they ask you to finalize, skip ASCII and start at **Finalize**.
 
@@ -53,7 +53,7 @@ That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play*
 
 See `feelbox/src/maps/layout.ts` (`LayoutSpec`, `YARD_SPEC`) and `feelbox/src/maps/studio.ts` (`blankSpec`). Copy the studio draft or `YARD_SPEC` — do not start from Cove.
 
-- **Stacking** — a building drawn on a deck uses `y` from `surfaceAt` (center + corners). Same footprint on a 1-storey roof increments `floors`.
+- **Stacking** — a building drawn on a deck uses `y` from `surfaceAt` (center + corners). Same footprint on a 1-storey roof increments `floors`. `interior: "empty"` is a tall shell (no decks); omitted / `"floors"` emits walk slabs between storeys. Same-Y overlapping decks `punchRects` the later slab.
 - **Cut / holes** — `SlabSpec.holes` are world-space rects. The compiler `punchRects` / `subtractRect` leftover-splits the deck (min ~0.12m). A hole that covers the slab deletes it. Cut never stamps a new slab.
 - **Wall / partitions** — `partitions[]` are T-thick (0.32) room shells, height `STOREY`, `y` from the surface. Drag: longer axis is length, the other is T.
 - **Ladder** — `climbs[].kind: "ladder"` (default stairs). `kit.ladder` is steep walkable rungs (rise ~0.3, run ~0.15). Studio snaps to the nearest building wall. Do not replace existing Siding / multi-floor stair climbs.

@@ -1753,7 +1753,8 @@ body.studio.studio-walk.playing #view {
 
 #studio-bar,
 #studio-palettes,
-#studio-tools {
+#studio-tools,
+#studio-building:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1790,9 +1791,50 @@ body.studio.studio-walk.playing #view {
 
 #studio-tools button.on,
 #studio-palettes button.on,
+#studio-building button.on,
 #studio-walk.on {
   border-color: #e8d9a8;
   color: #e8d9a8;
+}
+
+#studio-building {
+  display: none;
+  margin-bottom: 8px;
+}
+
+#studio-storeys {
+  min-width: 1.2em;
+  text-align: center;
+  color: #e8d9a8;
+}
+
+#studio-storeys-sub:disabled,
+#studio-storeys-add:disabled {
+  opacity: 0.35;
+}
+
+#studio-return {
+  display: none;
+  position: fixed;
+  left: 16px;
+  bottom: 18px;
+  z-index: 19;
+  pointer-events: auto;
+  background: rgba(16, 17, 12, 0.88);
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-shadow: 0 1px 8px rgba(8, 8, 6, 0.7);
+}
+
+body.studio-play #studio-return {
+  display: block;
+}
+
+body.studio #studio-return {
+  display: none;
 }
 
 #studio-delete:disabled,

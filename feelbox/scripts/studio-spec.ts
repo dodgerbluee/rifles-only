@@ -22,13 +22,17 @@ import {
   playableSpec,
   placeBuildingRect,
   pickLotHandle,
+  setBuildingInterior,
+  setBuildingStoreys,
   pickStudioHit,
   resizeItem,
   setLotHandle,
   itemsInRect,
   defaultOrbit,
+  GRID,
   panDrag,
   toolFromCode,
+  walkKeepsTool,
 } from "../src/maps/studio.ts";
 import { addVersion, emptyLibrary, revertVersion, writeActive } from "../src/maps/studio-lib.ts";
 
@@ -179,6 +183,7 @@ cut = place(cut, "floor", 0, 0, { bw: 12, bd: 10, y: STOREY });
 cut = placeBuildingRect(cut, -2, -2, 2, 2, "cut", 0);
 const holed = cut.slabs?.[0];
 check("cut punches a hole on the slab", (holed?.holes?.length ?? 0) === 1, `holes=${holed?.holes?.length}`);
+check("dragged cut can still be larger than a cell", Math.abs((holed?.holes?.[0]?.w ?? 0) - 4) < 0.05);
 const leftovers = punchRects({ x: 0, z: 0, w: 12, d: 10 }, holed?.holes);
 check("one hole leaves leftover deck pieces", leftovers.length >= 2 && leftovers.length <= 4);
 check("cut did not add a slab", (cut.slabs?.length ?? 0) === 1);
@@ -189,6 +194,19 @@ check(
 );
 cut = placeBuildingRect(cut, -8, -8, 8, 8, "cut", 0);
 check("cut covering the slab deletes it", (cut.slabs?.length ?? 0) === 0);
+
+let cellCut = blankSpec();
+cellCut = place(cellCut, "floor", 0, 0, { bw: 12, bd: 10, y: STOREY });
+cellCut = place(cellCut, "cut", 0, 0);
+const cellHole = cellCut.slabs?.[0]?.holes?.[0];
+check(
+  "stamp cut is one grid square",
+  Math.abs((cellHole?.w ?? 0) - GRID) < 0.02 && Math.abs((cellHole?.d ?? 0) - GRID) < 0.02,
+  `hole=${cellHole?.w}x${cellHole?.d}`,
+);
+check("cut stays in walk", walkKeepsTool("cut") && walkKeepsTool("floor") && walkKeepsTool("wall"));
+check("building still leaves walk", !walkKeepsTool("building"));
+check("cut ghost is one grid square", ghostSize("cut", 12, 10).join() === `${GRID},0.16,${GRID}`);
 
 let rooms = blankSpec();
 rooms = place(rooms, "building", 0, 0, { bw: 16, bd: 12 });
@@ -247,6 +265,101 @@ check(
 check("ghost erase still small", ghostSize("erase", 12, 10).join() === "2,0.2,2");
 check("ghost ladder is tall and thin", ghostSize("ladder", 12, 10)[1] === STOREY);
 check("crates fill the 2m grid square", COVER_SIZE.jumpCrate[0] === 2 && COVER_SIZE.crate[0] === 2 && COVER_SIZE.fullCrate[0] === 2);
+
+function thinWalkAt(
+  w: { colliders: { walk?: boolean; min: THREE.Vector3; max: THREE.Vector3 }[] },
+  x: number,
+  z: number,
+  y: number,
+) {
+  return w.colliders.filter(
+    (c) =>
+      c.walk &&
+      c.max.y - c.min.y < 0.25 &&
+      Math.abs(c.max.y - y) < 0.1 &&
+      c.min.x < x &&
+      c.max.x > x &&
+      c.min.z < z &&
+      c.max.z > z,
+  );
+}
+
+let tall = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 });
+tall = setBuildingStoreys(tall, 0, 10);
+check(
+  "storeys 10 writes floors and drops h",
+  tall.buildings?.[0]?.floors === 10 && tall.buildings?.[0]?.h === undefined,
+);
+check("raising via control defaults empty", tall.buildings?.[0]?.interior === "empty");
+const tallWorld = compileLayout(new THREE.Scene(), tall);
+check(
+  "10-storey compiles tall",
+  tallWorld.colliders.some((c) => Math.abs(c.max.y - 10 * STOREY) < 0.2),
+  `max=${Math.max(...tallWorld.colliders.map((c) => c.max.y)).toFixed(2)}`,
+);
+
+let empty3 = setBuildingStoreys(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), 0, 3);
+const empty3World = compileLayout(new THREE.Scene(), empty3);
+check("empty 3F has no walkable interior slab", thinWalkAt(empty3World, 0, 0, STOREY).length === 0);
+check("empty 3F invents no stairs", !(empty3.buildings?.[0]?.stairs));
+
+let floors3 = setBuildingInterior(setBuildingStoreys(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), 0, 3), 0, "floors");
+const floors3World = compileLayout(new THREE.Scene(), floors3);
+check("floors 3F has walkable deck at STOREY", thinWalkAt(floors3World, 0, 0, STOREY).length === 1);
+check("floors 3F still has no auto stairs", !(floors3.buildings?.[0]?.stairs));
+
+const omitted = { ...blankSpec(), buildings: [{ x: 0, z: 0, w: 12, d: 10, floors: 2 }] };
+check(
+  "omitted interior still has decks",
+  thinWalkAt(compileLayout(new THREE.Scene(), omitted), 0, 0, STOREY).length >= 1,
+);
+
+const overlapHouse = {
+  ...blankSpec(),
+  buildings: [
+    { x: 0, z: 0, w: 12, d: 10, floors: 2 },
+    { x: 6, z: 0, w: 12, d: 10, floors: 2 },
+  ],
+};
+check(
+  "overlapping 2F houses share one walk deck",
+  thinWalkAt(compileLayout(new THREE.Scene(), overlapHouse), 3, 0, STOREY).length === 1,
+);
+
+const housePlusFloor = {
+  ...blankSpec(),
+  buildings: [{ x: 0, z: 0, w: 12, d: 10, floors: 2 }],
+  slabs: [{ x: 0, z: 0, w: 16, d: 14, y: STOREY }],
+};
+const hpf = compileLayout(new THREE.Scene(), housePlusFloor);
+check("house + overlapping floor is one walk at center", thinWalkAt(hpf, 0, 0, STOREY).length === 1);
+check("floor leftover outside the house is still walkable", thinWalkAt(hpf, 7, 0, STOREY).length === 1);
+
+const walkway = {
+  ...blankSpec(),
+  buildings: [
+    { x: 0, z: 0, w: 12, d: 10, floors: 2 },
+    { x: 4, z: 0, w: 12, d: 10, floors: 2, interior: "empty" as const },
+  ],
+};
+check(
+  "empty walkway does not stack a second deck",
+  thinWalkAt(compileLayout(new THREE.Scene(), walkway), 2, 0, STOREY).length === 1,
+);
+
+const hut = placeBuildingRect(blankSpec(), 0, 0, GRID, GRID, "building", 0);
+check(
+  "1 block building stays 1 block",
+  hut.buildings?.[0]?.w === GRID && hut.buildings?.[0]?.d === GRID,
+  `size=${hut.buildings?.[0]?.w}x${hut.buildings?.[0]?.d}`,
+);
+const hutWorld = compileLayout(new THREE.Scene(), hut);
+check(
+  "1 block building compiles walls",
+  hutWorld.colliders.some((c) => Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5 && c.max.y > 1),
+);
+const shrunken = resizeItem(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), { kind: "building", i: 0 }, "e", -4, 0);
+check("resize can shrink to one block", (shrunken.buildings?.[0]?.w ?? 0) === GRID, `w=${shrunken.buildings?.[0]?.w}`);
 
 let sized = blankSpec();
 sized = place(sized, "building", 0, 0, { bw: 12, bd: 10 });

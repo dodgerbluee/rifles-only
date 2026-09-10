@@ -175,6 +175,7 @@
     </div>
 
     <div id="letterbox"></div>
+    <button type="button" id="studio-return">Map studio</button>
     <div id="studio">
       <div id="studio-bar">
         <p class="studio-kicker">Map studio</p>
@@ -198,13 +199,22 @@
         <button type="button" id="studio-play">Play</button>
         <button type="button" id="studio-leave">Leave</button>
       </div>
+      <div id="studio-building" hidden>
+        <p class="studio-kicker">Building</p>
+        <span>Storeys</span>
+        <button type="button" id="studio-storeys-sub">−</button>
+        <b id="studio-storeys">1</b>
+        <button type="button" id="studio-storeys-add">+</button>
+        <button type="button" id="studio-interior-floors">Floors</button>
+        <button type="button" id="studio-interior-empty">Empty</button>
+      </div>
       <div id="studio-palettes">
         <button type="button" id="studio-pal-hand">Hand</button>
         <button type="button" id="studio-pal-build">Build</button>
         <button type="button" id="studio-pal-kit">Accessories</button>
       </div>
       <div id="studio-tools"></div>
-      <p id="studio-hint">Middle-drag pans · Shift-click / drag to multi-select · Handles resize buildings and the lot · Walk places walls, doors, and windows · Esc leave</p>
+      <p id="studio-hint">Middle-drag pans · Shift-click / drag to multi-select · Handles resize buildings and the lot · Walk places every tool except Building · Esc leave</p>
       <p id="studio-status"></p>
     </div>
     <div id="bestplay">

@@ -5,7 +5,7 @@ import "./style.css";
 import * as THREE from "three";
 import { collideXZ, groundHeight, inSite, rayShot, rayWorld, spawnYaw } from "./world";
 import { buildMap, MAPS, compileLayout, type MapId } from "./maps";
-import type { LayoutSpec } from "./maps/layout";
+import { buildingFloors, buildingInterior, type LayoutSpec } from "./maps/layout";
 import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, popPawnHead, refillBotPawn, resetBots, restoreHead, restorePawnHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
 import {
   hideDeath,
@@ -74,6 +74,7 @@ import {
   aimGround,
   applyOrbit,
   blankSpec,
+  bumpBuildingStoreys,
   canvasNdc,
   cellKey,
   clampBuildSize,
@@ -89,6 +90,7 @@ import {
   isAccessoryTool,
   isOpeningTool,
   isRectTool,
+  GRID,
   itemBox,
   itemsInRect,
   allItems,
@@ -117,12 +119,15 @@ import {
   setLotHandle,
   SLAB_Y,
   snap,
+  setBuildingInterior,
   snapFloor,
+  studioBuildingIndex,
   surfaceAt,
   wallFootprint,
   toolFromCode,
   toolsFor,
   turnYaw,
+  walkKeepsTool,
   zoomOrbit,
   type Handle,
   type PaletteId,
@@ -254,6 +259,7 @@ scene.add(studioSel);
 const studioAim = new THREE.Vector3();
 const studio = {
   on: false,
+  playing: false,
   spec: blankSpec(),
   tool: "select" as ToolId,
   palette: "hand" as PaletteId,
@@ -432,7 +438,8 @@ function leaveToLobby() {
   lastBeat = 0;
   joiningName = "";
   hideJoinTeam();
-  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "podium");
+  studio.playing = false;
+  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "podium", "studio-play");
   document.exitPointerLock();
   paintJoin();
   void refreshServers();
@@ -845,10 +852,6 @@ function fillStudioLists() {
   }
 }
 
-function walkKeepsTool(id: ToolId) {
-  return isAccessoryTool(id) || id === "erase" || id === "wall" || isOpeningTool(id);
-}
-
 function setStudioTool(id: ToolId) {
   studio.tool = id;
   studio.palette = paletteOf(id);
@@ -896,10 +899,26 @@ function paintStudio() {
   const themeEl = document.querySelector<HTMLSelectElement>("#studio-theme");
   if (themeEl && themeEl !== document.activeElement) themeEl.value = studio.spec.theme;
   fillStudioLists();
+  const build = document.querySelector<HTMLElement>("#studio-building");
+  const bi = studioBuildingIndex(studio.sels);
+  const b = bi >= 0 ? studio.spec.buildings?.[bi] : undefined;
+  if (build) build.hidden = !b;
+  if (b) {
+    const floors = buildingFloors(b);
+    const n = document.querySelector("#studio-storeys");
+    if (n) n.textContent = String(floors);
+    const sub = document.querySelector<HTMLButtonElement>("#studio-storeys-sub");
+    const add = document.querySelector<HTMLButtonElement>("#studio-storeys-add");
+    if (sub) sub.disabled = floors <= 1;
+    if (add) add.disabled = floors >= 10;
+    const interior = buildingInterior(b);
+    document.querySelector("#studio-interior-floors")?.classList.toggle("on", interior === "floors");
+    document.querySelector("#studio-interior-empty")?.classList.toggle("on", interior === "empty");
+  }
   const hint = document.querySelector("#studio-hint");
   if (hint) {
     hint.textContent = studio.walk
-      ? "WASD move · I wall · O door · V window · click to place · Esc orbit"
+      ? "WASD move · click to place any tool except Building · U cuts one square · Esc orbit"
       : "Middle-drag pans · Shift-click or drag-box to multi-select · Yellow corners resize the lot · Knobs resize buildings · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
@@ -933,7 +952,8 @@ function rebuildStudio() {
 function enterStudio() {
   if (locker.on) leaveLocker(false);
   stopReel();
-  document.body.classList.remove("bestplay");
+  document.body.classList.remove("bestplay", "studio-play");
+  studio.playing = false;
   studio.on = true;
   studio.walk = false;
   studio.drag = null;
@@ -962,6 +982,7 @@ function enterStudio() {
 
 function leaveStudio() {
   persistSpec(studio.spec, true);
+  studio.playing = false;
   studio.on = false;
   studio.walk = false;
   studio.drag = null;
@@ -972,7 +993,7 @@ function leaveStudio() {
   studio.lastCell = "";
   studioGhost.visible = false;
   studioSel.visible = false;
-  document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab", "studio-pan");
+  document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab", "studio-pan", "studio-play");
   camera.near = 0.05;
   camera.far = 85;
   camera.fov = 90;
@@ -1174,7 +1195,8 @@ function finishStudioDrag() {
     const w = Math.abs(drag.x1 - drag.x0);
     const d = Math.abs(drag.z1 - drag.z0);
     let next = studio.spec;
-    if (studio.tool === "wall" || studio.tool === "cut" || w >= 4 || d >= 4 || studio.tool === "floor") {
+    const dragged = w >= GRID || d >= GRID;
+    if (studio.tool === "wall" || studio.tool === "floor" || (studio.tool === "building" && dragged) || w >= 4 || d >= 4) {
       next = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y);
       if (studio.tool === "building" || studio.tool === "floor") {
         studio.bw = clampBuildSize(w);
@@ -1270,30 +1292,42 @@ function stampWalkAccessory() {
     stampEraseAt(hit.x, hit.z);
     return;
   }
+  if (studio.tool === "select" || studio.tool === "building") return;
+  const gx = snap(hit.x);
+  const gz = snap(hit.z);
+  const y = surfaceAt(studio.spec, gx, gz);
+  const status = document.querySelector("#studio-status");
+  if (studio.tool === "cut") {
+    studioApply(place(studio.spec, "cut", gx, gz));
+    if (status) status.textContent = "placed cut";
+    return;
+  }
+  if (studio.tool === "floor") {
+    const fit = snapFloor(studio.spec, gx, gz, gx, gz, y, { w: studio.bw, d: studio.bd });
+    studioApply(place(studio.spec, "floor", fit.x, fit.z, { bw: fit.w, bd: fit.d, y: fit.y }));
+    if (status) status.textContent = "placed floor";
+    return;
+  }
   if (studio.tool === "wall") {
-    const gx = snap(hit.x);
-    const gz = snap(hit.z);
     studioApply(
       place(studio.spec, "wall", gx, gz, {
         yaw,
         bw: 6,
         bd: 6,
-        y: surfaceAt(studio.spec, gx, gz),
+        y,
       }),
     );
-    const status = document.querySelector("#studio-status");
     if (status) status.textContent = "placed wall";
     return;
   }
   if (!isAccessoryTool(studio.tool)) return;
-  const gx = snap(hit.x);
-  const gz = snap(hit.z);
   studioApply(
     place(studio.spec, studio.tool, gx, gz, {
       yaw: studio.faceYaw,
-      y: surfaceAt(studio.spec, gx, gz),
+      y,
     }),
   );
+  if (status) status.textContent = `placed ${studio.tool}`;
 }
 
 async function saveStudio() {
@@ -1317,6 +1351,7 @@ function playStudio() {
     bindNet(net);
     lastSnap = null;
   }
+  studio.playing = true;
   studio.on = false;
   studio.walk = false;
   studio.drag = null;
@@ -1327,6 +1362,7 @@ function playStudio() {
   studioGhost.visible = false;
   studioSel.visible = false;
   document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab", "studio-pan");
+  document.body.classList.add("studio-play");
   camera.near = 0.05;
   const { minX, maxX, minZ, maxZ } = spec.bounds;
   camera.far = Math.max(140, Math.hypot(maxX - minX, maxZ - minZ) * 1.4);
@@ -1343,6 +1379,34 @@ function playStudio() {
   document.body.classList.add("started");
   paintMapPick();
   lock();
+}
+
+function returnToStudio() {
+  if (!studio.playing && !studio.on) return;
+  studio.playing = false;
+  stopReel();
+  hideDeath();
+  hidePodium();
+  clearPodium(scene);
+  document.body.classList.remove("studio-play", "started", "playing", "dead", "ads", "bestplay", "podium", "settings");
+  document.exitPointerLock();
+  for (const b of [...bots]) despawnBot(scene, bots, b.id);
+  studio.on = true;
+  studio.walk = false;
+  studio.drag = null;
+  studio.sels = [];
+  studio.painting = false;
+  studio.orbiting = false;
+  studio.panning = false;
+  studio.lastCell = "";
+  studio.tool = "select";
+  studio.palette = "hand";
+  hideJoinTeam();
+  rebuildStudio();
+  paintStudio();
+  document.body.classList.add("studio");
+  document.body.classList.remove("studio-walk");
+  applyOrbit(camera, studio.cam);
 }
 
 function rebuildPawns() {
@@ -1482,6 +1546,30 @@ bindAdmin({
     e.stopPropagation();
     playStudio();
   });
+  document.querySelector("#studio-return")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    returnToStudio();
+  });
+  document.querySelector("#studio-storeys-sub")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(bumpBuildingStoreys(studio.spec, i, -1));
+  });
+  document.querySelector("#studio-storeys-add")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(bumpBuildingStoreys(studio.spec, i, 1));
+  });
+  document.querySelector("#studio-interior-floors")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(setBuildingInterior(studio.spec, i, "floors"));
+  });
+  document.querySelector("#studio-interior-empty")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(setBuildingInterior(studio.spec, i, "empty"));
+  });
   document.querySelector("#studio-leave")?.addEventListener("click", (e) => {
     e.stopPropagation();
     leaveStudio();
@@ -1501,7 +1589,7 @@ bindAdmin({
   });
   document.querySelector("#studio-pal-build")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    setStudioTool(BUILD_IDS.includes(studio.tool) ? studio.tool : "building");
+    setStudioTool(BUILD_IDS.includes(studio.tool) ? studio.tool : studio.walk ? "floor" : "building");
   });
   document.querySelector("#studio-pal-kit")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1928,6 +2016,10 @@ addEventListener("keydown", (e) => {
     return;
   }
   if (e.code === "Escape") {
+    if (studio.playing) {
+      returnToStudio();
+      return;
+    }
     if (document.body.classList.contains("settings")) {
       document.body.classList.remove("settings");
       return;
@@ -1941,6 +2033,7 @@ addEventListener("auxclick", (e) => {
   if (studio.on && e.button === 1) e.preventDefault();
 });
 addEventListener("mousedown", (e) => {
+  if ((e.target as HTMLElement | null)?.closest("#studio-return")) return;
   if (locker.on) {
     if ((e.target as HTMLElement | null)?.closest("#start, #settings, #open-settings")) return;
     e.preventDefault();
@@ -4573,6 +4666,25 @@ function frame(now: number) {
             snap(ground.z),
           );
         } else studioGhost.visible = false;
+      } else if (studio.tool === "floor" || studio.tool === "cut") {
+        studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
+        const ground = aimGround(camera.position, studioAim);
+        if (ground) {
+          const gx = snap(ground.x);
+          const gz = snap(ground.z);
+          const y = surfaceAt(studio.spec, gx, gz);
+          if (studio.tool === "floor") {
+            const fit = snapFloor(studio.spec, gx, gz, gx, gz, y, { w: studio.bw, d: studio.bd });
+            studioGhost.visible = true;
+            studioGhost.scale.set(fit.w, 0.16, fit.d);
+            studioGhost.position.set(fit.x, fit.y - 0.08, fit.z);
+          } else {
+            const [sx, sy, sz] = ghostSize("cut", GRID, GRID);
+            studioGhost.visible = true;
+            studioGhost.scale.set(sx, sy, sz);
+            studioGhost.position.set(gx, Math.max(SLAB_Y, y) - 0.08, gz);
+          }
+        } else studioGhost.visible = false;
       } else if (isAccessoryTool(studio.tool) && studio.tool !== "erase") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
         const ground = aimGround(camera.position, studioAim);
@@ -4650,7 +4762,8 @@ function frame(now: number) {
             studioGhost.scale.set(fit.w, 0.16, fit.d);
             studioGhost.position.set(fit.x, fit.y - 0.08, fit.z);
           } else if (studio.tool === "cut") {
-            studioGhost.scale.set(4, 0.16, 4);
+            const [sx, sy, sz] = ghostSize("cut", GRID, GRID);
+            studioGhost.scale.set(sx, sy, sz);
             studioGhost.position.set(snap(hit.x), Math.max(SLAB_Y, surfaceAt(studio.spec, hit.x, hit.z)) - 0.08, snap(hit.z));
           } else if (studio.tool === "wall") {
             const [sx, sy, sz] = ghostSize("wall", 8, 10);
