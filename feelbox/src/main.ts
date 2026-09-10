@@ -66,7 +66,6 @@ import {
   roundFrozen,
   slotById,
   tickMatch,
-  tickPlantHold,
   trySkipBestPlay,
   vacateSlot,
   waitingForPlayers,
@@ -222,6 +221,7 @@ import {
   type Remote,
 } from "./peers";
 import { prefs, savePrefs } from "./prefs";
+import { bindCrosshairSettings } from "./crosshair";
 import { LOOK_SLOTS, applyLookChoice, lookView, type LookSlot } from "./look";
 import { setStepVolume, tickSteps } from "./steps";
 import { createHoldSound, isActivelyCutting, tickHoldSound } from "./holdSound";
@@ -2059,6 +2059,7 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
     paint();
   });
   setStepVolume(prefs.volume);
+  bindCrosshairSettings(prefs, savePrefs);
   panel.addEventListener("mousedown", (e) => e.stopPropagation());
 }
 addEventListener("contextmenu", (e) => {

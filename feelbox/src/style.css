@@ -1715,6 +1715,76 @@ body.locker #vitals {
   grid-template-columns: 70px 1fr;
 }
 
+#settings .admin-select {
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+
+#ch-slots {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.ch-slot {
+  position: relative;
+  flex: 1;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  background: #0a0b08;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.ch-slot.on {
+  border-color: #e8d9a8;
+}
+
+#ch-preview {
+  position: relative;
+  height: 88px;
+  margin: 0 0 10px;
+  background: #0a0b08;
+  border: 1px solid rgba(232, 217, 168, 0.22);
+  overflow: hidden;
+}
+
+#ch-colors {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.ch-swatch {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  cursor: pointer;
+}
+
+.ch-swatch.on {
+  outline: 1px solid #e8d9a8;
+  outline-offset: 1px;
+}
+
+#ch-reset {
+  width: 100%;
+  margin: 2px 0 8px;
+  background: #2a2c24;
+  color: #e6dfd0;
+  border: 1px solid rgba(232, 217, 168, 0.3);
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+#ch-reset:hover {
+  border-color: #e8d9a8;
+}
+
 #scoreboard {
   display: none;
   position: fixed;

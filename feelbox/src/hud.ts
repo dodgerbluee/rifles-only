@@ -3,6 +3,8 @@ import { actorTag, formatTime, plantedTag, plantingTeam, waitingForPlayers, type
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { holdScoreboard, kd, line, topThree } from "./stats";
+import { currentCrosshair, paintCrosshair } from "./crosshair";
+import { prefs } from "./prefs";
 
 export { holdScoreboard };
 import { killWayIcons, type KillFeedItem } from "./net";
@@ -198,7 +200,7 @@ export function updateHud(opts: {
   nadeEl.classList.toggle("empty", bag[nade] <= 0);
   scoreEl.textContent = `${opts.kills} / ${opts.deaths}`;
   const ch = document.querySelector<HTMLElement>("#crosshair");
-  if (ch) ch.style.setProperty("--spread", `${Math.max(6, Math.round(opts.spread ?? 10))}px`);
+  if (ch) paintCrosshair(ch, currentCrosshair(prefs), opts.spread ?? 0);
   const mapTitle = document.querySelector(".map-head span");
   if (mapTitle && opts.world.title) mapTitle.textContent = opts.world.title;
   drawMinimap(opts.world, opts.x, opts.z, opts.yaw, opts.bots, alive, opts.clouds, opts.air, {
