@@ -11,6 +11,8 @@ import {
   dropWire,
   giveWireToPlanter,
   humanCount,
+  interruptPlant,
+  isPlanting,
   livingSeatIds,
   markDead,
   markSeatsFromBodies,
@@ -72,7 +74,7 @@ import {
   type NadeKind,
 } from "./smoke";
 import { line, noteHit, noteKill, resetStats } from "./stats";
-import { tuning } from "./tuning";
+import { meleeReach, tuning } from "./tuning";
 import { RIFLES, type RifleId } from "./weapons";
 
 const FRAG_R = 6.5;
@@ -370,6 +372,7 @@ export function createSim(opts?: {
 
   function botShoot(from: THREE.Vector3, dir: THREE.Vector3, _target: { id: number; team: string }, shooterId: number) {
     if (isCowed(shooterId)) return;
+    interruptPlant(match, shooterId);
     const worldHit = rayShot(from, dir, 80, world.colliders);
     shotPeople(from, dir, worldHit, shooterId);
   }
@@ -377,7 +380,7 @@ export function createSim(opts?: {
   function remoteMeleeAt(r: Remote, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
     if (time - r.lastMelee < 0.48) return false;
     r.lastMelee = time;
-    const reach = tuning.melee;
+    const reach = meleeReach();
     const youTeam = slotById(match, r.slotId)?.team;
     const body = meleeTarget(origin, dir, liveBodies(), reach, youTeam, friendlyFire, [r.slotId, r.homeId]);
     if (!body) return false;
@@ -402,6 +405,7 @@ export function createSim(opts?: {
       return false;
     }
     r.lastFire = time;
+    interruptPlant(match, r.slotId);
     const worldHit = rayShot(origin, dir, 120, world.colliders);
     shotPeople(origin, dir, worldHit, r.slotId);
     return true;
@@ -548,7 +552,18 @@ export function createSim(opts?: {
       ).cutting;
 
       for (const r of remotes.values()) {
-        tickRemote(r, dt, time, world, froze);
+        tickRemote(
+          r,
+          dt,
+          time,
+          world,
+          froze,
+          isPlanting(
+            match,
+            { id: r.slotId, x: r.x, y: r.y, z: r.z, holdingUse: !!r.input.use && !r.input.fire },
+            (site, x, z, y) => inSite(world, site, x, z, y),
+          ),
+        );
         if (bots.some((b) => b.id === r.slotId)) despawnBot(scene, bots, r.slotId);
       }
 
@@ -580,6 +595,7 @@ export function createSim(opts?: {
           z: r.z,
           alive: r.alive,
           holdingUse: r.input.use,
+          fired: r.input.fire,
         })),
         spawnPlant: world.plantSpawns[2]!,
         onDetonate: detonateWire,

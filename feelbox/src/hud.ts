@@ -403,18 +403,45 @@ export function renderScoreboard(
 ) {
   const ember = document.querySelector("#board-ember")!;
   const stone = document.querySelector("#board-stone")!;
+  const mapEl = document.querySelector("#board-map");
+  const roundEl = document.querySelector("#board-round");
+  const emberScore = document.querySelector("#board-ember-score");
+  const stoneScore = document.querySelector("#board-stone-score");
+  const emberLabel = document.querySelector("#board-ember-label");
+  const stoneLabel = document.querySelector("#board-stone-label");
+  if (mapEl) mapEl.textContent = m.mapTitle || "Wharf";
+  if (roundEl) {
+    roundEl.textContent =
+      m.phase === "matchover"
+        ? m.endText || "Match over"
+        : `Round ${m.round} · First to ${m.firstTo}`;
+  }
+  if (emberScore) emberScore.textContent = String(m.emberScore);
+  if (stoneScore) stoneScore.textContent = String(m.stoneScore);
+  const emberSlots = m.slots.filter((s) => s.team === "ember");
+  const stoneSlots = m.slots.filter((s) => s.team === "stone");
+  const live = (slots: Match["slots"]) => slots.filter((s) => s.alive).length;
+  if (emberLabel) emberLabel.textContent = `Ember · ${live(emberSlots)} live`;
+  if (stoneLabel) stoneLabel.textContent = `Stone · ${live(stoneSlots)} live`;
   ember.replaceChildren();
   stone.replaceChildren();
+  const rank = (a: Match["slots"][number], b: Match["slots"][number]) => {
+    const la = line(a.id);
+    const lb = line(b.id);
+    return lb.kills - la.kills || lb.assists - la.assists || la.deaths - lb.deaths;
+  };
   const row = (s: Match["slots"][number]) => {
     const l = line(s.id);
     const el = document.createElement("div");
-    el.className = `board-row${s.id === youId ? " you" : ""}`;
+    const you = s.id === youId;
+    el.className = `board-row${you ? " you" : ""}${s.alive ? "" : " down"}`;
     const ping = pingOf(s.id);
-    el.innerHTML = `<span>${actorTag(s.name, s.occupant)}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span>${ping == null ? "—" : Math.round(ping)}</span>`;
+    const tags = `${you ? '<b class="board-you">YOU</b>' : ""}${s.alive ? "" : '<em class="board-dead">Down</em>'}`;
+    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span>${ping == null ? "—" : Math.round(ping)}</span>`;
     return el;
   };
-  for (const s of m.slots.filter((s) => s.team === "ember")) ember.append(row(s));
-  for (const s of m.slots.filter((s) => s.team === "stone")) stone.append(row(s));
+  for (const s of emberSlots.sort(rank)) ember.append(row(s));
+  for (const s of stoneSlots.sort(rank)) stone.append(row(s));
 }
 
 export function showPodium(

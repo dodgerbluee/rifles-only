@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { makeMelee } from "./knife-variants";
+import type { MeleeId } from "./look";
 
 export type RifleId = "kar" | "mosin";
 
@@ -302,21 +304,8 @@ function knifeBlade(mat: THREE.Material) {
   return extrude(s, 0.0046, mat, 20);
 }
 
-export function makeKnife(): THREE.Group {
-  const root = new THREE.Group();
-  const bright = new THREE.MeshStandardMaterial({ color: 0xd2d6de, roughness: 0.4, metalness: 0.28 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x4a4e56, roughness: 0.5, metalness: 0.28 });
-  const accent = new THREE.MeshStandardMaterial({ color: 0x6a6e76, roughness: 0.46, metalness: 0.3 });
-  const pin = new THREE.MeshStandardMaterial({ color: 0xdee2e8, roughness: 0.32, metalness: 0.4 });
-
-  root.add(knifeBlade(bright));
-  baliHandle(root, 0.0082, dark, accent, false);
-  baliHandle(root, -0.0082, dark, accent, true);
-  place(root, cylZ(0.0046, 0.032, pin, 8), -0.006, 0.01, 0);
-  place(root, cylZ(0.0046, 0.032, pin, 8), 0.01, 0.008, 0);
-
-  root.position.set(0.3, -0.3, -0.22);
-  return root;
+export function makeKnife(kind: MeleeId | number = "clip"): THREE.Group {
+  return makeMelee(kind);
 }
 
 /** First-person right arm: olive sleeve, forearm, skin hand. Parented to the camera. */

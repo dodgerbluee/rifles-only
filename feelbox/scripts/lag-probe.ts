@@ -5,10 +5,14 @@
  */
 import { createSim } from "../src/sim.ts";
 import {
+  HARD_SNAP_XZ,
+  INTERP_DELAY_MAX_MS,
   INTERP_DELAY_MS,
+  PRED_SLACK_XZ,
   SNAP_HZ,
   TICK_HZ,
   lookbackMs,
+  nextInterpDelay,
   predAt,
   pushPose,
   pushPred,
@@ -68,6 +72,10 @@ const predFreezeRatio = predFreeze / FRAME_HZ;
 
 const hard = reconcilePos(0, 0, 0, 8, 0, 0);
 const blend = reconcilePos(0, 0, 0, 0.4, 0, 0);
+const slackPos = reconcilePos(0, 0, 0, 0.08, 0, 0);
+const jitterPos = reconcilePos(0, 0, 0, 1.6, 0, 0);
+const slackPred = reconcilePredicted(0, 0, 0, 0.08, 0, 0, [{ t: 0, x: 0, y: 0, z: 0 }], 0);
+const jitterPred = reconcilePredicted(0, 0, 0, 1.6, 0, 0, [{ t: 0, x: 0, y: 0, z: 0 }], 0);
 
 const ping = 50;
 const stale = [];
@@ -98,6 +106,8 @@ const delayed = sampleInterp(poses, newest - INTERP_DELAY_MS);
 const halfway = sampleInterp(poses, 1000 + snapMs * 0.5);
 const late = sampleInterp(poses, newest);
 const tooOld = sampleInterp(poses, newest - 200);
+const grown = nextInterpDelay(INTERP_DELAY_MS, newest, newest + INTERP_DELAY_MS + 12, 1 / SNAP_HZ);
+const held = nextInterpDelay(grown, newest + snapMs, newest + snapMs, 1 / SNAP_HZ);
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -111,6 +121,9 @@ console.log(
       tickHz: TICK_HZ,
       snapHz: SNAP_HZ,
       interpDelayMs: INTERP_DELAY_MS,
+      interpDelayMaxMs: INTERP_DELAY_MAX_MS,
+      predSlack: PRED_SLACK_XZ,
+      hardSnapXz: HARD_SNAP_XZ,
       tickMs: Number(tickMs.toFixed(3)),
       snapBytes: bytes,
       pawns: snap.pawns.length,
@@ -134,7 +147,10 @@ check("sim tick is cheap", tickMs <= 12, `tickMs=${tickMs.toFixed(3)}`);
 check("18 Hz snapshots freeze without prediction", freezeRatio >= 0.6, `freeze=${freezeRatio.toFixed(3)}`);
 check("predicted walk does not freeze", predFreezeRatio <= 0.05, `predFreeze=${predFreezeRatio.toFixed(3)}`);
 check("hard snap still teleports", hard.x === 8);
-check("tiny error still blends", blend.x > 0 && blend.x < 0.4);
+check("medium error still blends", blend.x > 0 && blend.x < 0.4);
+check("sub-slack error is not tugged every snapshot", Math.abs(slackPos.x) < 1e-9 && Math.abs(slackPred.x) < 1e-9);
+check("hard snap is above 1.6m walk jitter", HARD_SNAP_XZ > 1.6);
+check("1.6m jitter blends instead of teleporting", jitterPos.x > 0 && jitterPos.x < 1.6 && jitterPred.x > 0 && jitterPred.x < 1.6);
 check("lookback at 50 ping is RTT plus one tick", Math.abs(lookbackMs(50) - (50 + 1000 / TICK_HZ)) < 1e-6);
 check("naive reconcile tugs toward a 50ms-stale pose", naivePull > 0.04, `pull=${naivePull.toFixed(3)}`);
 check("history reconcile ignores a matching 50ms-stale pose", smartPull < 0.02, `pull=${smartPull.toFixed(3)}`);
@@ -148,6 +164,9 @@ check(
 check("lerp sits between two snapshots", !!halfway && halfway.x > 0.4 && halfway.x < 0.6, `x=${halfway?.x.toFixed(3)}`);
 check("no extrapolate past the newest snapshot", !!late && Math.abs(late.x - 2) < 1e-6);
 check("200ms lookback holds the oldest pose, not a fake lead", !!tooOld && Math.abs(tooOld.x) < 1e-6);
+check("underrun grows interp delay", grown > INTERP_DELAY_MS, `delay=${grown.toFixed(1)}`);
+check("grown delay stays modest", grown <= INTERP_DELAY_MAX_MS, `delay=${grown.toFixed(1)} max=${INTERP_DELAY_MAX_MS}`);
+check("spare buffer does not keep growing", held <= grown, `held=${held.toFixed(1)} grown=${grown.toFixed(1)}`);
 
 if (failed) {
   console.error(`${failed} lag-probe checks failed`);

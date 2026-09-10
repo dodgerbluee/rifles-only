@@ -4,11 +4,12 @@ export const tuning = {
   gravity: 9.81,
   adsSlow: 0.62,
   leanM: 0.7,
+  /** Shared hit reach for every melee mesh (knives + bat). Variants do not change this. */
   melee: 1.92,
   hipStand: 0.018,
   hipMove: 0.046,
   plant: 5,
-  cut: 7,
+  cut: 5,
   round: 120,
   recoil: 1,
   blastR: 9,
@@ -17,6 +18,11 @@ export const tuning = {
 
 export function jumpSpeed() {
   return Math.sqrt(2 * tuning.jumpH * tuning.gravity);
+}
+
+/** One reach for clip, bat, and every other melee mesh. */
+export function meleeReach() {
+  return tuning.melee;
 }
 
 export const TUNING_FIELDS: { key: keyof typeof tuning; label: string; min: number; max: number; step: number }[] = [

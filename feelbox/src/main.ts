@@ -50,6 +50,8 @@ import {
   combatBodies,
   countLiving,
   createMatch,
+  interruptPlant,
+  isPlanting,
   livingSeatIds,
   markSeatsFromBodies,
   dropWire,
@@ -64,6 +66,7 @@ import {
   roundFrozen,
   slotById,
   tickMatch,
+  tickPlantHold,
   trySkipBestPlay,
   vacateSlot,
   waitingForPlayers,
@@ -176,7 +179,6 @@ import {
 import {
   makeKar98,
   makeMosin,
-  makeKnife,
   makeRightArm,
   poseKnifeRest,
   poseKnifeSlash,
@@ -201,7 +203,8 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, type NetHandle, type Snapshot } from "./net";
+import { accountKey, accountLook, bindIdentity, isRegistered, paintIdentity } from "./account";
+import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -219,11 +222,12 @@ import {
   type Remote,
 } from "./peers";
 import { prefs, savePrefs } from "./prefs";
-import { LOOK_SLOTS, type LookSlot } from "./look";
+import { LOOK_SLOTS, applyLookChoice, lookView, type LookSlot } from "./look";
 import { setStepVolume, tickSteps } from "./steps";
 import { createHoldSound, isActivelyCutting, tickHoldSound } from "./holdSound";
 import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
-import { jumpSpeed, tuning } from "./tuning";
+import { jumpSpeed, meleeReach, tuning } from "./tuning";
+import { makeMelee } from "./knife-variants";
 
 const RADIUS = 0.32;
 const RELOAD = 1.45;
@@ -310,9 +314,12 @@ const locker = {
   on: false,
   dragging: false,
   team: (prefs.team ?? "ember") as "ember" | "stone",
-  dist: 3.55,
-  theta: 1.12,
+  zoom: 1,
+  dist: 1.62,
+  theta: 1.02,
   phi: Math.PI,
+  aimY: 1.52,
+  fov: 34,
   slot: "face" as LookSlot,
 };
 const match = createMatch();
@@ -321,7 +328,8 @@ const match = createMatch();
   if (you) you.name = prefs.name;
   setNetName(prefs.name);
   setNetSkin(prefs.skin);
-  setNetLook(packLook(prefs.look));
+  setNetLook(accountLook() || packLook(prefs.look));
+  setNetPlayerKey(accountKey() || prefs.playerKey);
 }
 const bots = createBots(scene, world, match);
 let playerId = humanSlot(match)?.id ?? 0;
@@ -345,6 +353,7 @@ function idleNet(): NetHandle {
     sendInput() {},
     sendSnapshot() {},
     sendEvent() {},
+    rejectReason: "",
     onRole() {},
     onStatus() {},
     onInput() {},
@@ -376,7 +385,7 @@ function bindNet(handle: NetHandle) {
   handle.onRole((role) => {
     if (role === "client") lastBeat = performance.now();
     if (role === "client" && prefs.team && document.body.classList.contains("started")) {
-      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name, skin: prefs.skin, look: packLook(prefs.look) });
+      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name, skin: prefs.skin, look: accountLook() || packLook(prefs.look), playerKey: accountKey() || prefs.playerKey });
     }
     paintJoin();
   });
@@ -408,6 +417,10 @@ function awaitingTeamPick() {
 }
 
 function joinGame(name?: string) {
+  if (!isRegistered()) {
+    paintIdentity();
+    return;
+  }
   if (net.status === "connecting") {
     paintJoin();
     return;
@@ -474,17 +487,21 @@ function paintJoin() {
       el.textContent = `Connecting to ${who}${tryN}`;
       el.classList.add("busy");
       el.hidden = false;
+    } else if (net.status === "rejected") {
+      el.textContent = net.rejectReason === "banned" ? "This key is banned." : "Could not join. Register first.";
+      el.hidden = false;
     } else {
       el.textContent = "";
       el.hidden = true;
     }
   }
   const connecting = net.status === "connecting";
+  const rejected = net.status === "rejected";
   const picking = awaitingTeamPick();
-  if (list) list.hidden = connecting || picking;
+  if (list) list.hidden = connecting || picking || rejected;
   if (pick) pick.hidden = !picking;
   if (panel) {
-    panel.hidden = !connecting && !picking;
+    panel.hidden = !connecting && !picking && !rejected;
     panel.classList.toggle("pick", picking);
   }
   if (!list) return;
@@ -697,7 +714,7 @@ function pickTeam(team: Team) {
   prefs.team = team;
   savePrefs();
   if (net.role === "client") {
-    net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin, look: packLook(prefs.look) });
+    net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin, look: accountLook() || packLook(prefs.look), playerKey: accountKey() || prefs.playerKey });
   }
   paintTeamPick();
 }
@@ -1068,6 +1085,7 @@ function commitLook() {
   savePrefs();
   setNetSkin(prefs.skin);
   setNetLook(packLook(prefs.look));
+  refreshMeleeView();
 }
 
 function paintLocker() {
@@ -1075,54 +1093,68 @@ function paintLocker() {
   if (panel) panel.hidden = !locker.on;
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
-  const slots = document.querySelector("#locker-look");
-  if (slots && !slots.childElementCount) {
+  const secs = document.querySelector("#locker-secs");
+  if (secs && !secs.childElementCount) {
     for (const slot of LOOK_SLOTS) {
-      const row = document.createElement("div");
-      row.className = "locker-slot";
-      row.dataset.slot = slot.key;
-      const lab = document.createElement("p");
-      lab.className = "locker-slot-name";
-      lab.textContent = slot.label;
-      const opts = document.createElement("div");
-      opts.className = "locker-opts";
-      for (const opt of slot.options) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.dataset.slot = slot.key;
-        b.dataset.id = opt.id;
-        b.title = opt.blurb;
-        b.textContent = opt.label;
-        b.addEventListener("click", (e) => {
-          e.stopPropagation();
-          locker.slot = slot.key;
-          prefs.look = { ...prefs.look, [slot.key]: opt.id };
-          commitLook();
-          dressLockerPawn();
-          paintLocker();
-        });
-        opts.append(b);
-      }
-      row.append(lab, opts);
-      slots.append(row);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.slot = slot.key;
+      b.textContent = slot.label;
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        locker.slot = slot.key;
+        paintLocker();
+      });
+      secs.append(b);
     }
   }
-  slots?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
-    const key = b.dataset.slot as LookSlot | undefined;
-    b.classList.toggle("on", !!key && b.dataset.id === prefs.look[key]);
+  secs?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.slot === locker.slot);
   });
-  slots?.querySelectorAll<HTMLElement>(".locker-slot").forEach((row) => {
-    row.classList.toggle("focus", row.dataset.slot === locker.slot);
-  });
+  const slot = LOOK_SLOTS.find((s) => s.key === locker.slot) ?? LOOK_SLOTS[0]!;
+  const hint = document.querySelector("#locker-slot-hint");
+  if (hint) {
+    const cam = slot.view === "melee" ? "Held melee" : slot.view === "body" ? "Full body" : "Head and shoulders";
+    const rule =
+      slot.key === "hair" || slot.key === "hat"
+        ? " · Only buzz fits under a hat"
+        : slot.key === "melee"
+          ? " · Same hit range on every option"
+          : "";
+    hint.textContent = `${slot.label} · ${cam}${rule}`;
+  }
+  const opts = document.querySelector("#locker-opts");
+  if (opts) {
+    opts.replaceChildren();
+    for (const opt of slot.options) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.slot = slot.key;
+      b.dataset.id = opt.id;
+      b.title = opt.blurb;
+      b.textContent = opt.label;
+      b.classList.toggle("on", opt.id === prefs.look[slot.key]);
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        locker.slot = slot.key;
+        prefs.look = applyLookChoice(prefs.look, slot.key, opt.id);
+        commitLook();
+        dressLockerPawn();
+        paintLocker();
+      });
+      opts.append(b);
+    }
+  }
   document.querySelectorAll<HTMLButtonElement>("#locker-sides button").forEach((b) => {
     b.classList.toggle("on", b.dataset.side === locker.team);
   });
+  paintIdentity();
   const title = document.querySelector("#start-title");
   const blurb = document.querySelector("#start-blurb");
   if (title) title.textContent = locker.on ? "Player" : "Servers";
   if (blurb) {
     blurb.textContent = locker.on
-      ? "Face, kit, and hats. Ember and Stone colors apply when you join."
+      ? "Pick a slot. Close-up for the head, full body for kit. Ember and Stone colors apply when you join."
       : "Pick a match. Ember plants the Wire. First to six.";
   }
 }
@@ -1130,18 +1162,37 @@ function paintLocker() {
 function dressLockerPawn() {
   pawnStyle.current = "limbs";
   buildPawn(lockerPawn, locker.team, 0, prefs.look);
+  const held = makeMelee(prefs.look.melee);
+  held.scale.setScalar(4.2);
+  held.position.set(0.4, 1.02, 0.1);
+  held.rotation.set(0.2, 0.35, -0.2);
+  lockerPawn.add(held);
   lockerPawn.visible = true;
 }
 
+function lockerCamTarget() {
+  const view = lookView(locker.slot);
+  if (view === "melee") {
+    return { dist: 2.05 * locker.zoom, aimY: 1.08, fov: 38 };
+  }
+  const portrait = view === "portrait";
+  const base = portrait ? 1.62 : 3.55;
+  return {
+    dist: base * locker.zoom,
+    aimY: portrait ? 1.52 : 0.92,
+    fov: portrait ? 34 : 42,
+  };
+}
+
 function applyLockerCam() {
-  const { dist, theta, phi } = locker;
+  const { dist, theta, phi, aimY, fov } = locker;
   camera.position.set(
     dist * Math.sin(theta) * Math.sin(phi),
-    1.05 + dist * Math.cos(theta),
+    aimY + dist * Math.cos(theta),
     dist * Math.sin(theta) * Math.cos(phi),
   );
-  camera.lookAt(0, 1.05, 0);
-  camera.fov = 42;
+  camera.lookAt(0, aimY, 0);
+  camera.fov = fov;
   camera.near = 0.12;
   camera.far = 80;
   camera.updateProjectionMatrix();
@@ -1165,6 +1216,10 @@ function rebuildLocker() {
   scene.add(floor);
   if (!lockerPawn.parent) scene.add(lockerPawn);
   dressLockerPawn();
+  const want = lockerCamTarget();
+  locker.dist = want.dist;
+  locker.aimY = want.aimY;
+  locker.fov = want.fov;
   applyLockerCam();
 }
 
@@ -1529,7 +1584,11 @@ bindAdmin({
   onRestart: () => net.sendEvent({ kind: "restart" }),
   onKick: (slot) => {
     if (slot.id === playerId) return;
-    net.sendEvent({ kind: "kick", slotId: slot.id });
+    net.sendEvent({ kind: "kick", slotId: slot.id, playerKey: slot.playerKey });
+  },
+  onBan: (slot) => {
+    if (slot.id === playerId) return;
+    net.sendEvent({ kind: "ban", slotId: slot.id, playerKey: slot.playerKey });
   },
   onCow: (slot) => {
     if (net.role !== "client") applyCow(slot);
@@ -1548,6 +1607,16 @@ bindAdmin({
       oneShot: rules.oneShot,
       botSkill: rules.botSkill,
     });
+  },
+});
+
+bindIdentity({
+  onChange() {
+    setNetName(prefs.name);
+    setNetSkin(prefs.skin);
+    setNetLook(accountLook() || packLook(prefs.look));
+    setNetPlayerKey(accountKey() || prefs.playerKey);
+    paintLocker();
   },
 });
 
@@ -1705,10 +1774,26 @@ function showRifle(kind: RifleId, on: boolean) {
   mosin.root.visible = on && kind === "mosin";
 }
 
-const knife = makeKnife();
+let knife = makeMelee(prefs.look.melee);
 knife.visible = false;
 poseKnifeRest(knife);
 camera.add(knife);
+
+function refreshMeleeView() {
+  const on = knife.visible;
+  const parent = knife.parent;
+  parent?.remove(knife);
+  knife.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    obj.geometry.dispose();
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) m.dispose();
+  });
+  knife = makeMelee(prefs.look.melee);
+  knife.visible = on;
+  (parent ?? camera).add(knife);
+  if (knife.visible) poseKnifeRest(knife);
+}
 
 const nadeView = new THREE.Group();
 const nadeBody = new THREE.Mesh(
@@ -1772,6 +1857,7 @@ let time = 0;
 let mouseDown = false;
 const fireQ = emptyQueue();
 let jumpHeld = false;
+let plantBroke = false;
 let nadeBag: Record<NadeKind, number> = { ...NADE_MAX };
 let nadeKind: NadeKind = "smoke";
 let lastThrow = -10;
@@ -2019,15 +2105,21 @@ addEventListener("keydown", (e) => {
   if (locker.on) {
     if (e.code === "Escape") leaveLocker();
     const slot = LOOK_SLOTS.find((s) => s.key === locker.slot) ?? LOOK_SLOTS[0]!;
-    const n = e.code === "Digit1" || e.code === "Numpad1" ? 0
+    const n = e.code === "Digit0" || e.code === "Numpad0" ? 9
+      : e.code === "Digit1" || e.code === "Numpad1" ? 0
       : e.code === "Digit2" || e.code === "Numpad2" ? 1
       : e.code === "Digit3" || e.code === "Numpad3" ? 2
       : e.code === "Digit4" || e.code === "Numpad4" ? 3
       : e.code === "Digit5" || e.code === "Numpad5" ? 4
+      : e.code === "Digit6" || e.code === "Numpad6" ? 5
+      : e.code === "Digit7" || e.code === "Numpad7" ? 6
+      : e.code === "Digit8" || e.code === "Numpad8" ? 7
+      : e.code === "Digit9" || e.code === "Numpad9" ? 8
+      : locker.slot === "melee" && e.code === "KeyB" ? 10
       : -1;
     const pick = n >= 0 ? slot.options[n] : undefined;
     if (pick) {
-      prefs.look = { ...prefs.look, [slot.key]: pick.id };
+      prefs.look = applyLookChoice(prefs.look, slot.key, pick.id);
       commitLook();
       dressLockerPawn();
       paintLocker();
@@ -2276,7 +2368,8 @@ addEventListener("wheel", (e) => {
     if ((e.target as HTMLElement | null)?.closest("#start, #settings")) return;
     e.preventDefault();
     const k = e.deltaY > 0 ? 1.08 : 1 / 1.08;
-    locker.dist = Math.max(2.6, Math.min(7.5, locker.dist * k));
+    const portrait = lookView(locker.slot) === "portrait";
+    locker.zoom = Math.max(portrait ? 0.72 : 0.75, Math.min(portrait ? 1.55 : 1.85, locker.zoom * k));
     return;
   }
   if (studio.on) {
@@ -2865,7 +2958,7 @@ function tryMelee(bash: boolean) {
           z: p.z,
           alive: p.alive,
         })) ?? [];
-    const hit = meleeTarget(origin, dir, bodies, tuning.melee, you, rules.friendlyFire, [actorId()]);
+    const hit = meleeTarget(origin, dir, bodies, meleeReach(), you, rules.friendlyFire, [actorId()]);
     if (hit) {
       lastHit = bash ? "bash" : "knife";
       flashHit(false);
@@ -2881,8 +2974,8 @@ function tryMelee(bash: boolean) {
     [...botTargets(bots, skip, skipAi()), ...remoteTargets(remotes.values(), skip, skipAi())],
     false,
   )[0];
-  const worldHit = rayWorld(origin, dir, tuning.melee, world.colliders);
-  if (!hit || hit.distance > tuning.melee) return;
+  const worldHit = rayWorld(origin, dir, meleeReach(), world.colliders);
+  if (!hit || hit.distance > meleeReach()) return;
   if (worldHit && worldHit.dist < hit.distance - 0.04) return;
   const id = hit.object.userData.botId as number;
   const bot = bots.find((b) => b.id === id);
@@ -3016,6 +3109,8 @@ function tryFire() {
   consumeFire(fireQ);
   lastFire = time;
   mag -= 1;
+  plantBroke = true;
+  interruptPlant(match, actorId());
   const adsMul = ads ? 0.55 : 1;
   const rec = tuning.recoil;
   pitch -= 0.016 * adsMul * rec;
@@ -3648,6 +3743,7 @@ function roundSpawn() {
 
 function botShoot(from: THREE.Vector3, dir: THREE.Vector3, target: { id: number; team: string }, shooterId: number) {
   if (isCow(shooterId)) return;
+  interruptPlant(match, shooterId);
   const worldHit = rayShot(from, dir, 80, world.colliders);
   bang(150, 0.06, 0.035);
   const shooter = nearestBot(from);
@@ -3673,18 +3769,20 @@ function botShoot(from: THREE.Vector3, dir: THREE.Vector3, target: { id: number;
 }
 
 function playBlast(x: number, y: number, z: number) {
-  bang(42, 0.5, 0.22);
+  bang(36, 0.7, 0.28);
+  bang(90, 0.22, 0.16);
   blastFlash = 1;
   const mesh = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 18, 14),
-    new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.9 }),
+    new THREE.SphereGeometry(1.4, 22, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.95, depthTest: false }),
   );
-  mesh.position.set(x, y + 0.45, z);
+  mesh.position.set(x, y + 0.55, z);
+  mesh.renderOrder = 8;
   scene.add(mesh);
-  const light = new THREE.PointLight(0xff7818, 48, 24);
-  light.position.set(x, y + 0.9, z);
+  const light = new THREE.PointLight(0xff7818, 72, 36);
+  light.position.set(x, y + 1.1, z);
   scene.add(light);
-  blasts.push({ mesh, light, t: 0.9 });
+  blasts.push({ mesh, light, t: 1.45 });
 }
 
 function nadeLos(x: number, y: number, z: number) {
@@ -3805,14 +3903,24 @@ function applyRemoteUse(r: Remote, dt: number) {
   if (match.wire.mode === "ground" && team === plantingTeam(match)) {
     if (Math.hypot(r.x - match.wire.x, r.z - match.wire.z) < 1.15) pickupWire(match, r.slotId, team);
   }
-  if (!r.input.use) return;
   if (match.wire.mode === "carried" && match.wire.carrierId === r.slotId && match.phase === "live") {
-    const site = inSite(world, "loft", r.x, r.z, r.y) ? "loft" : inSite(world, "well", r.x, r.z, r.y) ? "well" : null;
-    if (site) {
-      match.wire.plantHold += dt;
-      if (match.wire.plantHold >= tuning.plant) plantWire(match, site, r.x, r.y, r.z);
-    }
+    tickPlantHold(
+      match,
+      dt,
+      {
+        id: r.slotId,
+        team,
+        x: r.x,
+        y: r.y,
+        z: r.z,
+        alive: r.alive,
+        holdingUse: !!r.input.use,
+        fired: !!r.input.fire,
+      },
+      (id, x, z, y) => inSite(world, id, x, z, y),
+    );
   }
+  if (!r.input.use) return;
   if (match.wire.mode === "planted" && match.phase === "planted" && team === watchingTeam(match)) {
     const d = Math.hypot(r.x - match.wire.x, r.z - match.wire.z);
     if (d < 1.35 && Math.abs(r.y - match.wire.y) < 1.6) match.wire.cutHold += dt;
@@ -3824,6 +3932,7 @@ function remoteFire(r: Remote): boolean {
   if (time - r.lastFire < RIFLES[kind].cycle) return false;
   if (r.weapon === "knife" || r.weapon === "smoke" || r.weapon === "frag" || r.weapon === "stun" || r.weapon === "flash") return false;
   r.lastFire = time;
+  interruptPlant(match, r.slotId);
   const origin = new THREE.Vector3(r.x, r.y + (r.crouch ? 1.1 : 1.64), r.z);
   const dir = new THREE.Vector3(
     -Math.sin(r.yaw) * Math.cos(r.pitch),
@@ -3914,6 +4023,13 @@ function frame(now: number) {
   else if (mouseDown && !fireQ.held) pressFire(fireQ);
   const wantShot = !studio.on && weapon === "rifle" && fireWantsShot(fireQ);
   if (locked && alive && wantShot && !combatLock && bashT <= 0) tryFire();
+  if (!keys.has("KeyF")) plantBroke = false;
+  const wantUse = locked && alive && keys.has("KeyF") && !isCow(playerId) && !plantBroke;
+  const planting = isPlanting(
+    match,
+    { id: actorId(), x: px, y: py, z: pz, holdingUse: wantUse },
+    (site, x, z, y) => inSite(world, site, x, z, y),
+  );
 
   crouch = !studio.on && locked && alive && !prone && keys.has("KeyC");
   leanInput = 0;
@@ -3952,7 +4068,7 @@ function frame(now: number) {
     const rightZ = -Math.sin(yaw);
     let wx = 0;
     let wz = 0;
-    if (locked) {
+    if (locked && !planting) {
       if (keys.has("KeyW")) {
         wx += forwardX;
         wz += forwardZ;
@@ -3999,7 +4115,7 @@ function frame(now: number) {
       diveVx += (0 - diveVx) * Math.min(1, dt * damp);
       diveVz += (0 - diveVz) * Math.min(1, dt * damp);
     }
-    if (locked && alive && grounded && keys.has("Space") && !jumpHeld) {
+    if (locked && alive && grounded && keys.has("Space") && !jumpHeld && !planting) {
       if (prone) {
         prone = false;
         vy = jumpSpeed() * 0.82;
@@ -4117,7 +4233,7 @@ function frame(now: number) {
         }),
       ),
     inSite: (id, x, z, y) => inSite(world, id, x, z, y),
-    holdingUse: locked && alive && keys.has("KeyF") && !isCow(playerId),
+    holdingUse: wantUse,
     actor: {
       id: actorId(),
       team: slotById(match, actorId())?.team ?? "ember",
@@ -4125,7 +4241,30 @@ function frame(now: number) {
       y: py,
       z: pz,
       alive,
+      fired: plantBroke,
     },
+    actors: [
+      {
+        id: actorId(),
+        team: slotById(match, actorId())?.team ?? "ember",
+        x: px,
+        y: py,
+        z: pz,
+        alive,
+        holdingUse: wantUse,
+        fired: plantBroke,
+      },
+      ...[...remotes.values()].map((r) => ({
+        id: r.slotId,
+        team: r.team,
+        x: r.x,
+        y: r.y,
+        z: r.z,
+        alive: r.alive,
+        holdingUse: !!r.input.use && !r.input.fire,
+        fired: !!r.input.fire,
+      })),
+    ],
     spawnPlant: world.plantSpawns[2]!,
     onDetonate: detonateWire,
     botCutting,
@@ -4154,7 +4293,7 @@ function frame(now: number) {
   const holdingPlant = match.wire.plantHold > 0.02 && (match.phase === "live" || match.phase === "planted");
   const youCut = slotById(match, playerId);
   const watchCut = watchingTeam(match);
-  const holdingUseNow = locked && alive && keys.has("KeyF") && !isCow(playerId);
+  const holdingUseNow = wantUse;
   const cutNow = {
     phase: match.phase,
     wireMode: match.wire.mode,
@@ -4211,6 +4350,7 @@ function frame(now: number) {
   }
   if (match.phase === "freeze" && seenPhase !== "freeze") {
     setRoundResult(null);
+    plantBroke = false;
     if (isClient) {
       clearTape(tape);
       lastRecord = -1;
@@ -4238,8 +4378,18 @@ function frame(now: number) {
   if (net.role === "host" && !reeling) {
     for (const r of remotes.values()) {
       const cowPawn = isCow(r.slotId);
-      tickRemote(r, dt, time, world, froze);
-      if (!cowPawn) applyRemoteUse(r, dt);
+      const rooted = isPlanting(
+        match,
+        {
+          id: r.slotId,
+          x: r.x,
+          y: r.y,
+          z: r.z,
+          holdingUse: !!r.input.use && !r.input.fire,
+        },
+        (site, x, z, y) => inSite(world, site, x, z, y),
+      );
+      tickRemote(r, dt, time, world, froze, rooted);
       if (r.input.fire && !r.fireQ.held) pressFire(r.fireQ);
       else if (!r.input.fire && r.fireQ.held) releaseFire(r.fireQ);
       if (fireWantsShot(r.fireQ) && r.alive && !combatLock && !cowPawn && remoteFire(r)) consumeFire(r.fireQ);
@@ -4737,7 +4887,7 @@ function frame(now: number) {
         crouch: studio.on || locker.on ? false : crouch,
         prone: studio.on || locker.on ? false : prone,
         jump: studio.on || locker.on ? false : keys.has("Space"),
-        use: studio.on || locker.on ? false : keys.has("KeyF"),
+        use: studio.on || locker.on ? false : wantUse,
         ping: net.pingMs,
       }),
     );
@@ -4753,6 +4903,11 @@ function frame(now: number) {
     arm.root.visible = false;
     studioGhost.visible = false;
     lockerPawn.visible = true;
+    const want = lockerCamTarget();
+    const ease = 1 - Math.exp(-dt * 8);
+    locker.dist += (want.dist - locker.dist) * ease;
+    locker.aimY += (want.aimY - locker.aimY) * ease;
+    locker.fov += (want.fov - locker.fov) * ease;
     if (!locker.dragging) locker.phi += dt * 0.2;
     applyLockerCam();
   } else if (studio.on) {

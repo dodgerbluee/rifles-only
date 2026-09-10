@@ -11,6 +11,7 @@ export type Slot = {
   name: string;
   alive: boolean;
   occupant?: string;
+  playerKey?: string;
 };
 
 export type WireState = {
@@ -34,6 +35,8 @@ export type Match = {
   bombTime: number;
   slots: Slot[];
   wire: WireState;
+  /** Shot while planting; F must be released before the charge can start again. */
+  plantBreak: boolean;
   endText: string;
   endT: number;
   lastJoin: string;
@@ -45,6 +48,17 @@ export type Match = {
   freezeTime: number;
   championsHold: number;
   perTeam: number;
+};
+
+export type WireActor = {
+  id: number;
+  team: Team;
+  x: number;
+  y: number;
+  z: number;
+  alive: boolean;
+  holdingUse: boolean;
+  fired?: boolean;
 };
 
 export const FREEZE_TIME = 2.8;
@@ -87,6 +101,7 @@ export function createMatch(opts?: {
     bombTime: tuning.fuse,
     slots,
     wire: groundWire(-22, 0.2, 0),
+    plantBreak: false,
     endText: "",
     endT: 0,
     lastJoin: "",
@@ -277,6 +292,7 @@ export function giveWireToPlanter(m: Match) {
   const plant = plantingTeam(m);
   const human = m.slots.find((s) => s.kind === "human" && s.team === plant && s.alive);
   const carrier = human ?? m.slots.find((s) => s.team === plant && s.alive);
+  m.plantBreak = false;
   if (!carrier) {
     m.wire = groundWire(-22, 0.2, 0);
     return;
@@ -291,6 +307,52 @@ export function giveWireToPlanter(m: Match) {
     plantHold: 0,
     cutHold: 0,
   };
+}
+
+/** A shot from the carrier dumps plant progress until they release use. */
+export function interruptPlant(m: Match, actorId: number) {
+  if (m.wire.mode !== "carried" || m.wire.carrierId !== actorId) return;
+  m.wire.plantHold = 0;
+  m.plantBreak = true;
+}
+
+/** Carrier holding use in a site, and a shot has not broken the plant. */
+export function isPlanting(
+  m: Match,
+  actor: { id: number; x: number; y: number; z: number; holdingUse: boolean },
+  inSite: (site: SiteId, x: number, z: number, y: number) => boolean,
+) {
+  if (m.plantBreak) return false;
+  if (m.phase !== "live" || m.wire.mode !== "carried" || m.wire.carrierId !== actor.id) return false;
+  if (!actor.holdingUse) return false;
+  return inSite("loft", actor.x, actor.z, actor.y) || inSite("well", actor.x, actor.z, actor.y);
+}
+
+export function tickPlantHold(
+  m: Match,
+  dt: number,
+  carrier: WireActor | undefined,
+  inSite: (site: SiteId, x: number, z: number, y: number) => boolean,
+) {
+  if (m.wire.mode !== "carried" || m.phase !== "live") return false;
+  if (!carrier?.alive || carrier.id !== m.wire.carrierId) return false;
+  if (carrier.fired) interruptPlant(m, carrier.id);
+  if (!carrier.holdingUse) m.plantBreak = false;
+  if (carrier.holdingUse && !m.plantBreak) {
+    const site = inSite("loft", carrier.x, carrier.z, carrier.y)
+      ? "loft"
+      : inSite("well", carrier.x, carrier.z, carrier.y)
+        ? "well"
+        : null;
+    if (site) {
+      m.wire.plantHold += dt;
+      if (m.wire.plantHold >= tuning.plant) {
+        plantWire(m, site, carrier.x, carrier.y, carrier.z);
+        return true;
+      }
+    } else m.wire.plantHold = 0;
+  } else m.wire.plantHold = 0;
+  return false;
 }
 
 function groundWire(x: number, y: number, z: number): WireState {
@@ -317,11 +379,13 @@ export function plantWire(m: Match, site: SiteId, x: number, y: number, z: numbe
   m.wire.y = y;
   m.wire.z = z;
   m.wire.plantHold = 0;
+  m.plantBreak = false;
 }
 
 export function dropWire(m: Match, x: number, y: number, z: number) {
   if (m.wire.mode !== "carried") return;
   m.wire = groundWire(x, y + 0.15, z);
+  m.plantBreak = false;
 }
 
 export function pickupWire(m: Match, id: number, team: Team) {
@@ -330,6 +394,7 @@ export function pickupWire(m: Match, id: number, team: Team) {
   if (!slotById(m, id)?.alive) return false;
   m.wire.mode = "carried";
   m.wire.carrierId = id;
+  m.plantBreak = false;
   return true;
 }
 
@@ -366,16 +431,8 @@ export function tickMatch(
     living: (team: Team) => number;
     inSite: (site: SiteId, x: number, z: number, y: number) => boolean;
     holdingUse: boolean;
-    actor: { id: number; team: Team; x: number; y: number; z: number; alive: boolean };
-    actors?: Array<{
-      id: number;
-      team: Team;
-      x: number;
-      y: number;
-      z: number;
-      alive: boolean;
-      holdingUse: boolean;
-    }>;
+    actor: { id: number; team: Team; x: number; y: number; z: number; alive: boolean; fired?: boolean };
+    actors?: WireActor[];
     spawnPlant: { x: number; y: number; z: number };
     onDetonate?: (x: number, y: number, z: number) => void;
     botCutting?: boolean;
@@ -464,34 +521,24 @@ export function tickMatch(
   }
 
   const carrier = people.find((a) => a.id === m.wire.carrierId);
-  if (m.wire.mode === "carried" && m.phase === "live" && carrier?.alive) {
-    if (carrier.holdingUse) {
-      const site = ctx.inSite("loft", carrier.x, carrier.z, carrier.y)
-        ? "loft"
-        : ctx.inSite("well", carrier.x, carrier.z, carrier.y)
-          ? "well"
-          : null;
-      if (site) {
-        m.wire.plantHold += dt;
-        if (m.wire.plantHold >= tuning.plant) {
-          plantWire(m, site, carrier.x, carrier.y, carrier.z);
-          if (tryWipe(m, ctx.living)) return;
-        }
-      } else m.wire.plantHold = 0;
-    } else m.wire.plantHold = 0;
+  if (tickPlantHold(m, dt, carrier, ctx.inSite)) {
+    if (tryWipe(m, ctx.living)) return;
   }
 
-  if (m.wire.mode === "planted" && m.phase === "planted" && !ctx.botCutting) {
-    let cutting = false;
-    for (const a of people) {
-      if (!a.alive || a.team !== watchingTeam(m) || !a.holdingUse) continue;
-      const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
-      if (d < 1.35 && Math.abs(a.y - m.wire.y) < 1.6) cutting = true;
+  if (m.wire.mode === "planted" && m.phase === "planted") {
+    let cutting = !!ctx.botCutting;
+    if (!ctx.botCutting) {
+      for (const a of people) {
+        if (!a.alive || a.team !== watchingTeam(m) || !a.holdingUse) continue;
+        const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
+        if (d < 1.35 && Math.abs(a.y - m.wire.y) < 1.6) cutting = true;
+      }
+      if (cutting) {
+        m.wire.cutHold += dt;
+        if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Bomb was cut");
+      }
     }
-    if (cutting) {
-      m.wire.cutHold += dt;
-      if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Bomb was cut");
-    }
+    if (!cutting) m.wire.cutHold = 0;
   }
 }
 
@@ -523,6 +570,7 @@ function finish(m: Match, winner: Team, text: string) {
   m.phase = "settle";
   m.wire.plantHold = 0;
   m.wire.cutHold = 0;
+  m.plantBreak = false;
 }
 
 function nextRound(m: Match, spawn: { x: number; y: number; z: number }) {

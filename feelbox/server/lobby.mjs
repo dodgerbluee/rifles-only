@@ -7,6 +7,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
+import { createAccountBook, isPlayerKey } from "./accounts.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -18,6 +19,8 @@ const STATIC_DIR = STATIC_ENV === ""
 const GAME_WS = process.env.GAME_WS ?? "ws://127.0.0.1:8081/ws";
 const STALE_MS = 5000;
 const DRAFT_PATH = path.join(ROOT, "studio-draft.json");
+const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.join(ROOT, "accounts.json");
+const accounts = createAccountBook(ACCOUNT_PATH);
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
@@ -116,6 +119,49 @@ const server = http.createServer((req, res) => {
         }
         writeFileSync(DRAFT_PATH, `${JSON.stringify(body, null, 2)}\n`);
         json(res, 200, { ok: true, path: "studio-draft.json" });
+      } catch {
+        json(res, 400, { ok: false });
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/account" && req.method === "GET") {
+    const key = url.searchParams.get("key") ?? "";
+    if (!isPlayerKey(key)) {
+      json(res, 400, { ok: false });
+      return;
+    }
+    const rec = accounts.get(key);
+    if (!rec) {
+      json(res, 404, { ok: false });
+      return;
+    }
+    json(res, 200, { ok: true, name: rec.name, look: rec.look, looks: rec.looks ?? [] });
+    return;
+  }
+
+  if (url.pathname === "/api/account" && req.method === "POST") {
+    const chunks = [];
+    let n = 0;
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > 16 * 1024) req.destroy();
+      else chunks.push(c);
+    });
+    req.on("end", () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const rec = accounts.register({
+          playerKey: body.playerKey,
+          name: body.name,
+          look: typeof body.look === "string" ? body.look : "",
+        });
+        if (!rec) {
+          json(res, 400, { ok: false });
+          return;
+        }
+        json(res, 200, { ok: true, name: rec.name, look: rec.look });
       } catch {
         json(res, 400, { ok: false });
       }

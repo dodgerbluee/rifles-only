@@ -17,6 +17,7 @@
       <span class="ch-arm ch-e"></span>
       <span class="ch-arm ch-s"></span>
       <span class="ch-arm ch-w"></span>
+      <span class="ch-dot"></span>
     </div>
     <div id="hitmark"></div>
 
@@ -95,21 +96,39 @@
         <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
       </div>
       <div id="server-list"></div>
+      <div id="home-id">
+        <p class="home-id-name" id="home-id-name">You</p>
+        <p class="home-id-key" id="home-id-key"></p>
+        <button type="button" id="home-id-copy">Copy key</button>
+      </div>
       <div id="home-actions">
         <button type="button" id="home-studio">Map studio</button>
         <button type="button" id="home-locker">Player</button>
       </div>
+      <div id="register" hidden>
+        <p class="locker-kicker">Register</p>
+        <label class="locker-name"><span>Name</span><input id="reg-name" type="text" maxlength="18" /></label>
+        <label class="locker-key"><span>Primary key</span><input id="reg-key" type="text" readonly spellcheck="false" /><button type="button" id="reg-copy">Copy</button></label>
+        <p class="locker-hint">Copy / save this. It’s how we ban you — not your name.</p>
+        <button type="button" id="reg-go">Save and continue</button>
+      </div>
       <div id="locker" hidden>
         <p class="locker-kicker">Player</p>
         <label class="locker-name"><span>Name</span><input id="locker-name" type="text" maxlength="18" /></label>
+        <label class="locker-key"><span>Key</span><input id="locker-key" type="text" readonly spellcheck="false" /><button type="button" id="locker-copy">Copy</button></label>
+        <button type="button" id="locker-save-look">Save character</button>
         <p class="locker-label">Design a player</p>
-        <div id="locker-look"></div>
+        <div id="locker-look">
+          <div id="locker-secs" class="locker-secs"></div>
+          <p id="locker-slot-hint" class="locker-slot-hint"></p>
+          <div id="locker-opts" class="locker-opts"></div>
+        </div>
         <p class="locker-label">Preview side</p>
         <div id="locker-sides">
           <button type="button" data-side="ember">Ember</button>
           <button type="button" data-side="stone">Stone</button>
         </div>
-        <p class="locker-hint">Drag to turn · colors follow the side you join</p>
+        <p class="locker-hint">Drag to turn · colors follow the side you join · Melee is cosmetic (same hit range)</p>
         <button type="button" id="locker-back">Back</button>
       </div>
     </div>
@@ -128,20 +147,60 @@
       <label class="admin-knob"><span>Mouse sens</span><input id="set-sens" type="range" min="0.15" max="4" step="0.05" /><b id="set-sens-v">1.00</b></label>
       <label class="admin-knob"><span>Sound</span><input id="set-vol" type="range" min="0" max="1" step="0.01" /><b id="set-vol-v">70%</b></label>
       <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>
+      <p class="admin-kicker sub">Crosshair</p>
+      <div id="ch-slots"></div>
+      <div id="ch-preview"><span class="ch-draw" id="ch-preview-draw"></span></div>
+      <label class="admin-select"><span>Style</span>
+        <select id="ch-style">
+          <option value="classic">Classic</option>
+          <option value="static">Classic Static</option>
+        </select>
+      </label>
+      <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
+      <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
+      <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
+      <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
+      <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
+      <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
+      <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
+      <div id="ch-colors"></div>
+      <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
+      <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
+      <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
+      <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
+      <button type="button" id="ch-reset">Reset slot</button>
       <p class="admin-hint">WASD · Space · Ctrl prone · C crouch · Q/E peek · Tab board · Esc settings · 1 Kar98k · 2 Mosin · 3 knife · 4 nade · V melee · F plant/cut · ` admin</p>
       <p class="admin-hint">Esc closes. Click the game to lock the mouse.</p>
     </div>
 
     <div id="scoreboard">
-      <div class="board-col ember">
-        <p class="board-team">Ember</p>
-        <div class="board-head"><span>Player</span><span>K</span><span>A</span><span>D</span><span>K/D</span><span>Ping</span></div>
-        <div id="board-ember"></div>
-      </div>
-      <div class="board-col stone">
-        <p class="board-team">Stone</p>
-        <div class="board-head"><span>Player</span><span>K</span><span>A</span><span>D</span><span>K/D</span><span>Ping</span></div>
-        <div id="board-stone"></div>
+      <div class="board-panel">
+        <div class="board-top">
+          <div class="board-score ember">
+            <span class="board-side">Ember</span>
+            <b id="board-ember-score">0</b>
+          </div>
+          <div class="board-meta">
+            <p id="board-map">Wharf</p>
+            <p id="board-round">Round 1 · First to 6</p>
+          </div>
+          <div class="board-score stone">
+            <b id="board-stone-score">0</b>
+            <span class="board-side">Stone</span>
+          </div>
+        </div>
+        <div class="board-cols">
+          <div class="board-col ember">
+            <p class="board-team" id="board-ember-label">Ember</p>
+            <div class="board-head"><span class="board-name">Player</span><span>K</span><span>A</span><span>D</span><span>K/D</span><span>Ping</span></div>
+            <div id="board-ember"></div>
+          </div>
+          <div class="board-col stone">
+            <p class="board-team" id="board-stone-label">Stone</p>
+            <div class="board-head"><span class="board-name">Player</span><span>K</span><span>A</span><span>D</span><span>K/D</span><span>Ping</span></div>
+            <div id="board-stone"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -258,6 +317,7 @@
       <div class="admin-row">
         <button type="button" id="admin-restart">Restart match</button>
         <button type="button" id="admin-kick">Kick</button>
+        <button type="button" id="admin-ban">Ban</button>
         <button type="button" id="admin-cow">Cow</button>
       </div>
       <p class="admin-kicker sub">Feel</p>

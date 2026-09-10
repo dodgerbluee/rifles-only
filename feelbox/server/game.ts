@@ -3,9 +3,12 @@
  * process starts a fresh match.
  */
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { SNAP_HZ, TICK_HZ } from "../src/netFeel";
 import { createSim } from "../src/sim";
+import { admitPlayer, createAccountBook, isPlayerKey } from "./accounts.mjs";
 import { loadServerConfig } from "./config";
 
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -19,8 +22,10 @@ const DEAD_MS = 45_000;
 const HELLO_MS = 5_000;
 const LOBBY_BEAT_MS = 2000;
 const MAX_NAME = 24;
+const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "accounts.json");
+const book = createAccountBook(ACCOUNT_PATH);
 
-/** @typedef {{ id: number, name: string, ws: import("ws").WebSocket, helloed: boolean, lastSeen: number }} Peer */
+/** @typedef {{ id: number, name: string, playerKey: string, ws: import("ws").WebSocket, helloed: boolean, lastSeen: number }} Peer */
 
 const sim = createSim({
   id: GAME_ID,
@@ -58,6 +63,44 @@ function cleanName(value, id) {
   if (typeof value !== "string") return `Rifle ${id}`;
   const n = value.trim().slice(0, MAX_NAME);
   return n || `Rifle ${id}`;
+}
+
+function cleanKey(value) {
+  return isPlayerKey(value) ? value : "";
+}
+
+function stampKeys(snap) {
+  if (!snap || !Array.isArray(snap.pawns)) return snap;
+  for (const pawn of snap.pawns) {
+    const peer = typeof pawn.netId === "number" ? peers.get(pawn.netId) : undefined;
+    if (peer?.playerKey) pawn.playerKey = peer.playerKey;
+  }
+  return snap;
+}
+
+function peerForSlot(slotId) {
+  const snap = sim.snapshot();
+  const pawn = snap.pawns.find((p) => p.id === slotId);
+  if (!pawn || !(pawn.netId > 0)) return null;
+  return peers.get(pawn.netId) ?? null;
+}
+
+function moderate(event) {
+  const key = cleanKey(event.playerKey);
+  const slotId = Number(event.slotId);
+  const fromSlot = Number.isFinite(slotId) ? peerForSlot(slotId) : null;
+  const targetKey = key || fromSlot?.playerKey || "";
+  if (event.kind === "ban" && targetKey) book.ban(targetKey);
+  let dropped = false;
+  for (const p of [...peers.values()]) {
+    const matchKey = targetKey && p.playerKey === targetKey;
+    const matchSlot = fromSlot && p.id === fromSlot.id;
+    if (matchKey || matchSlot) {
+      drop(p.id, event.kind === "ban" ? "banned" : "kicked");
+      dropped = true;
+    }
+  }
+  if (!dropped && event.kind === "kick") sim.event(0, event);
 }
 
 function drop(id, reason) {
@@ -110,7 +153,7 @@ server.on("upgrade", (req, socket, head) => {
 
 wss.on("connection", (ws) => {
   const id = nextId++;
-  const peer = { id, name: `Rifle ${id}`, ws, helloed: false, lastSeen: Date.now() };
+  const peer = { id, name: `Rifle ${id}`, playerKey: "", ws, helloed: false, lastSeen: Date.now() };
   peers.set(id, peer);
 
   const helloTimer = setTimeout(() => {
@@ -130,7 +173,15 @@ wss.on("connection", (ws) => {
 
     if (msg.type === "hello") {
       if (peer.helloed) return;
+      const playerKey = cleanKey(msg.playerKey);
+      const gate = admitPlayer(book, playerKey);
+      if (!gate.ok) {
+        send(ws, { type: "rejected", reason: gate.reason });
+        drop(id, gate.reason);
+        return;
+      }
       peer.helloed = true;
+      peer.playerKey = playerKey;
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
       sim.join(id, peer.name, undefined, msg.skin, msg.look);
@@ -150,7 +201,15 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "event") {
-      sim.event(id, msg.event);
+      const event = msg.event;
+      if (event?.kind === "kick" || event?.kind === "ban") {
+        moderate(event);
+        return;
+      }
+      if (event?.kind === "joinTeam" && cleanKey(event.playerKey) && !peer.playerKey) {
+        peer.playerKey = cleanKey(event.playerKey);
+      }
+      sim.event(id, event);
     }
   });
 
@@ -173,7 +232,7 @@ setInterval(() => {
 }, 1000 / TICK_HZ).unref?.();
 
 setInterval(() => {
-  const snap = sim.snapshot();
+  const snap = stampKeys(sim.snapshot());
   for (const p of living()) send(p.ws, { type: "snapshot", snapshot: snap });
 }, 1000 / SNAP_HZ).unref?.();
 

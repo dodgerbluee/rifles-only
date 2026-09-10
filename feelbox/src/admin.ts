@@ -23,6 +23,7 @@ export function bindAdmin(opts: {
   onRemove: (team: Team) => void;
   onRestart: () => void;
   onKick: (slot: Slot) => void;
+  onBan?: (slot: Slot) => void;
   onCow: (slot: Slot) => void;
   onPawnStyle?: (classic: boolean) => void;
   onRules?: () => void;
@@ -82,7 +83,8 @@ export function bindAdmin(opts: {
     for (const s of opts.match.slots) {
       const o = document.createElement("option");
       o.value = String(s.id);
-      o.textContent = `${s.name} · ${s.team === "ember" ? "Ember" : "Stone"}${s.kind === "human" ? " · human" : ""}`;
+      const key = s.playerKey ? ` · ${s.playerKey}` : s.kind === "human" ? " · no key" : "";
+      o.textContent = `${s.name} · ${s.team === "ember" ? "Ember" : "Stone"}${s.kind === "human" ? " · human" : ""}${key}`;
       pick.append(o);
     }
     if ([...pick.options].some((o) => o.value === cur)) pick.value = cur;
@@ -131,6 +133,11 @@ export function bindAdmin(opts: {
   document.querySelector("#admin-kick")!.addEventListener("click", () => {
     const s = selected();
     if (s) opts.onKick(s);
+    sync();
+  });
+  document.querySelector("#admin-ban")?.addEventListener("click", () => {
+    const s = selected();
+    if (s) (opts.onBan ?? opts.onKick)(s);
     sync();
   });
   document.querySelector("#admin-cow")!.addEventListener("click", () => {

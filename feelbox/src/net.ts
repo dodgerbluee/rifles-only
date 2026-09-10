@@ -56,6 +56,8 @@ export type Pawn = {
   skin?: "rifle" | "field" | "unit" | "frame";
   /** Packed 7-digit appearance (face/beard/hair/hat/shirt/pants/shoes). */
   look?: string;
+  /** Admin-only identity. Do not show in killfeed. */
+  playerKey?: string;
 };
 
 /** Admin cow: flaming, no weapons, then explode. */
@@ -157,7 +159,7 @@ export type KillFeedItem = {
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */
 export type ClientEvent =
-  | { kind: "joinTeam"; team: Team; name: string; skin?: "rifle" | "field" | "unit" | "frame"; look?: string }
+  | { kind: "joinTeam"; team: Team; name: string; skin?: "rifle" | "field" | "unit" | "frame"; look?: string; playerKey?: string }
   | {
       kind: "throwSmoke";
       ox: number;
@@ -177,7 +179,8 @@ export type ClientEvent =
   | { kind: "restart" }
   | { kind: "addBot"; team: Team }
   | { kind: "removeBot"; team: Team }
-  | { kind: "kick"; slotId: number }
+  | { kind: "kick"; slotId?: number; playerKey?: string }
+  | { kind: "ban"; slotId?: number; playerKey?: string }
   | { kind: "takeover"; slotId: number }
   | { kind: "cow"; slotId: number }
   | {
@@ -219,10 +222,11 @@ export type Snapshot = {
 
 export type NetHandle = {
   role: NetRole;
-  status: "offline" | "connecting" | "client";
+  status: "offline" | "connecting" | "client" | "rejected";
   attempt: number;
   peerId: number | null;
   pingMs: number;
+  rejectReason: string;
   sendInput(input: PlayerInput): void;
   sendSnapshot(snap: Snapshot): void;
   sendEvent(event: ClientEvent): void;
@@ -279,6 +283,7 @@ export async function fetchServers(): Promise<ListedServer[]> {
 let helloName = "You";
 let helloSkin: "rifle" | "field" | "unit" | "frame" = "rifle";
 let helloLook = packLook(DEFAULT_LOOK);
+let helloKey = "";
 
 export function setNetName(name: string) {
   helloName = name.trim().slice(0, 18) || "You";
@@ -289,7 +294,11 @@ export function setNetSkin(skin: "rifle" | "field" | "unit" | "frame") {
 }
 
 export function setNetLook(look: string) {
-  if (typeof look === "string" && /^[0-4]{7}$/.test(look)) helloLook = look;
+  if (typeof look === "string" && look.trim() && look.trim().length <= 64) helloLook = look.trim();
+}
+
+export function setNetPlayerKey(key: string) {
+  helloKey = typeof key === "string" ? key.trim() : "";
 }
 
 export function connectNet(url?: string): NetHandle {
@@ -314,6 +323,7 @@ export function connectNet(url?: string): NetHandle {
     attempt: 1,
     peerId: null,
     pingMs: 0,
+    rejectReason: "",
     sendInput(input) {
       if (handle.role !== "client") return;
       rawSend({ type: "input", input });
@@ -420,12 +430,28 @@ export function connectNet(url?: string): NetHandle {
       if (Number.isFinite(t)) handle.pingMs = Math.max(0, performance.now() - t);
       return;
     }
+    if (msg.type === "rejected") {
+      const reason = typeof msg.reason === "string" && msg.reason ? msg.reason : "rejected";
+      handle.rejectReason = reason;
+      handle.status = "rejected";
+      handle.role = "offline";
+      handle.peerId = null;
+      dead = true;
+      emitStatus();
+      try {
+        ws?.close(4001, reason);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if (msg.type === "welcome") {
       const id = Number(msg.id);
       const role = "client";
       if (!Number.isFinite(id)) return;
       tries = 0;
       handle.attempt = 1;
+      handle.rejectReason = "";
       setRole(role, id);
       return;
     }
@@ -474,7 +500,7 @@ export function connectNet(url?: string): NetHandle {
       return;
     }
     ws.addEventListener("open", () => {
-      rawSend({ type: "hello", name: helloName, skin: helloSkin, look: helloLook });
+      rawSend({ type: "hello", name: helloName, skin: helloSkin, look: helloLook, playerKey: helloKey });
     });
     ws.addEventListener("message", onMessage);
     ws.addEventListener("close", () => {

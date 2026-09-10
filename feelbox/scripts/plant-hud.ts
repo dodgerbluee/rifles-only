@@ -11,6 +11,8 @@ import {
   countLiving,
   createMatch,
   formatTime,
+  interruptPlant,
+  isPlanting,
   markDead,
   plantedTag,
   plantingTeam,
@@ -30,7 +32,7 @@ function check(name: string, ok: boolean, extra = "") {
 
 const dummy = {
   living: () => 5,
-  inSite: (site: string) => (site === "loft" ? ("loft" as const) : null),
+  inSite: (site: string, _x?: number, _z?: number, _y?: number) => site === "loft",
   holdingUse: true,
   actor: { id: 0, team: "ember" as const, x: -9, y: 3.4, z: 20.5, alive: true },
   spawnPlant: { x: 0, y: 0, z: 0 },
@@ -44,6 +46,34 @@ match.wire.carrierId = 0;
 
 tickMatch(match, 0.5, dummy);
 check("holding plant charges the wire", match.wire.plantHold > 0.4, `hold=${match.wire.plantHold.toFixed(2)}`);
+check(
+  "carrier holding F in site is planting",
+  isPlanting(match, { id: 0, x: -9, y: 3.4, z: 20.5, holdingUse: true }, dummy.inSite),
+);
+
+const shot = createMatch({ claimLocal: true });
+shot.phase = "live";
+shot.timeLeft = 90;
+shot.wire.mode = "carried";
+shot.wire.carrierId = 0;
+tickMatch(shot, 0.8, dummy);
+check("plant was charging before the shot", shot.wire.plantHold > 0.7, `hold=${shot.wire.plantHold.toFixed(2)}`);
+tickMatch(shot, 0.02, { ...dummy, actor: { ...dummy.actor, fired: true } });
+check("a shot dumps plant progress", shot.wire.plantHold === 0, `hold=${shot.wire.plantHold}`);
+check("a shot breaks the plant", shot.plantBreak);
+check(
+  "broken plant is not planting even while F is held",
+  !isPlanting(shot, { id: 0, x: -9, y: 3.4, z: 20.5, holdingUse: true }, dummy.inSite),
+);
+tickMatch(shot, 0.5, dummy);
+check("holding F after a shot does not recharge", shot.wire.plantHold === 0, `hold=${shot.wire.plantHold}`);
+tickMatch(shot, 0.02, { ...dummy, holdingUse: false });
+check("releasing F clears the plant break", !shot.plantBreak);
+tickMatch(shot, 0.5, dummy);
+check("re-pressing F starts a new plant", shot.wire.plantHold > 0.4, `hold=${shot.wire.plantHold.toFixed(2)}`);
+
+interruptPlant(shot, 0);
+check("interruptPlant zeros the hold", shot.wire.plantHold === 0 && shot.plantBreak);
 
 tickMatch(match, tuning.plant, dummy);
 check("finished plant goes live", match.phase === "planted", `phase=${match.phase}`);

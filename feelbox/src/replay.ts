@@ -1,5 +1,6 @@
 import type { Match } from "./match";
 import { slotById } from "./match";
+import { SNAP_HZ } from "./netFeel";
 
 export type Pose = {
   id: number;
@@ -36,7 +37,10 @@ export const PRE_SLOW = 1.55;
 export const POST_SLOW = 0.8;
 export const REEL_LEAD = 3.2;
 export const PLAY_RATE = 1;
+/** Skip between kill windows. Multiplier, not a tick rate. */
 export const FAST_RATE = 10;
+/** Keep 60 Hz poses. 0.02 was half a 30 Hz tick and collapsed every 60 Hz frame. */
+export const TAPE_MIN_DT = 0.5 / SNAP_HZ;
 
 export function createTape(): RoundTape {
   return { frames: [], kills: [] };
@@ -49,7 +53,7 @@ export function clearTape(tape: RoundTape) {
 
 export function pushFrame(tape: RoundTape, t: number, poses: Pose[]) {
   const last = tape.frames[tape.frames.length - 1];
-  if (last && t - last.t < 0.02) {
+  if (last && t - last.t < TAPE_MIN_DT) {
     last.t = t;
     last.poses = poses;
     return;

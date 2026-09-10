@@ -3,19 +3,26 @@
  * remotes chased the latest pose with exp(-16·dt) (~62 ms extra lag); local
  * reconcile blended 22% toward a snapshot that was a full RTT stale.
  *
- * Now: 60 Hz tick + 60 Hz snapshots, remotes rendered 2 snapshots behind,
- * local walk compared to the predicted pose at ack time (not "now").
+ * Now: 60 Hz tick + 60 Hz snapshots, remotes rendered ~2 snapshots behind
+ * (delay grows a little on underrun), local walk compared to the predicted
+ * pose at ack time. Tiny ack errors stay put; 1.6 m is no longer a teleport.
  */
 export const TICK_HZ = 60;
 export const SNAP_HZ = 60;
 /** Render remotes this far behind the newest received snapshot. 2 snaps at 60 Hz. */
 export const INTERP_DELAY_MS = Math.round(2000 / SNAP_HZ);
+/** Cap grown delay so a hitch does not add a 200 ms+ rubber band. */
+export const INTERP_DELAY_MAX_MS = Math.round(5000 / SNAP_HZ);
 export const INTERP_KEEP_MS = 400;
 export const PRED_KEEP_MS = 400;
-export const PRED_SLACK_XZ = 0.05;
-export const SNAP_BLEND = 0.22;
-export const HARD_SNAP_XZ = 1.6;
-export const HARD_SNAP_Y = 0.85;
+/** Ignore ~1 tick of walk error so 60 Hz snaps do not tug every packet. */
+export const PRED_SLACK_XZ = 0.12;
+export const PRED_SLACK_Y = 0.12;
+/** Half the old 30 Hz blend so 60 Hz snaps correct at the same rate. */
+export const SNAP_BLEND = 0.12;
+/** Walk ~0.4 s. 1.6 m was firing on interp delay + ordinary jitter. */
+export const HARD_SNAP_XZ = 2.5;
+export const HARD_SNAP_Y = 1.2;
 
 export type PredSample = { t: number; x: number; y: number; z: number };
 export type PoseSample = { t: number; x: number; y: number; z: number; yaw: number };
@@ -71,7 +78,7 @@ export function reconcilePredicted(
   const errZ = srvZ - bz;
   const err = Math.hypot(errX, errZ);
   if (err > HARD_SNAP_XZ || Math.abs(errY) > HARD_SNAP_Y) return { x: srvX, y: srvY, z: srvZ };
-  if (err < PRED_SLACK_XZ && Math.abs(errY) < 0.08) return { x: curX, y: curY, z: curZ };
+  if (err < PRED_SLACK_XZ && Math.abs(errY) < PRED_SLACK_Y) return { x: curX, y: curY, z: curZ };
   return {
     x: curX + errX * SNAP_BLEND,
     y: curY + errY * SNAP_BLEND,
@@ -95,6 +102,26 @@ export function pushPose(buf: PoseSample[], sample: PoseSample, keepMs = INTERP_
   buf.push(sample);
   const cut = sample.t - keepMs;
   while (buf.length && buf[0]!.t < cut) buf.shift();
+}
+
+/**
+ * If render time is past the newest pose, grow delay by the underrun plus one
+ * snapshot so the next sample sits inside the buffer instead of hitch-holding.
+ */
+export function nextInterpDelay(delayMs: number, newestT: number, now: number, dt = 1 / SNAP_HZ): number {
+  if (!(newestT > 0) || !Number.isFinite(now)) return Math.max(INTERP_DELAY_MS, delayMs);
+  const renderAt = now - delayMs;
+  if (renderAt > newestT) {
+    const pad = 1000 / SNAP_HZ;
+    return Math.min(INTERP_DELAY_MAX_MS, delayMs + (renderAt - newestT) + pad);
+  }
+  if (delayMs > INTERP_DELAY_MS) {
+    const spare = newestT - renderAt;
+    if (spare > 1000 / SNAP_HZ) {
+      return Math.max(INTERP_DELAY_MS, delayMs - Math.min(40, dt * 1000) * 0.35);
+    }
+  }
+  return Math.max(INTERP_DELAY_MS, delayMs);
 }
 
 /** Sample a pose at renderTime. Holds the latest sample — no extrapolation. */

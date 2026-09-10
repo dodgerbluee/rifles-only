@@ -12,8 +12,11 @@ import {
   HARD_SNAP_XZ,
   HARD_SNAP_Y,
   INTERP_DELAY_MS,
+  PRED_SLACK_XZ,
+  PRED_SLACK_Y,
   SNAP_BLEND,
   SNAP_HZ,
+  nextInterpDelay,
   pushPose,
   sampleInterp,
   type PoseSample,
@@ -29,6 +32,7 @@ export {
   SNAP_HZ,
   TICK_HZ,
   lookbackMs,
+  nextInterpDelay,
   predAt,
   pushPred,
   reconcilePredicted,
@@ -303,7 +307,7 @@ export function takeoverPeer(
   return true;
 }
 
-export function tickRemote(r: Remote, dt: number, time: number, world: World, froze: boolean) {
+export function tickRemote(r: Remote, dt: number, time: number, world: World, froze: boolean, rooted = false) {
   const inp = r.input;
   r.yaw = inp.yaw;
   r.pitch = inp.pitch;
@@ -330,21 +334,23 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   const rz = -Math.sin(r.yaw);
   let wx = 0;
   let wz = 0;
-  if (keys.has("KeyW")) {
-    wx += fx;
-    wz += fz;
-  }
-  if (keys.has("KeyS")) {
-    wx -= fx;
-    wz -= fz;
-  }
-  if (keys.has("KeyD")) {
-    wx += rx;
-    wz += rz;
-  }
-  if (keys.has("KeyA")) {
-    wx -= rx;
-    wz -= rz;
+  if (!rooted) {
+    if (keys.has("KeyW")) {
+      wx += fx;
+      wz += fz;
+    }
+    if (keys.has("KeyS")) {
+      wx -= fx;
+      wz -= fz;
+    }
+    if (keys.has("KeyD")) {
+      wx += rx;
+      wz += rz;
+    }
+    if (keys.has("KeyA")) {
+      wx -= rx;
+      wz -= rz;
+    }
   }
   const len = Math.hypot(wx, wz);
   const gh = groundHeight(world.colliders, r.x, r.z, RADIUS, r.y);
@@ -354,7 +360,7 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
     r.x = n.x;
     r.z = n.z;
   }
-  if (grounded && inp.jump && !r.jumpHeld) r.vy = Math.sqrt(2 * tuning.jumpH * tuning.gravity);
+  if (!rooted && grounded && inp.jump && !r.jumpHeld) r.vy = Math.sqrt(2 * tuning.jumpH * tuning.gravity);
   r.jumpHeld = !!inp.jump;
   if (grounded && r.vy <= 0) {
     r.y = gh;
@@ -538,6 +544,7 @@ export function applyMatchSnap(match: Match, snap: Snapshot) {
       name: p.name,
       occupant: p.occupant,
       alive: p.alive,
+      playerKey: p.playerKey,
     }));
   }
 }
@@ -591,6 +598,7 @@ export function reconcilePos(
 ): { x: number; y: number; z: number } {
   const err = Math.hypot(sx - x, sz - z);
   if (err > HARD_SNAP_XZ || Math.abs(sy - y) > HARD_SNAP_Y) return { x: sx, y: sy, z: sz };
+  if (err < PRED_SLACK_XZ && Math.abs(sy - y) < PRED_SLACK_Y) return { x, y, z };
   return {
     x: x + (sx - x) * SNAP_BLEND,
     y: y + (sy - y) * SNAP_BLEND,
@@ -610,9 +618,11 @@ function resetPoses(g: THREE.Group, p: Pawn, snapAt: number, snapSeq?: number) {
   g.userData.snapAt = snapAt;
   g.userData.snapSeq = snapSeq;
   g.userData.tx = p.x;
+  g.userData.ty = p.y;
   g.userData.tz = p.z;
   g.userData.walkX = p.x;
   g.userData.walkZ = p.z;
+  g.userData.interpDelay = INTERP_DELAY_MS;
 }
 
 export function syncClientPawns(
@@ -627,7 +637,6 @@ export function syncClientPawns(
   const now = opts?.now ?? (typeof performance !== "undefined" ? performance.now() : 0);
   const snapAt = opts?.snapAt ?? now;
   const snapSeq = opts?.snapSeq;
-  const renderAt = now - INTERP_DELAY_MS;
   const force = !!opts?.forceSnap;
   for (const p of pawns) {
     if ((p.netId ?? 0) === selfNetId) continue;
@@ -657,8 +666,11 @@ export function syncClientPawns(
       g.userData.name = p.name;
     }
     g.visible = !p.cow;
-    const err = Math.hypot(p.x - g.position.x, p.z - g.position.z);
-    if (force || err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
+    const fromX = Number(g.userData.tx ?? g.position.x);
+    const fromY = Number(g.userData.ty ?? g.position.y);
+    const fromZ = Number(g.userData.tz ?? g.position.z);
+    const err = Math.hypot(p.x - fromX, p.z - fromZ);
+    if (force || err > HARD_SNAP_XZ || Math.abs(p.y - fromY) > HARD_SNAP_Y) {
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
       resetPoses(g, p, snapAt, snapSeq);
@@ -666,11 +678,18 @@ export function syncClientPawns(
       pushPose(posesOf(g), { t: snapAt, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
       g.userData.snapAt = snapAt;
       g.userData.snapSeq = snapSeq;
-      g.userData.walkSpeed = snapWalkSpeed(g.userData.tx ?? p.x, g.userData.tz ?? p.z, p.x, p.z, 1 / SNAP_HZ);
+      g.userData.walkSpeed = snapWalkSpeed(fromX, fromZ, p.x, p.z, 1 / SNAP_HZ);
       g.userData.tx = p.x;
+      g.userData.ty = p.y;
       g.userData.tz = p.z;
     }
-    const pose = sampleInterp(posesOf(g), renderAt);
+    const poses = posesOf(g);
+    const newest = poses[poses.length - 1]?.t ?? snapAt;
+    let delay = Number(g.userData.interpDelay);
+    if (!Number.isFinite(delay) || force) delay = INTERP_DELAY_MS;
+    delay = nextInterpDelay(delay, newest, now, dt);
+    g.userData.interpDelay = delay;
+    const pose = sampleInterp(poses, now - delay);
     if (pose) {
       g.position.set(pose.x, pose.y, pose.z);
       g.rotation.y = pose.yaw;

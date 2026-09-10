@@ -2,8 +2,20 @@
  * Best-play must hold for the recap, and thrown nades must show up in snapshots.
  */
 import { createSim } from "../src/sim.ts";
+import { SNAP_HZ } from "../src/netFeel.ts";
 import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
-import { reelDrivesBotMeshes, reelWorldPawnVisible } from "../src/replay.ts";
+import {
+  FAST_RATE,
+  PLAY_RATE,
+  TAPE_MIN_DT,
+  createTape,
+  pushFrame,
+  recapWindow,
+  reelDrivesBotMeshes,
+  reelWorldPawnVisible,
+  samplePoses,
+  type Pose,
+} from "../src/replay.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -107,6 +119,64 @@ check(
   clouds > 0 || pops > 0,
   `clouds=${clouds} pops=${pops} nades=${popped.nades?.length ?? 0}`,
 );
+
+function poseAt(id: number, x: number): Pose {
+  return {
+    id,
+    x,
+    y: 0,
+    z: 0,
+    yaw: 0,
+    pitch: 0,
+    eye: 1.64,
+    alive: true,
+    weapon: "kar",
+    ads: false,
+    bash: 0,
+    fov: 90,
+    kick: 0,
+    punchP: 0,
+    punchY: 0,
+    flash: false,
+  };
+}
+
+const hz60 = 1 / SNAP_HZ;
+check("tape min gap is under a 60 Hz tick", TAPE_MIN_DT < hz60, `min=${TAPE_MIN_DT} tick=${hz60}`);
+check("FAST_RATE is 10× playback, not a tick rate", FAST_RATE === 10);
+
+const tape60 = createTape();
+for (let i = 0; i < 120; i++) pushFrame(tape60, i * hz60, [poseAt(1, i * hz60)]);
+check("60 Hz tape keeps more than one frame", tape60.frames.length > 100, `frames=${tape60.frames.length}`);
+const recap60 = recapWindow(tape60);
+check("60 Hz tape still has a recap window", !!recap60);
+const mid = samplePoses(tape60, 0.5).get(1);
+check("recap pawns interpolate between 60 Hz poses", !!mid && mid.x > 0.4 && mid.x < 0.6, `x=${mid?.x}`);
+
+if (recap60) {
+  let playT = recap60.start;
+  let steps = 0;
+  while (playT < recap60.end - 1e-9 && steps < 20_000) {
+    playT += hz60 * PLAY_RATE;
+    steps += 1;
+  }
+  const wall = steps * hz60;
+  const span = recap60.end - recap60.start;
+  check("60 Hz recap plays at 1×, not 30/60 fast-forward", Math.abs(wall - span) < 0.08, `wall=${wall.toFixed(3)} span=${span.toFixed(3)}`);
+}
+
+const tape30 = createTape();
+for (let i = 0; i < 60; i++) pushFrame(tape30, i / 30, [poseAt(1, i / 30)]);
+const recap30 = recapWindow(tape30);
+check("30 Hz tape recap span matches 60 Hz", !!recap30 && !!recap60 && Math.abs(recap30.end - recap30.start - ((recap60.end - recap60.start))) < 0.05);
+
+let skipT = 0;
+let skipWall = 0;
+while (skipT < 4 && skipWall < 20) {
+  skipT += hz60 * FAST_RATE;
+  skipWall += hz60;
+}
+check("FAST_RATE skip is 10× wall time", Math.abs(skipWall - 4 / FAST_RATE) < 0.05, `wall=${skipWall.toFixed(3)}`);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

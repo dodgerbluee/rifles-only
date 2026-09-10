@@ -4,6 +4,7 @@ import {
   plantingTeam,
   pickupWire,
   plantWire,
+  interruptPlant,
   slotById,
   watchingTeam,
   type Match,
@@ -305,6 +306,7 @@ export function updateBots(
         dir.y += (Math.random() - 0.5) * aim.spread * 0.62;
         dir.z += (Math.random() - 0.5) * aim.spread;
         dir.normalize();
+        interruptPlant(match, b.id);
         onShoot(new THREE.Vector3(b.x, b.y + 1.45, b.z), dir, enemy, b.id);
       }
       strafeMove(b, dt, colliders, time);
