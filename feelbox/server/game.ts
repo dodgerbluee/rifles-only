@@ -4,6 +4,7 @@
  */
 import http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
+import { SNAP_HZ, TICK_HZ } from "../src/netFeel";
 import { createSim } from "../src/sim";
 import { loadServerConfig } from "./config";
 
@@ -16,8 +17,6 @@ const GAME_NAME = process.env.GAME_NAME ?? cfg.name;
 const HEARTBEAT_MS = 15_000;
 const DEAD_MS = 45_000;
 const HELLO_MS = 5_000;
-const SNAP_HZ = 30;
-const TICK_HZ = 30;
 const LOBBY_BEAT_MS = 2000;
 const MAX_NAME = 24;
 
@@ -134,7 +133,7 @@ wss.on("connection", (ws) => {
       peer.helloed = true;
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
-      sim.join(id, peer.name, undefined, msg.skin);
+      sim.join(id, peer.name, undefined, msg.skin, msg.look);
       send(ws, { type: "welcome", id, role: "client" });
       for (const o of living()) {
         if (o.id === id) continue;

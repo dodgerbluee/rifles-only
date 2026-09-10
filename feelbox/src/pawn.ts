@@ -1,5 +1,18 @@
 import * as THREE from "three";
 import type { Team } from "./match";
+import {
+  packLook,
+  resolveLook,
+  skinFromLook,
+  type Appearance,
+  type HairId,
+  type HatId,
+  type PantsId,
+  type ShirtId,
+  type ShoesId,
+} from "./look";
+
+export { parseLook, packLook, resolveLook, lookFor, looksEqual, type Appearance } from "./look";
 
 /** Cylinder body (current). Keep so we can revert from admin. */
 export type PawnStyle = "classic" | "limbs";
@@ -37,9 +50,23 @@ export type WalkRig = {
 
 const EMBER = 0xc44a22;
 const STONE = 0x2f6cad;
-const SKIN = 0xc4a07a;
 const BOOT = 0x1c1814;
 const STEEL = 0x1c1e18;
+const FACE_HEX: Record<Appearance["face"], number> = {
+  pale: 0xe0c4a8,
+  tan: 0xc4a07a,
+  olive: 0x8a6a48,
+  umber: 0x5a3a28,
+  square: 0xb89268,
+};
+const HAIR_HEX: Record<HairId, number> = {
+  buzz: 0x1a1410,
+  crew: 0x2a2018,
+  mop: 0x8a6a38,
+  fade: 0x1c1814,
+  bun: 0x5a2818,
+};
+const BEARD_HEX = 0x2a2018;
 const _up = new THREE.Vector3(0, 1, 0);
 const _dir = new THREE.Vector3();
 const _mid = new THREE.Vector3();
@@ -69,12 +96,13 @@ export function setPawnCloth(cloth: THREE.Mesh[], color: number) {
   for (const m of cloth) (m.material as THREE.MeshStandardMaterial).color.set(color);
 }
 
-export function buildPawn(root: THREE.Group, team: Team, botId?: number, skin?: PawnSkin): PawnParts {
+export function buildPawn(root: THREE.Group, team: Team, botId?: number, kit?: PawnSkin | Appearance | string): PawnParts {
   clearGroup(root);
-  const look = skin ?? skinFor(botId);
-  const parts = pawnStyle.current === "classic" ? classicPawn(team) : limbsPawn(team, look);
+  const look = resolveLook(kit, botId);
+  const parts = pawnStyle.current === "classic" ? classicPawn(team, look) : limbsPawn(team, look);
   stamp(parts, team, botId);
-  root.add(parts.body, parts.head, parts.helm, parts.rifle);
+  root.add(parts.body, parts.head, parts.rifle);
+  if (!parts.helm.parent) root.add(parts.helm);
   if (parts.walk) root.add(parts.walk.lHip, parts.walk.rHip);
   for (const m of parts.hits) {
     if (!m.parent) root.add(m);
@@ -85,7 +113,9 @@ export function buildPawn(root: THREE.Group, team: Team, botId?: number, skin?: 
   root.userData.head = parts.head;
   root.userData.helm = parts.helm;
   root.userData.walk = parts.walk ?? null;
-  root.userData.skin = look;
+  root.userData.skin = skinFromLook(look);
+  root.userData.look = look;
+  root.userData.lookId = packLook(look);
   root.userData.team = team;
   if (root.userData.gait == null) root.userData.gait = 0;
   root.userData.walkX = root.position.x;
@@ -185,19 +215,23 @@ function stamp(parts: PawnParts, team: Team, botId?: number) {
     if (botId != null) m.userData = { botId, part, team };
   };
   mark(parts.body, "body");
-  mark(parts.head, "head");
-  mark(parts.helm, "head");
+  parts.head.traverse((o) => {
+    if (o instanceof THREE.Mesh) mark(o, "head");
+  });
+  parts.helm.traverse((o) => {
+    if (o instanceof THREE.Mesh) mark(o, "head");
+  });
   for (const m of parts.hits) mark(m, "body");
 }
 
-function classicPawn(team: Team): PawnParts {
+function classicPawn(team: Team, look: Appearance): PawnParts {
   const color = teamCloth(team);
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(0.26, 0.3, 1.38, 10),
     mat(color, 0.85),
   );
   body.position.y = 0.78;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), mat(SKIN, 0.7));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), mat(FACE_HEX[look.face], 0.7));
   head.position.y = 1.68;
   const helm = new THREE.Mesh(
     new THREE.SphereGeometry(0.255, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
@@ -210,80 +244,53 @@ function classicPawn(team: Team): PawnParts {
 }
 
 type Kit = {
-  robot: boolean;
   tunic: THREE.MeshStandardMaterial;
   pants: THREE.MeshStandardMaterial;
   flesh: THREE.MeshStandardMaterial;
   boot: THREE.MeshStandardMaterial;
   helm: THREE.MeshStandardMaterial;
   plate: THREE.MeshStandardMaterial;
+  hair: THREE.MeshStandardMaterial;
 };
 
-function kitFor(team: Team, skin: PawnSkin): Kit {
+function kitFor(team: Team, look: Appearance): Kit {
   const ember = team === "ember";
-  const cloth = teamCloth(team);
-  const helm = teamHelm(team);
-  if (skin === "rifle") {
-    return {
-      robot: false,
-      tunic: mat(cloth, 0.82),
-      pants: mat(ember ? 0x5a2410 : 0x1a3a58, 0.9),
-      flesh: mat(SKIN, 0.72),
-      boot: mat(BOOT, 0.92),
-      helm: mat(helm, 0.5, 0.22),
-      plate: mat(STEEL, 0.48, 0.35),
-    };
-  }
-  if (skin === "field") {
-    return {
-      robot: false,
-      tunic: mat(ember ? 0xb24a18 : 0x2a68a8, 0.86),
-      pants: mat(ember ? 0x3a2010 : 0x1c3048, 0.92),
-      flesh: mat(0x8a6a48, 0.74),
-      boot: mat(0x2a2018, 0.9),
-      helm: mat(helm, 0.62, 0.12),
-      plate: mat(STEEL, 0.48, 0.35),
-    };
-  }
-  if (skin === "unit") {
-    return {
-      robot: true,
-      tunic: mat(cloth, 0.38, 0.55),
-      pants: mat(ember ? 0x5a2818 : 0x1c3858, 0.4, 0.5),
-      flesh: mat(ember ? 0x9a6050 : 0x5a88b0, 0.35, 0.7),
-      boot: mat(0x1a1c1e, 0.4, 0.45),
-      helm: mat(helm, 0.28, 0.65),
-      plate: mat(ember ? 0xe06028 : 0x4a90d0, 0.28, 0.72),
-    };
-  }
+  const plate = look.shirt === "plate";
   return {
-    robot: true,
-    tunic: mat(ember ? 0xa83818 : 0x245888, 0.38, 0.62),
-    pants: mat(0x1c1e20, 0.36, 0.58),
-    flesh: mat(0x4a5054, 0.3, 0.75),
-    boot: mat(0x121416, 0.35, 0.5),
-    helm: mat(ember ? 0xff6a28 : 0x6ab4ff, 0.25, 0.7),
-    plate: mat(ember ? 0xe05020 : 0x3a78c0, 0.22, 0.8),
+    tunic: mat(teamCloth(team), plate ? 0.42 : 0.82, plate ? 0.45 : 0.04),
+    pants: mat(ember ? 0x5a2410 : 0x1a3a58, look.pants === "armor" ? 0.4 : 0.9, look.pants === "armor" ? 0.45 : 0.04),
+    flesh: mat(FACE_HEX[look.face], 0.72),
+    boot: shoeMat(look.shoes),
+    helm: mat(teamHelm(team), look.hat === "helmet" ? 0.5 : 0.72, look.hat === "helmet" ? 0.22 : 0.06),
+    plate: mat(STEEL, 0.48, 0.35),
+    hair: mat(HAIR_HEX[look.hair], 0.88),
   };
 }
 
-function limbsPawn(team: Team, skin: PawnSkin): PawnParts {
-  const k = kitFor(team, skin);
+function shoeMat(id: ShoesId) {
+  if (id === "sneaker") return mat(0x3a342c, 0.78);
+  if (id === "wrap") return mat(0x4a3a28, 0.9);
+  if (id === "steel") return mat(0x4a4e52, 0.38, 0.62);
+  if (id === "bare") return mat(0xc4a07a, 0.74);
+  return mat(BOOT, 0.92);
+}
+
+function limbsPawn(team: Team, look: Appearance): PawnParts {
+  const k = kitFor(team, look);
   const cloth: THREE.Mesh[] = [];
   const hits: THREE.Mesh[] = [];
   const extras: THREE.Mesh[] = [];
 
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.36, 4, 8), k.tunic);
+  const body = makeShirt(look.shirt, k, team, cloth, extras);
   body.position.y = 1.18;
-  cloth.push(body);
 
   const hips = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), k.pants);
   hips.position.y = 0.92;
-  hips.scale.set(1.22, 0.7, 0.95);
+  hips.scale.copy(hipScale(look.pants));
   cloth.push(hips);
   hits.push(hips);
 
-  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 8), k.robot ? k.plate : mat(0x2a2218, 0.9));
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 8), look.shirt === "plate" ? k.plate : mat(0x2a2218, 0.9));
   belt.position.y = 0.98;
 
   const sash = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.46, 0.05), mat(teamTrim(team), 0.45, 0.2));
@@ -291,16 +298,18 @@ function limbsPawn(team: Team, skin: PawnSkin): PawnParts {
   sash.rotation.z = team === "ember" ? -0.28 : 0.28;
   cloth.push(sash);
 
-  const lLeg = makeLeg(-1, k, extras);
-  const rLeg = makeLeg(1, k, extras);
+  const lLeg = makeLeg(-1, k, extras, look);
+  const rLeg = makeLeg(1, k, extras, look);
   cloth.push(...lLeg.cloth, ...rLeg.cloth);
   hits.push(...lLeg.hits, ...rLeg.hits);
 
-  const lArm = bone(-0.24, 1.36, 0.02, -0.16, 1.2, -0.16, 0.068, k.tunic);
-  const lFore = bone(-0.16, 1.2, -0.16, 0.02, 1.14, -0.38, 0.058, k.tunic);
-  const rArm = bone(0.24, 1.36, 0.02, 0.22, 1.18, -0.1, 0.068, k.tunic);
-  const rFore = bone(0.22, 1.18, -0.1, 0.14, 1.12, -0.28, 0.058, k.tunic);
-  cloth.push(lArm, lFore, rArm, rFore);
+  const armR = look.shirt === "parka" ? 0.082 : look.shirt === "tee" ? 0.056 : 0.068;
+  const lArm = bone(-0.24, 1.36, 0.02, -0.16, 1.2, -0.16, armR, look.shirt === "tee" ? k.flesh : k.tunic);
+  const lFore = bone(-0.16, 1.2, -0.16, 0.02, 1.14, -0.38, armR * 0.86, look.shirt === "tee" || look.shirt === "vest" ? k.flesh : k.tunic);
+  const rArm = bone(0.24, 1.36, 0.02, 0.22, 1.18, -0.1, armR, look.shirt === "tee" ? k.flesh : k.tunic);
+  const rFore = bone(0.22, 1.18, -0.1, 0.14, 1.12, -0.28, armR * 0.86, look.shirt === "tee" || look.shirt === "vest" ? k.flesh : k.tunic);
+  if (look.shirt !== "tee") cloth.push(lArm, rArm);
+  if (look.shirt !== "tee" && look.shirt !== "vest") cloth.push(lFore, rFore);
   hits.push(lArm, lFore, rArm, rFore);
 
   const lHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), k.flesh);
@@ -308,27 +317,17 @@ function limbsPawn(team: Team, skin: PawnSkin): PawnParts {
   const rHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), k.flesh);
   rHand.position.set(0.14, 1.12, -0.3);
 
-  const head = new THREE.Mesh(
-    k.robot ? new THREE.SphereGeometry(0.17, 10, 8) : new THREE.SphereGeometry(0.17, 12, 10),
-    k.flesh,
-  );
+  const head = makeHead(look, k);
   head.position.y = 1.62;
-
-  const helm = k.robot
-    ? robotHelm(k, skin, team)
-    : skin === "field"
-      ? fieldCap(k)
-      : bowlHelm(k);
-  helm.position.y = k.robot ? 1.64 : skin === "field" ? 1.7 : 1.66;
-
-  if (k.robot) extras.push(...robotBits(k, skin, team));
-  else if (skin === "field") extras.push(...fieldBits(k));
+  dressHair(head, look.hair, k);
+  dressBeard(head, look.beard, k);
+  const helm = dressHat(head, look.hat, k, team, cloth);
 
   const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.72), k.plate);
   rifle.position.set(0.08, 1.15, -0.28);
   rifle.rotation.x = 0.08;
   rifle.rotation.y = 0.12;
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.16), mat(k.robot ? 0x2a2e32 : 0x5a3a22, 0.55, k.robot ? 0.4 : 0.08));
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.16), mat(0x5a3a22, 0.55, 0.08));
   rifle.add(stock);
   stock.position.set(0, -0.01, 0.28);
 
@@ -343,133 +342,286 @@ function limbsPawn(team: Team, skin: PawnSkin): PawnParts {
   };
 }
 
-function bowlHelm(k: Kit) {
-  return new THREE.Mesh(
-    new THREE.SphereGeometry(0.185, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.58),
-    k.helm,
-  );
+function hipScale(id: PantsId) {
+  if (id === "slim") return new THREE.Vector3(1.02, 0.62, 0.82);
+  if (id === "shorts") return new THREE.Vector3(1.28, 0.72, 1.02);
+  if (id === "wrap") return new THREE.Vector3(1.16, 0.68, 0.92);
+  if (id === "armor") return new THREE.Vector3(1.2, 0.78, 0.98);
+  return new THREE.Vector3(1.28, 0.7, 1.02);
 }
 
-function fieldCap(k: Kit) {
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.52), k.helm);
-  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.024, 0.14), k.helm);
-  brim.position.set(0, -0.02, -0.1);
-  dome.add(brim);
-  return dome;
+function makeShirt(id: ShirtId, k: Kit, team: Team, cloth: THREE.Mesh[], extras: THREE.Mesh[]) {
+  if (id === "parka") {
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.58, 0.36), k.tunic);
+    cloth.push(body);
+    const hood = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.038, 6, 10), k.tunic);
+    hood.position.set(0, 1.44, -0.02);
+    hood.rotation.x = 1.15;
+    extras.push(hood);
+    cloth.push(hood);
+    return body;
+  }
+  if (id === "vest") {
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.34, 4, 8), mat(0x2a241c, 0.88));
+    extras.push(body);
+    const flapL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.08), k.tunic);
+    flapL.position.set(-0.12, 1.2, 0.1);
+    const flapR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.08), k.tunic);
+    flapR.position.set(0.12, 1.2, 0.1);
+    extras.push(flapL, flapR);
+    cloth.push(flapL, flapR);
+    return body;
+  }
+  if (id === "plate") {
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.36, 4, 8), k.tunic);
+    cloth.push(body);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.28, 0.12), k.plate);
+    plate.position.set(0, 1.22, 0.1);
+    extras.push(plate);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.04), mat(teamTrim(team), 0.4, 0.25));
+    trim.position.set(0, 1.3, 0.16);
+    extras.push(trim);
+    cloth.push(trim);
+    return body;
+  }
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(id === "henley" ? 0.23 : 0.21, 0.36, 4, 8), k.tunic);
+  cloth.push(body);
+  if (id === "henley") {
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.028, 6, 10), k.tunic);
+    collar.position.set(0, 1.42, 0);
+    collar.rotation.x = 1.2;
+    extras.push(collar);
+    cloth.push(collar);
+  }
+  return body;
 }
 
-function robotHelm(k: Kit, skin: PawnSkin, team: Team) {
-  const helm = new THREE.Mesh(
-    skin === "frame" ? new THREE.BoxGeometry(0.3, 0.2, 0.26) : new THREE.CylinderGeometry(0.155, 0.175, 0.18, 8),
-    k.helm,
-  );
-  const ember = team === "ember";
-  const visor = new THREE.Mesh(
-    new THREE.BoxGeometry(0.2, 0.05, 0.05),
-    new THREE.MeshStandardMaterial({
-      color: ember ? 0xff6a32 : 0x7ad0ff,
-      emissive: ember ? 0x5a1808 : 0x226688,
-      emissiveIntensity: 0.85,
-      roughness: 0.25,
-      metalness: 0.4,
-    }),
-  );
-  visor.position.set(0, 0.01, -0.12);
-  helm.add(visor);
+function makeHead(look: Appearance, k: Kit) {
+  const head =
+    look.face === "square"
+      ? new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.3), k.flesh)
+      : new THREE.Mesh(new THREE.SphereGeometry(look.face === "pale" ? 0.175 : look.face === "umber" ? 0.168 : 0.17, 12, 10), k.flesh);
+  if (look.face === "olive") head.scale.set(0.92, 1.08, 1);
+  const eyeM = mat(0x1a1410, 0.4);
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.028, 0.03), eyeM);
+  eyeL.position.set(-0.055, 0.02, -0.14);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.055;
+  head.add(eyeL, eyeR);
+  if (look.face === "square") {
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.06), k.flesh);
+    brow.position.set(0, 0.08, -0.14);
+    head.add(brow);
+  } else {
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.05), k.flesh);
+    nose.position.set(0, -0.01, -0.16);
+    head.add(nose);
+  }
+  const earL = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.04), k.flesh);
+  earL.position.set(-0.16, 0, 0);
+  const earR = earL.clone();
+  earR.position.x = 0.16;
+  head.add(earL, earR);
+  return head;
+}
+
+function dressHair(head: THREE.Mesh, id: HairId, k: Kit) {
+  const hair = k.hair;
+  if (id === "buzz") {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), hair);
+    cap.position.y = 0.02;
+    head.add(cap);
+    return;
+  }
+  if (id === "crew") {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.2), hair);
+    top.position.set(0, 0.14, 0.02);
+    head.add(top);
+    return;
+  }
+  if (id === "mop") {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.3), hair);
+    top.position.set(0, 0.12, 0.02);
+    const bang = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.08), hair);
+    bang.position.set(0, 0.06, -0.16);
+    head.add(top, bang);
+    return;
+  }
+  if (id === "fade") {
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.18), hair);
+    top.position.set(0, 0.14, 0);
+    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.16), hair);
+    sideL.position.set(-0.14, 0.04, 0);
+    const sideR = sideL.clone();
+    sideR.position.x = 0.14;
+    head.add(top, sideL, sideR);
+    return;
+  }
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.18), hair);
+  top.position.set(0, 0.12, 0.04);
+  const bun = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), hair);
+  bun.position.set(0, 0.16, 0.14);
+  head.add(top, bun);
+}
+
+function dressBeard(head: THREE.Mesh, id: Appearance["beard"], k: Kit) {
+  if (id === "none") return;
+  const hair = mat(BEARD_HEX, 0.9);
+  if (id === "stubble") {
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.12), hair);
+    jaw.position.set(0, -0.12, -0.08);
+    head.add(jaw);
+    return;
+  }
+  if (id === "goatee") {
+    const chin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), hair);
+    chin.position.set(0, -0.16, -0.12);
+    head.add(chin);
+    return;
+  }
+  if (id === "full") {
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.16), hair);
+    jaw.position.set(0, -0.14, -0.06);
+    const cheekL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.1), hair);
+    cheekL.position.set(-0.12, -0.08, -0.08);
+    const cheekR = cheekL.clone();
+    cheekR.position.x = 0.12;
+    head.add(jaw, cheekL, cheekR);
+    return;
+  }
+  const chin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.07), hair);
+  chin.position.set(0, -0.16, -0.12);
+  const braid = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.18, 0.045), hair);
+  braid.position.set(0, -0.28, -0.12);
+  const tie = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.06), k.helm);
+  tie.position.set(0, -0.22, -0.12);
+  head.add(chin, braid, tie);
+}
+
+function dressHat(head: THREE.Mesh, id: HatId, k: Kit, _team: Team, cloth: THREE.Mesh[]) {
+  if (id === "none") {
+    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.01, 4, 4), k.helm);
+    helm.visible = false;
+    head.add(helm);
+    return helm;
+  }
+  if (id === "watch") {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.19, 0.14, 10), k.helm);
+    cap.position.y = 0.1;
+    head.add(cap);
+    cloth.push(cap);
+    return cap;
+  }
+  if (id === "ushanka") {
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.32), k.helm);
+    crown.position.y = 0.12;
+    const flapL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.16), k.helm);
+    flapL.position.set(-0.2, 0.02, 0);
+    const flapR = flapL.clone();
+    flapR.position.x = 0.2;
+    crown.add(flapL, flapR);
+    head.add(crown);
+    cloth.push(crown, flapL, flapR);
+    return crown;
+  }
+  if (id === "boonie") {
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.52), k.helm);
+    dome.position.y = 0.08;
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.02, 12), k.helm);
+    brim.position.y = -0.02;
+    dome.add(brim);
+    head.add(dome);
+    cloth.push(dome, brim);
+    return dome;
+  }
+  const helm = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.58), k.helm);
+  helm.position.y = 0.04;
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.12), k.helm);
+  brim.position.set(0, -0.04, -0.1);
+  helm.add(brim);
+  head.add(helm);
+  cloth.push(helm, brim);
   return helm;
 }
 
-function robotBits(k: Kit, skin: PawnSkin, team: Team) {
-  const bits: THREE.Mesh[] = [];
-  const chest = new THREE.Mesh(
-    skin === "frame" ? new THREE.BoxGeometry(0.4, 0.26, 0.24) : new THREE.BoxGeometry(0.36, 0.22, 0.22),
-    k.plate,
-  );
-  chest.position.set(0, 1.22, 0.02);
-  bits.push(chest);
-
-  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.12), k.pants);
-  pack.position.set(0, 1.2, 0.14);
-  bits.push(pack);
-
-  for (const [x, y, z] of [
-    [-0.24, 1.36, 0.02],
-    [0.24, 1.36, 0.02],
-  ] as const) {
-    const joint = new THREE.Mesh(new THREE.SphereGeometry(skin === "frame" ? 0.062 : 0.055, 8, 6), k.flesh);
-    joint.position.set(x, y, z);
-    bits.push(joint);
-  }
-
-  if (skin === "frame") {
-    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), k.plate);
-    ant.position.set(0.06, 1.78, 0);
-    bits.push(ant);
-    const tip = new THREE.Mesh(
-      new THREE.SphereGeometry(0.022, 6, 6),
-      new THREE.MeshStandardMaterial({
-        color: team === "ember" ? 0xff6a32 : 0x7ad0ff,
-        emissive: team === "ember" ? 0x5a1808 : 0x226688,
-        emissiveIntensity: 0.9,
-      }),
-    );
-    tip.position.set(0.06, 1.87, 0);
-    bits.push(tip);
-  } else {
-    const lens = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.035, 0.035, 0.04, 8),
-      new THREE.MeshStandardMaterial({
-        color: team === "ember" ? 0xff6a32 : 0x7ad0ff,
-        emissive: team === "ember" ? 0x5a1808 : 0x226688,
-        emissiveIntensity: 0.7,
-        metalness: 0.4,
-        roughness: 0.3,
-      }),
-    );
-    lens.rotation.x = Math.PI / 2;
-    lens.position.set(0.08, 1.22, -0.1);
-    bits.push(lens);
-  }
-  return bits;
-}
-
-function fieldBits(k: Kit) {
-  const strap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.42, 0.02), k.boot);
-  strap.position.set(0.1, 1.18, 0.02);
-  strap.rotation.z = -0.35;
-  const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.06), k.boot);
-  pouch.position.set(-0.12, 1.0, 0.04);
-  return [strap, pouch];
-}
-
-function makeLeg(side: 1 | -1, k: Kit, extras: THREE.Mesh[]) {
+function makeLeg(side: 1 | -1, k: Kit, extras: THREE.Mesh[], look: Appearance) {
   const hip = new THREE.Group();
   hip.position.set(side * 0.1, 0.88, side > 0 ? -0.02 : 0.02);
   hip.rotation.z = side * 0.03;
-  if (k.robot) {
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), k.flesh);
-    hip.add(ball);
-    extras.push(ball);
-  }
+  const thighR = look.pants === "slim" ? 0.068 : look.pants === "cargo" ? 0.096 : 0.088;
   const thighLen = 0.4;
-  const thigh = bone(0, 0, 0, 0, -thighLen, 0, 0.088, k.pants);
+  const thigh = bone(0, 0, 0, 0, -thighLen, 0, thighR, k.pants);
   hip.add(thigh);
+  const cloth: THREE.Mesh[] = [thigh];
+  if (look.pants === "cargo") {
+    const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.08), k.pants);
+    pouch.position.set(side * 0.08, -0.18, 0.04);
+    hip.add(pouch);
+    extras.push(pouch);
+    cloth.push(pouch);
+  }
   const knee = new THREE.Group();
   knee.position.y = -thighLen;
   hip.add(knee);
-  if (k.robot) {
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), k.flesh);
-    knee.add(ball);
-    extras.push(ball);
-  }
-  const shinLen = 0.42;
-  const shin = bone(0, 0, 0, 0, -shinLen, 0, 0.078, k.pants);
+  const shinLen = look.pants === "shorts" ? 0.32 : 0.42;
+  const shinMat = look.pants === "shorts" ? k.flesh : k.pants;
+  const shinR = look.pants === "slim" ? 0.058 : look.pants === "shorts" ? 0.06 : 0.078;
+  const shin = bone(0, 0, 0, 0, -shinLen, 0, shinR, shinMat);
   knee.add(shin);
+  if (look.pants !== "shorts") cloth.push(shin);
+  if (look.pants === "wrap") {
+    const puttee = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.082, 0.22, 8), k.pants);
+    puttee.position.y = -shinLen * 0.45;
+    knee.add(puttee);
+    cloth.push(puttee);
+  }
+  if (look.pants === "armor") {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.1), k.plate);
+    plate.position.set(0, -shinLen * 0.45, 0.04);
+    knee.add(plate);
+    extras.push(plate);
+  }
+  const foot = makeShoe(look.shoes, k, shinLen);
+  knee.add(foot);
+  return { hip, knee, cloth, hits: [thigh, shin, foot] };
+}
+
+function makeShoe(id: ShoesId, k: Kit, shinLen: number) {
+  if (id === "sneaker") {
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.2), k.boot);
+    foot.position.set(0, -shinLen - 0.035, -0.07);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.132, 0.02, 0.06), mat(0xd8d0c4, 0.7));
+    stripe.position.set(0, 0.02, -0.02);
+    foot.add(stripe);
+    foot.castShadow = true;
+    return foot;
+  }
+  if (id === "wrap") {
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.16), k.boot);
+    foot.position.set(0, -shinLen - 0.025, -0.05);
+    foot.castShadow = true;
+    return foot;
+  }
+  if (id === "steel") {
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.24), k.boot);
+    foot.position.set(0, -shinLen - 0.05, -0.08);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.08), k.plate);
+    cap.position.set(0, 0.01, -0.1);
+    foot.add(cap);
+    foot.castShadow = true;
+    return foot;
+  }
+  if (id === "bare") {
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), k.flesh);
+    foot.scale.set(1.1, 0.7, 1.4);
+    foot.position.set(0, -shinLen - 0.03, -0.05);
+    foot.castShadow = true;
+    return foot;
+  }
   const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.22), k.boot);
   foot.position.set(0, -shinLen - 0.045, -0.08);
   foot.castShadow = true;
-  knee.add(foot);
-  return { hip, knee, cloth: [thigh, shin], hits: [thigh, shin, foot] };
+  return foot;
 }
 
 function bone(

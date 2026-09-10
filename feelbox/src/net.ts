@@ -2,6 +2,8 @@
  * Browser is always a client of a dedicated game process. Input goes out;
  * snapshots come in.
  */
+import { DEFAULT_LOOK, packLook } from "./look";
+
 export type NetRole = "host" | "client" | "offline";
 
 export type Team = "ember" | "stone";
@@ -52,6 +54,8 @@ export type Pawn = {
   stun?: boolean;
   cow?: boolean;
   skin?: "rifle" | "field" | "unit" | "frame";
+  /** Packed 7-digit appearance (face/beard/hair/hat/shirt/pants/shoes). */
+  look?: string;
 };
 
 /** Admin cow: flaming, no weapons, then explode. */
@@ -153,7 +157,7 @@ export type KillFeedItem = {
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */
 export type ClientEvent =
-  | { kind: "joinTeam"; team: Team; name: string; skin?: "rifle" | "field" | "unit" | "frame" }
+  | { kind: "joinTeam"; team: Team; name: string; skin?: "rifle" | "field" | "unit" | "frame"; look?: string }
   | {
       kind: "throwSmoke";
       ox: number;
@@ -274,6 +278,7 @@ export async function fetchServers(): Promise<ListedServer[]> {
 
 let helloName = "You";
 let helloSkin: "rifle" | "field" | "unit" | "frame" = "rifle";
+let helloLook = packLook(DEFAULT_LOOK);
 
 export function setNetName(name: string) {
   helloName = name.trim().slice(0, 18) || "You";
@@ -281,6 +286,10 @@ export function setNetName(name: string) {
 
 export function setNetSkin(skin: "rifle" | "field" | "unit" | "frame") {
   helloSkin = skin;
+}
+
+export function setNetLook(look: string) {
+  if (typeof look === "string" && /^[0-4]{7}$/.test(look)) helloLook = look;
 }
 
 export function connectNet(url?: string): NetHandle {
@@ -465,7 +474,7 @@ export function connectNet(url?: string): NetHandle {
       return;
     }
     ws.addEventListener("open", () => {
-      rawSend({ type: "hello", name: helloName, skin: helloSkin });
+      rawSend({ type: "hello", name: helloName, skin: helloSkin, look: helloLook });
     });
     ws.addEventListener("message", onMessage);
     ws.addEventListener("close", () => {

@@ -2,6 +2,12 @@
  * Planting must charge, then the fuse clock has to tick while the Bomb is live.
  */
 import {
+  createHoldSound,
+  isActivelyCutting,
+  stopCutSound,
+  tickHoldSound,
+} from "../src/holdSound.ts";
+import {
   countLiving,
   createMatch,
   formatTime,
@@ -136,6 +142,54 @@ check(
   `mode=${taken.wire.mode} carrier=${taken.wire.carrierId}`,
 );
 check("sim pickup input has no KeyF", !noF.keys.includes("KeyF") && noF.use === false);
+
+const wireAt = { wx: -9, wy: 3.4, wz: 20.5 };
+const cutter = {
+  phase: "planted",
+  wireMode: "planted",
+  holdingUse: true,
+  alive: true,
+  cutterTeam: "stone",
+  watchTeam: "stone",
+  x: -9,
+  y: 3.4,
+  z: 20.5,
+  ...wireAt,
+};
+check("hold-F in range is actively cutting", isActivelyCutting(cutter));
+check(
+  "leftover cutHold does not count as cutting",
+  !isActivelyCutting({ ...cutter, holdingUse: false }),
+);
+check("release use is not actively cutting", !isActivelyCutting({ ...cutter, holdingUse: false }));
+check("walk away is not actively cutting", !isActivelyCutting({ ...cutter, x: 4, z: 0 }));
+check("dead is not actively cutting", !isActivelyCutting({ ...cutter, alive: false }));
+check("round not planted is not actively cutting", !isActivelyCutting({ ...cutter, phase: "live" }));
+
+const sound = createHoldSound();
+let starts = 0;
+let ticks = 0;
+let stops = 0;
+const cues = {
+  playCutStart: () => {
+    starts += 1;
+  },
+  playPlantStart: () => {},
+  playHoldTick: () => {
+    ticks += 1;
+  },
+  stopCut: () => {
+    stops += 1;
+  },
+};
+tickHoldSound(sound, { holdingPlant: false, holdingCut: true, dt: 0.02 }, cues);
+check("start cut turns the hold sound on", sound.cutting && sound.plantCue && starts === 1, `starts=${starts}`);
+tickHoldSound(sound, { holdingPlant: false, holdingCut: true, dt: 0.3 }, cues);
+check("cut hold keeps ticking while held", ticks >= 1 && stops === 0, `ticks=${ticks} stops=${stops}`);
+tickHoldSound(sound, { holdingPlant: false, holdingCut: false, dt: 0.02 }, cues);
+check("release use turns the hold sound off", !sound.cutting && !sound.plantCue && stops === 1, `stops=${stops}`);
+stopCutSound(sound);
+check("stopCutSound leaves the loop idle", !sound.cutting && sound.holdTick === 0);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

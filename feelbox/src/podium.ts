@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Team } from "./match";
-import { buildPawn, poseStance, type PawnSkin } from "./pawn";
+import { buildPawn, poseStance, parseLook, type Appearance } from "./pawn";
 import type { World } from "./world";
 
 export type PodiumPlace = {
@@ -10,7 +10,8 @@ export type PodiumPlace = {
   kills: number;
   assists: number;
   deaths: number;
-  skin?: PawnSkin;
+  skin?: string;
+  look?: string | Appearance;
 };
 
 let group: THREE.Group | null = null;
@@ -37,7 +38,7 @@ export function mountPodium(scene: THREE.Scene, world: World, places: PodiumPlac
     stand.castShadow = true;
     group.add(stand);
     const fig = new THREE.Group();
-    buildPawn(fig, s.place.team, s.place.id, s.place.skin);
+    buildPawn(fig, s.place.team, s.place.id, parseLook(s.place.look) ?? s.place.skin);
     poseStance(fig, "stand");
     fig.position.set(s.x, s.h, 0);
     fig.rotation.y = Math.PI;

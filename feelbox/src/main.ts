@@ -151,7 +151,7 @@ import {
   writeBrowserLibrary,
   type StudioLibrary,
 } from "./maps/studio-lib";
-import { buildPawn, pawnStyle, poseStance, setPawnCloth, SKINS, stepWalkFromPos, teamCloth } from "./pawn";
+import { buildPawn, pawnStyle, poseStance, setPawnCloth, stepWalkFromPos, teamCloth, packLook } from "./pawn";
 import { clearPodium, mountPodium, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
@@ -201,22 +201,27 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, type NetHandle, type Snapshot } from "./net";
+import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
   collectInput,
   dropPeer,
-  reconcilePos,
+  lookbackMs,
+  pushPred,
+  reconcilePredicted,
   restoreHomeSeats,
   seatPeer,
   statusLine,
   syncClientPawns,
   tickRemote,
+  type PredSample,
   type Remote,
 } from "./peers";
 import { prefs, savePrefs } from "./prefs";
+import { LOOK_SLOTS, type LookSlot } from "./look";
 import { setStepVolume, tickSteps } from "./steps";
+import { createHoldSound, isActivelyCutting, tickHoldSound } from "./holdSound";
 import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
 import { jumpSpeed, tuning } from "./tuning";
 
@@ -308,6 +313,7 @@ const locker = {
   dist: 3.55,
   theta: 1.12,
   phi: Math.PI,
+  slot: "face" as LookSlot,
 };
 const match = createMatch();
 {
@@ -315,6 +321,7 @@ const match = createMatch();
   if (you) you.name = prefs.name;
   setNetName(prefs.name);
   setNetSkin(prefs.skin);
+  setNetLook(packLook(prefs.look));
 }
 const bots = createBots(scene, world, match);
 let playerId = humanSlot(match)?.id ?? 0;
@@ -355,6 +362,7 @@ const clientPawns = new Map<number, THREE.Group>();
 let lastSnap: Snapshot | null = null;
 let snapSeq = 0;
 let appliedSeq = -1;
+const predHist: PredSample[] = [];
 
 let lastBeat = 0;
 let refreshServers: () => Promise<void> = async () => {};
@@ -368,7 +376,7 @@ function bindNet(handle: NetHandle) {
   handle.onRole((role) => {
     if (role === "client") lastBeat = performance.now();
     if (role === "client" && prefs.team && document.body.classList.contains("started")) {
-      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name, skin: prefs.skin });
+      handle.sendEvent({ kind: "joinTeam", team: prefs.team, name: prefs.name, skin: prefs.skin, look: packLook(prefs.look) });
     }
     paintJoin();
   });
@@ -441,6 +449,7 @@ function leaveToLobby() {
   bindNet(net);
   lastSnap = null;
   lastBeat = 0;
+  predHist.length = 0;
   joiningName = "";
   hideJoinTeam();
   studio.playing = false;
@@ -688,7 +697,7 @@ function pickTeam(team: Team) {
   prefs.team = team;
   savePrefs();
   if (net.role === "client") {
-    net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin });
+    net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin, look: packLook(prefs.look) });
   }
   paintTeamPick();
 }
@@ -715,7 +724,7 @@ function switchLocalTeam(team: Team) {
   swapLines(oldId, seat.id);
   despawnBot(scene, bots, seat.id);
   playerId = seat.id;
-  const gfig = buildPawn(ghost, team);
+  const gfig = buildPawn(ghost, team, playerId, prefs.look);
   ghost.userData.body = gfig.body;
   ghost.userData.cloth = gfig.cloth;
   roundSpawn();
@@ -1055,31 +1064,55 @@ function leaveStudio() {
   loadMap(mapId, true);
 }
 
+function commitLook() {
+  savePrefs();
+  setNetSkin(prefs.skin);
+  setNetLook(packLook(prefs.look));
+}
+
 function paintLocker() {
   const panel = document.querySelector<HTMLElement>("#locker");
   if (panel) panel.hidden = !locker.on;
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
-  const kits = document.querySelector("#locker-kits");
-  if (kits && !kits.childElementCount) {
-    for (const k of SKINS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.skin = k.id;
-      b.innerHTML = `<b>${k.label}</b><span>${k.blurb}</span>`;
-      b.addEventListener("click", (e) => {
-        e.stopPropagation();
-        prefs.skin = k.id;
-        setNetSkin(k.id);
-        savePrefs();
-        dressLockerPawn();
-        paintLocker();
-      });
-      kits.append(b);
+  const slots = document.querySelector("#locker-look");
+  if (slots && !slots.childElementCount) {
+    for (const slot of LOOK_SLOTS) {
+      const row = document.createElement("div");
+      row.className = "locker-slot";
+      row.dataset.slot = slot.key;
+      const lab = document.createElement("p");
+      lab.className = "locker-slot-name";
+      lab.textContent = slot.label;
+      const opts = document.createElement("div");
+      opts.className = "locker-opts";
+      for (const opt of slot.options) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.slot = slot.key;
+        b.dataset.id = opt.id;
+        b.title = opt.blurb;
+        b.textContent = opt.label;
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          locker.slot = slot.key;
+          prefs.look = { ...prefs.look, [slot.key]: opt.id };
+          commitLook();
+          dressLockerPawn();
+          paintLocker();
+        });
+        opts.append(b);
+      }
+      row.append(lab, opts);
+      slots.append(row);
     }
   }
-  kits?.querySelectorAll("button").forEach((b) => {
-    b.classList.toggle("on", (b as HTMLButtonElement).dataset.skin === prefs.skin);
+  slots?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
+    const key = b.dataset.slot as LookSlot | undefined;
+    b.classList.toggle("on", !!key && b.dataset.id === prefs.look[key]);
+  });
+  slots?.querySelectorAll<HTMLElement>(".locker-slot").forEach((row) => {
+    row.classList.toggle("focus", row.dataset.slot === locker.slot);
   });
   document.querySelectorAll<HTMLButtonElement>("#locker-sides button").forEach((b) => {
     b.classList.toggle("on", b.dataset.side === locker.team);
@@ -1089,14 +1122,14 @@ function paintLocker() {
   if (title) title.textContent = locker.on ? "Player" : "Servers";
   if (blurb) {
     blurb.textContent = locker.on
-      ? "Pick a kit. Ember and Stone colors apply when you join."
+      ? "Face, kit, and hats. Ember and Stone colors apply when you join."
       : "Pick a match. Ember plants the Wire. First to six.";
   }
 }
 
 function dressLockerPawn() {
   pawnStyle.current = "limbs";
-  buildPawn(lockerPawn, locker.team, 0, prefs.skin);
+  buildPawn(lockerPawn, locker.team, 0, prefs.look);
   lockerPawn.visible = true;
 }
 
@@ -1404,6 +1437,7 @@ function playStudio() {
     net = idleNet();
     bindNet(net);
     lastSnap = null;
+    predHist.length = 0;
   }
   studio.playing = true;
   studio.on = false;
@@ -1467,18 +1501,18 @@ function rebuildPawns() {
   pawnStyle.current = rules.classicPawn ? "classic" : "limbs";
   for (const b of bots) refillBotPawn(b);
   const youTeam = slotById(match, playerId)?.team ?? "ember";
-  const gfig = buildPawn(ghost, youTeam, playerId, prefs.skin);
+  const gfig = buildPawn(ghost, youTeam, playerId, prefs.look);
   ghost.userData.body = gfig.body;
   ghost.userData.cloth = gfig.cloth;
   for (const r of remotes.values()) {
-    const fig = buildPawn(r.root, r.team, r.slotId, r.skin);
+    const fig = buildPawn(r.root, r.team, r.slotId, r.look);
     r.root.userData.body = fig.body;
     r.root.userData.cloth = fig.cloth;
   }
   for (const g of clientPawns.values()) {
     const team = (g.userData.team as "ember" | "stone") ?? "ember";
     const id = typeof g.userData.id === "number" ? g.userData.id : undefined;
-    const fig = buildPawn(g, team, id, g.userData.skin);
+    const fig = buildPawn(g, team, id, g.userData.look ?? g.userData.lookId ?? g.userData.skin);
     g.userData.body = fig.body;
     g.userData.cloth = fig.cloth;
   }
@@ -1984,16 +2018,17 @@ addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (locker.on) {
     if (e.code === "Escape") leaveLocker();
+    const slot = LOOK_SLOTS.find((s) => s.key === locker.slot) ?? LOOK_SLOTS[0]!;
     const n = e.code === "Digit1" || e.code === "Numpad1" ? 0
       : e.code === "Digit2" || e.code === "Numpad2" ? 1
       : e.code === "Digit3" || e.code === "Numpad3" ? 2
       : e.code === "Digit4" || e.code === "Numpad4" ? 3
+      : e.code === "Digit5" || e.code === "Numpad5" ? 4
       : -1;
-    const pick = n >= 0 ? SKINS[n] : undefined;
+    const pick = n >= 0 ? slot.options[n] : undefined;
     if (pick) {
-      prefs.skin = pick.id;
-      setNetSkin(pick.id);
-      savePrefs();
+      prefs.look = { ...prefs.look, [slot.key]: pick.id };
+      commitLook();
       dressLockerPawn();
       paintLocker();
     }
@@ -2331,7 +2366,7 @@ function part(
 function makeStandIn() {
   const root = new THREE.Group();
   root.visible = false;
-  const fig = buildPawn(root, "ember");
+  const fig = buildPawn(root, "ember", playerId, prefs.look);
   root.userData.body = fig.body;
   root.userData.cloth = fig.cloth;
   return root;
@@ -2893,7 +2928,7 @@ function slashSound() {
   n.stop(ctx.currentTime + 0.2);
 }
 
-function bang(freq: number, dur: number, gain = 0.07) {
+function bang(freq: number, dur: number, gain = 0.07, track?: AudioScheduledSourceNode[]) {
   audio ??= new AudioContext();
   if (audio.state === "suspended") void audio.resume();
   const ctx = audio;
@@ -2915,10 +2950,12 @@ function bang(freq: number, dur: number, gain = 0.07) {
   g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
   o.stop(ctx.currentTime + dur);
   n.stop(ctx.currentTime + dur);
+  if (track) track.push(o, n);
 }
 
-let plantCue = false;
-let holdTick = 0;
+const holdSound = createHoldSound();
+const cutNodes: AudioScheduledSourceNode[] = [];
+let cutCueTimer = 0;
 let plantBannerUntil = 0;
 let lastBombSec = -1;
 
@@ -2928,8 +2965,8 @@ function playPlantStart() {
 }
 
 function playCutStart() {
-  bang(140, 0.12, 0.1);
-  window.setTimeout(() => bang(190, 0.16, 0.09), 80);
+  bang(140, 0.12, 0.1, cutNodes);
+  cutCueTimer = window.setTimeout(() => bang(190, 0.16, 0.09, cutNodes), 80);
 }
 
 function playPlanted() {
@@ -2939,7 +2976,27 @@ function playPlanted() {
 }
 
 function playHoldTick(cutting: boolean) {
-  bang(cutting ? 210 : 170, 0.08, cutting ? 0.09 : 0.08);
+  bang(cutting ? 210 : 170, 0.08, cutting ? 0.09 : 0.08, cutting ? cutNodes : undefined);
+}
+
+function stopCutSound() {
+  if (cutCueTimer) {
+    window.clearTimeout(cutCueTimer);
+    cutCueTimer = 0;
+  }
+  for (const n of cutNodes) {
+    try {
+      n.stop();
+    } catch {
+      /* already ended */
+    }
+    try {
+      n.disconnect();
+    } catch {
+      /* already ended */
+    }
+  }
+  cutNodes.length = 0;
 }
 
 function playBombTick(sec: number) {
@@ -3971,6 +4028,10 @@ function frame(now: number) {
     walking = false;
   }
 
+  if (isClient && alive && !studio.on) {
+    pushPred(predHist, { t: performance.now(), x: px, y: py, z: pz });
+  }
+
   tickSteps({
     x: px,
     z: pz,
@@ -4091,23 +4152,54 @@ function frame(now: number) {
     plantBannerUntil = time + 3.4;
   }
   const holdingPlant = match.wire.plantHold > 0.02 && (match.phase === "live" || match.phase === "planted");
-  const holdingCut = match.wire.cutHold > 0.02 && match.phase === "planted";
-  if (holdingPlant || holdingCut) {
-    if (!plantCue) {
-      plantCue = true;
-      if (holdingCut) playCutStart();
-      else playPlantStart();
+  const youCut = slotById(match, playerId);
+  const watchCut = watchingTeam(match);
+  const holdingUseNow = locked && alive && keys.has("KeyF") && !isCow(playerId);
+  const cutNow = {
+    phase: match.phase,
+    wireMode: match.wire.mode,
+    watchTeam: watchCut,
+    wx: match.wire.x,
+    wy: match.wire.y,
+    wz: match.wire.z,
+  };
+  let remoteCutting = false;
+  if (cutNow.phase === "planted" && cutNow.wireMode === "planted") {
+    for (const r of remotes.values()) {
+      if (
+        isActivelyCutting({
+          ...cutNow,
+          holdingUse: r.input.use,
+          alive: r.alive,
+          cutterTeam: r.team,
+          x: r.x,
+          y: r.y,
+          z: r.z,
+        })
+      ) {
+        remoteCutting = true;
+        break;
+      }
     }
-    holdTick += dt;
-    const period = holdingCut ? 0.26 : 0.36;
-    if (holdTick >= period) {
-      holdTick = 0;
-      playHoldTick(holdingCut);
-    }
-  } else {
-    plantCue = false;
-    holdTick = 0;
   }
+  const holdingCut =
+    isActivelyCutting({
+      ...cutNow,
+      holdingUse: holdingUseNow,
+      alive,
+      cutterTeam: youCut?.team ?? "",
+      x: px,
+      y: py,
+      z: pz,
+    }) ||
+    (cutNow.phase === "planted" && cutNow.wireMode === "planted" && botCutting) ||
+    remoteCutting;
+  tickHoldSound(holdSound, { holdingPlant, holdingCut, dt }, {
+    playCutStart,
+    playPlantStart,
+    playHoldTick,
+    stopCut: stopCutSound,
+  });
   if (match.phase === "planted") {
     const sec = Math.max(0, Math.ceil(match.bombTime));
     if (lastBombSec >= 0 && sec < lastBombSec) playBombTick(sec);
@@ -4163,6 +4255,9 @@ function frame(now: number) {
     if (!reel && !studio.on && !locker.on) {
       syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt, {
         forceSnap: lastSnap.round !== seenRound,
+        now: performance.now(),
+        snapAt: lastBeat,
+        snapSeq,
       });
       for (const p of lastSnap.pawns) {
         if ((p.netId ?? 0) === net.peerId) continue;
@@ -4219,8 +4314,10 @@ function frame(now: number) {
             px = me.x;
             py = me.y;
             pz = me.z;
+            predHist.length = 0;
           } else {
-            const n = reconcilePos(px, py, pz, me.x, me.y, me.z);
+            const ack = performance.now() - lookbackMs(net.pingMs);
+            const n = reconcilePredicted(px, py, pz, me.x, me.y, me.z, predHist, ack);
             px = n.x;
             py = n.y;
             pz = n.z;
@@ -4249,6 +4346,7 @@ function frame(now: number) {
     seenRound = match.round;
     nadeBag = { ...NADE_MAX };
     nadeKind = "smoke";
+    predHist.length = 0;
     paintNadeView();
   }
 
@@ -4530,6 +4628,7 @@ function frame(now: number) {
           assists: p.assists ?? line(p.id).assists,
           deaths: p.deaths ?? line(p.id).deaths,
           skin: "skin" in p ? p.skin : undefined,
+          look: "look" in p ? p.look : undefined,
         }))
         .sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)
         .slice(0, 3);
@@ -4614,6 +4713,7 @@ function frame(now: number) {
         deaths: line(playerId).deaths,
         ping: 0,
         skin: prefs.skin,
+        look: packLook(prefs.look),
         cow: isCow(playerId),
       },
       bots,

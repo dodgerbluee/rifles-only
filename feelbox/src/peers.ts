@@ -8,8 +8,33 @@ import { activeClouds, activeNades, drainPops } from "./smoke";
 import { line, swapLines } from "./stats";
 import { tuning } from "./tuning";
 import { emptyQueue, type FireQueue } from "./fireQueue";
-import { buildPawn, parseSkin, poseStance, stepWalk, stepWalkFromPos, type PawnSkin } from "./pawn";
+import {
+  HARD_SNAP_XZ,
+  HARD_SNAP_Y,
+  INTERP_DELAY_MS,
+  SNAP_BLEND,
+  SNAP_HZ,
+  pushPose,
+  sampleInterp,
+  type PoseSample,
+} from "./netFeel";
+import { buildPawn, parseLook, parseSkin, packLook, looksEqual, resolveLook, poseStance, stepWalk, stepWalkFromPos, type Appearance, type PawnSkin } from "./pawn";
 import { fullNades, type NadeBag } from "./smoke";
+
+export {
+  HARD_SNAP_XZ,
+  HARD_SNAP_Y,
+  INTERP_DELAY_MS,
+  SNAP_BLEND,
+  SNAP_HZ,
+  TICK_HZ,
+  lookbackMs,
+  predAt,
+  pushPred,
+  reconcilePredicted,
+  sampleInterp,
+} from "./netFeel";
+export type { PoseSample, PredSample } from "./netFeel";
 
 const RADIUS = 0.32;
 
@@ -41,11 +66,12 @@ export type Remote = {
   nades: NadeBag;
   root: THREE.Group;
   skin: PawnSkin;
+  look: Appearance;
 };
 
-function standIn(team: Team, name: string, id?: number, skin?: PawnSkin) {
+function standIn(team: Team, name: string, id?: number, kit?: PawnSkin | Appearance | string) {
   const root = new THREE.Group();
-  const fig = buildPawn(root, team, id, skin);
+  const fig = buildPawn(root, team, id, kit);
   root.userData.name = name;
   root.userData.team = team;
   root.userData.id = id;
@@ -54,8 +80,8 @@ function standIn(team: Team, name: string, id?: number, skin?: PawnSkin) {
   return root;
 }
 
-export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, team: Team, name: string, spawn: THREE.Vector3, skin?: PawnSkin): Remote {
-  const look = parseSkin(skin) ?? "rifle";
+export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, team: Team, name: string, spawn: THREE.Vector3, kit?: PawnSkin | Appearance | string): Remote {
+  const look = resolveLook(kit, slotId);
   const root = standIn(team, name, slotId, look);
   root.position.copy(spawn);
   scene.add(root);
@@ -86,7 +112,8 @@ export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, t
     fireQ: emptyQueue(),
     nades: fullNades(),
     root,
-    skin: look,
+    skin: parseSkin(root.userData.skin) ?? "rifle",
+    look,
   };
 }
 
@@ -118,7 +145,7 @@ export function seatPeer(
   peerId: number,
   name: string,
   teamHint?: Team,
-  skin?: PawnSkin,
+  kit?: PawnSkin | Appearance | string,
 ) {
   if (remotes.has(peerId)) return remotes.get(peerId)!;
   const emberH = match.slots.filter((s) => s.kind === "human" && s.team === "ember").length;
@@ -136,7 +163,7 @@ export function seatPeer(
   const planter = plantingTeam(match);
   const list = slot.team === planter ? world.plantSpawns : world.watchSpawns;
   const spawn = list[slot.id % list.length]!.clone();
-  const r = makeRemote(scene, peerId, slot.id, slot.team, name, spawn, skin);
+  const r = makeRemote(scene, peerId, slot.id, slot.team, name, spawn, kit);
   remotes.set(peerId, r);
   match.lastJoin = `${name} joined ${team === "ember" ? "Ember" : "Stone"}`;
   return r;
@@ -151,25 +178,26 @@ export function reseatPeer(
   peerId: number,
   name: string,
   team: Team,
-  skin?: PawnSkin,
+  kit?: PawnSkin | Appearance | string,
 ) {
   const cur = remotes.get(peerId);
   if (cur?.team === team) {
-    if (skin) dressRemote(cur, skin);
+    if (kit) dressRemote(cur, kit);
     return cur;
   }
   const oldId = cur?.homeId ?? cur?.slotId;
   if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
-  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team, skin ?? cur?.skin);
+  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team, kit ?? cur?.look);
   if (oldId != null && oldId !== seated.slotId) swapLines(oldId, seated.slotId);
   return seated;
 }
 
-export function dressRemote(r: Remote, skin: PawnSkin) {
-  const look = parseSkin(skin) ?? r.skin;
-  if (look === r.skin && r.root.userData.skin === look) return;
-  r.skin = look;
+export function dressRemote(r: Remote, kit: PawnSkin | Appearance | string) {
+  const look = resolveLook(kit, r.slotId);
+  if (looksEqual(look, r.look) && r.root.userData.lookId === packLook(look)) return;
+  r.look = look;
   const fig = buildPawn(r.root, r.team, r.slotId, look);
+  r.skin = (r.root.userData.skin as PawnSkin) ?? "rifle";
   r.root.userData.body = fig.body;
   r.root.userData.cloth = fig.cloth;
 }
@@ -380,6 +408,7 @@ export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<numbe
       assists: line(s.id).assists,
       deaths: line(s.id).deaths,
       skin: occ?.skin,
+      look: occ?.look ? packLook(occ.look) : undefined,
     });
   }
 }
@@ -418,6 +447,7 @@ export function buildSnapshot(
         deaths: line(r.homeId).deaths,
         ping: r.ping,
         skin: r.skin,
+        look: packLook(r.look),
       }),
     ),
     ...bots.map(
@@ -444,6 +474,7 @@ export function buildSnapshot(
         assists: line(b.id).assists,
         deaths: line(b.id).deaths,
         ping: undefined,
+        look: typeof b.root.userData.lookId === "string" ? b.root.userData.lookId : packLook(resolveLook(undefined, b.id)),
       }),
     ),
   ];
@@ -543,10 +574,6 @@ export function collectInput(opts: {
   };
 }
 
-const HARD_SNAP_XZ = 1.6;
-const HARD_SNAP_Y = 0.85;
-const SNAP_BLEND = 0.22;
-
 export function snapWalkSpeed(px: number, pz: number, x: number, z: number, interval: number) {
   if (!(interval > 0) || interval > 0.4) return 0;
   const d = Math.hypot(x - px, z - pz);
@@ -571,11 +598,21 @@ export function reconcilePos(
   };
 }
 
-function lerpAngle(a: number, b: number, u: number) {
-  let d = b - a;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return a + d * u;
+function posesOf(g: THREE.Group): PoseSample[] {
+  if (!Array.isArray(g.userData.poses)) g.userData.poses = [];
+  return g.userData.poses as PoseSample[];
+}
+
+function resetPoses(g: THREE.Group, p: Pawn, snapAt: number, snapSeq?: number) {
+  const poses = posesOf(g);
+  poses.length = 0;
+  poses.push({ t: snapAt, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+  g.userData.snapAt = snapAt;
+  g.userData.snapSeq = snapSeq;
+  g.userData.tx = p.x;
+  g.userData.tz = p.z;
+  g.userData.walkX = p.x;
+  g.userData.walkZ = p.z;
 }
 
 export function syncClientPawns(
@@ -584,10 +621,13 @@ export function syncClientPawns(
   selfNetId: number,
   store: Map<number, THREE.Group>,
   dt: number,
-  opts?: { forceSnap?: boolean },
+  opts?: { forceSnap?: boolean; now?: number; snapAt?: number; snapSeq?: number },
 ) {
   const seen = new Set<number>();
-  const a = 1 - Math.exp(-16 * dt);
+  const now = opts?.now ?? (typeof performance !== "undefined" ? performance.now() : 0);
+  const snapAt = opts?.snapAt ?? now;
+  const snapSeq = opts?.snapSeq;
+  const renderAt = now - INTERP_DELAY_MS;
   const force = !!opts?.forceSnap;
   for (const p of pawns) {
     if ((p.netId ?? 0) === selfNetId) continue;
@@ -599,19 +639,17 @@ export function syncClientPawns(
       continue;
     }
     let g = store.get(p.id);
-    const look = parseSkin(p.skin) ?? parseSkin(g?.userData.skin);
+    const look = parseLook(p.look) ?? parseLook(p.skin) ?? parseLook(g?.userData.look) ?? parseLook(g?.userData.lookId);
+    const lookId = look ? packLook(look) : undefined;
     if (!g) {
       g = standIn(p.team, p.name, p.id, look);
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
-      g.userData.tx = p.x;
-      g.userData.tz = p.z;
-      g.userData.walkX = p.x;
-      g.userData.walkZ = p.z;
       g.userData.walkSpeed = 0;
+      resetPoses(g, p, snapAt, snapSeq);
       scene.add(g);
       store.set(p.id, g);
-    } else if (g.userData.team !== p.team || (look && g.userData.skin !== look)) {
+    } else if (g.userData.team !== p.team || (lookId && g.userData.lookId !== lookId)) {
       const fig = buildPawn(g, p.team, p.id, look);
       g.userData.body = fig.body;
       g.userData.cloth = fig.cloth;
@@ -623,24 +661,21 @@ export function syncClientPawns(
     if (force || err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = p.yaw;
-      g.userData.walkX = p.x;
-      g.userData.walkZ = p.z;
+      resetPoses(g, p, snapAt, snapSeq);
+    } else if (snapSeq != null ? g.userData.snapSeq !== snapSeq : g.userData.snapAt !== snapAt) {
+      pushPose(posesOf(g), { t: snapAt, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+      g.userData.snapAt = snapAt;
+      g.userData.snapSeq = snapSeq;
+      g.userData.walkSpeed = snapWalkSpeed(g.userData.tx ?? p.x, g.userData.tz ?? p.z, p.x, p.z, 1 / SNAP_HZ);
       g.userData.tx = p.x;
       g.userData.tz = p.z;
-    } else {
-      g.position.x += (p.x - g.position.x) * a;
-      g.position.y += (p.y - g.position.y) * a;
-      g.position.z += (p.z - g.position.z) * a;
-      g.rotation.y = lerpAngle(g.rotation.y, p.yaw, a);
+    }
+    const pose = sampleInterp(posesOf(g), renderAt);
+    if (pose) {
+      g.position.set(pose.x, pose.y, pose.z);
+      g.rotation.y = pose.yaw;
     }
     const stance = !p.alive ? "down" : p.prone ? "prone" : p.crouch ? "crouch" : "stand";
-    const tx = typeof g.userData.tx === "number" ? g.userData.tx : p.x;
-    const tz = typeof g.userData.tz === "number" ? g.userData.tz : p.z;
-    if (Math.abs(p.x - tx) > 1e-4 || Math.abs(p.z - tz) > 1e-4) {
-      g.userData.walkSpeed = snapWalkSpeed(tx, tz, p.x, p.z, 1 / 30);
-      g.userData.tx = p.x;
-      g.userData.tz = p.z;
-    }
     const speed = Number(g.userData.walkSpeed) || 0;
     stepWalk(g, speed * dt, p.alive && speed > 0.4 && stance === "stand");
     poseStance(g, stance);

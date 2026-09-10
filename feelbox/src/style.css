@@ -1171,8 +1171,10 @@ body.settings #settings {
   display: none;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  width: min(360px, 100%);
+  gap: 8px;
+  width: min(440px, 100%);
+  max-height: min(78vh, 720px);
+  overflow-y: auto;
   pointer-events: auto;
 }
 
@@ -1235,6 +1237,58 @@ body.locker.locker-drag #view {
   border: 1px solid rgba(232, 217, 168, 0.35);
   padding: 8px 10px;
   font: inherit;
+}
+
+#locker-look {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.locker-slot {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+}
+
+.locker-slot.focus .locker-slot-name {
+  color: #e8d9a8;
+}
+
+.locker-slot-name {
+  margin: 6px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8d8676;
+}
+
+.locker-opts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+}
+
+.locker-opts button {
+  background: #1c1e18;
+  color: #e6dfd0;
+  border: 1px solid rgba(232, 217, 168, 0.22);
+  padding: 7px 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  min-width: 0;
+}
+
+.locker-opts button.on {
+  border-color: #e8d9a8;
+  color: #e8d9a8;
 }
 
 #locker-kits,
