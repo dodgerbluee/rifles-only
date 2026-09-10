@@ -64,9 +64,9 @@ export type CoverSpec = {
  * needs height under ~0.97 and walk:true so groundHeight will land you.
  */
 export const COVER_SIZE: Record<CoverKind, [number, number, number]> = {
-  crate: [1.4, 1.1, 1.4], // legacy mid box; stand-peek (eye 1.64), not a jump-on
-  jumpCrate: [1.4, 0.9, 1.4], // jump-on + rim peek (crouch eye 1.1 still clears)
-  fullCrate: [1.4, 2.2, 1.4], // taller than stand body 1.78 / eye 1.64
+  crate: [2, 1.1, 2], // fills the 2m studio grid square; stand-peek (eye 1.64)
+  jumpCrate: [2, 0.9, 2], // jump-on + rim peek (crouch eye 1.1 still clears)
+  fullCrate: [2, 2.2, 2], // taller than stand body 1.78 / eye 1.64
   low: [2.4, 0.9, 0.7],
   high: [0.7, 2.1, 2.6],
   truck: [5.2, 1.4, 2.1],

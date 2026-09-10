@@ -178,17 +178,23 @@
     <div id="studio">
       <div id="studio-bar">
         <p class="studio-kicker">Map studio</p>
-        <input id="studio-title" type="text" maxlength="24" placeholder="Title" />
+        <select id="studio-map" title="Maps"></select>
+        <input id="studio-title" type="text" maxlength="24" placeholder="Name" />
         <select id="studio-theme">
           <option value="dust">Dust</option>
           <option value="winter">Winter</option>
           <option value="harbor">Harbor</option>
           <option value="stone">Stone</option>
         </select>
+        <button type="button" id="studio-new">New</button>
+        <button type="button" id="studio-undo">Undo</button>
+        <button type="button" id="studio-redo">Redo</button>
+        <button type="button" id="studio-save">Save</button>
+        <select id="studio-versions" title="Versions"></select>
         <button type="button" id="studio-turn">Turn</button>
         <button type="button" id="studio-walk">Walk</button>
         <button type="button" id="studio-delete">Delete</button>
-        <button type="button" id="studio-save">Save for agent</button>
+        <button type="button" id="studio-export">For agent</button>
         <button type="button" id="studio-play">Play</button>
         <button type="button" id="studio-leave">Leave</button>
       </div>
@@ -198,7 +204,7 @@
         <button type="button" id="studio-pal-kit">Accessories</button>
       </div>
       <div id="studio-tools"></div>
-      <p id="studio-hint">Hand grabs or erases · Build walls, floors, cuts, rooms · Accessories cover, climb, ladder · Play starts a match on this lot · Esc leave</p>
+      <p id="studio-hint">Middle-drag pans · Shift-click / drag to multi-select · Handles resize buildings and the lot · Walk places doors and windows · Esc leave</p>
       <p id="studio-status"></p>
     </div>
     <div id="bestplay">

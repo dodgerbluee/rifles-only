@@ -1795,8 +1795,19 @@ body.studio.studio-walk.playing #view {
   color: #e8d9a8;
 }
 
-#studio-delete:disabled {
+#studio-delete:disabled,
+#studio-undo:disabled,
+#studio-redo:disabled {
   opacity: 0.35;
+}
+
+#studio-map,
+#studio-versions {
+  max-width: 160px;
+}
+
+body.studio.studio-pan #view {
+  cursor: grabbing;
 }
 
 #studio-hint,

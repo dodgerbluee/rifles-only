@@ -9,7 +9,7 @@ The human **paints the lot**. You **finalize**. Do not start from a pile of `box
 
 ## Map studio
 
-Home (server list) → **Map studio**. **Hand** grabs existing pieces or **Erase** (X) click/drag-deletes them. **Build** stamps buildings, floors, **Cut** (U) holes in a deck, thin **Wall** (W) room dividers, doors, and windows. **Accessories** stamps cover, stair **Climb** (C), and **Ladder** (N) against a wall. Drawing a same-size building on a floored 1-storey house raises that house; a smaller rect on the deck is a new room shell at that height. **Play** runs the sketch against bots (no finalize). **Save for agent** if you want a rotation map.
+Home (server list) → **Map studio**. **Hand** grabs, **Erase** (X) paints delete, **Shift-click** / drag-box multi-selects, yellow **corners** resize the lot, knobs resize buildings. **Middle-drag** pans. **Walk** can place doors and windows. **Undo/Redo/Save** keep named maps and versions in the browser. **Build** stamps buildings, floors, **Cut** (U), **Wall** (W), doors, windows. **Accessories** stamps cover (crates fill a 2m square), **Climb** (C), **Ladder** (N). **Play** runs the sketch. **For agent** exports a draft to finalize.
 
 That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play** does not need that file. If the file exists and they ask you to finalize, skip ASCII and start at **Finalize**.
 

@@ -144,7 +144,7 @@ export type LotEdge = DoorWall;
 export const LOT_STEP = 8;
 export const LOT_MIN = { w: 40, d: 28 };
 export const LOT_MAX = { w: 160, d: 120 };
-export const LOT_BAND = 3.2;
+export const LOT_BAND = 2.8;
 export const BUILD_MIN = 6;
 export const BUILD_MAX = 80;
 export const DOOR_W = { door: 2.4, window: 1.8 };
@@ -583,7 +583,10 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 3.2): Studi
   };
   for (let i = 0; i < (spec.cover ?? []).length; i++) {
     const c = spec.cover![i]!;
-    stamp({ kind: "cover", i }, c.x, c.z, 1, 2);
+    const [sx, , sz] = COVER_SIZE[c.kind];
+    if (inside(c.x, c.z, sx, sz)) {
+      hits.push({ item: { kind: "cover", i }, y: COVER_SIZE[c.kind][1], area: sx * sz, dist: 0 });
+    } else stamp({ kind: "cover", i }, c.x, c.z, 1, sx * sz);
   }
   for (let i = 0; i < (spec.climbs ?? []).length; i++) {
     const c = spec.climbs![i]!;
@@ -782,15 +785,246 @@ export function sameItem(a: StudioItem | null, b: StudioItem | null) {
   return !!a && !!b && a.kind === b.kind && a.i === b.i;
 }
 
+export type Handle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+export type StudioHit =
+  | { type: "lot"; handle: Handle }
+  | { type: "resize"; item: StudioItem; handle: Handle }
+  | { type: "item"; item: StudioItem }
+  | { type: "empty" };
+
+function boxMinMax(x: number, z: number, w: number, d: number) {
+  return { x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 };
+}
+
+export function pickHandleOnBox(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  px: number,
+  pz: number,
+  band = 1.4,
+): Handle | null {
+  const { x0, x1, z0, z1 } = boxMinMax(x, z, w, d);
+  const inX = px >= x0 - band && px <= x1 + band;
+  const inZ = pz >= z0 - band && pz <= z1 + band;
+  if (!inX || !inZ) return null;
+  const nearE = Math.abs(px - x1) <= band;
+  const nearW = Math.abs(px - x0) <= band;
+  const nearN = Math.abs(pz - z1) <= band;
+  const nearS = Math.abs(pz - z0) <= band;
+  const ns = nearN ? "n" : nearS ? "s" : "";
+  const ew = nearE ? "e" : nearW ? "w" : "";
+  if (!ns && !ew) return null;
+  if (ns && ew) return `${ns}${ew}` as Handle;
+  return (ns || ew) as Handle;
+}
+
+export function pickLotHandle(bounds: LayoutSpec["bounds"], x: number, z: number, band = LOT_BAND): Handle | null {
+  const w = bounds.maxX - bounds.minX;
+  const d = bounds.maxZ - bounds.minZ;
+  return pickHandleOnBox((bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2, w, d, x, z, band);
+}
+
 export function pickLotEdge(bounds: LayoutSpec["bounds"], x: number, z: number, band = LOT_BAND): LotEdge | null {
-  const { minX, maxX, minZ, maxZ } = bounds;
-  const alongX = x >= minX - 1 && x <= maxX + 1;
-  const alongZ = z >= minZ - 1 && z <= maxZ + 1;
-  if (alongX && z > maxZ && z <= maxZ + band) return "n";
-  if (alongX && z < minZ && z >= minZ - band) return "s";
-  if (alongZ && x > maxX && x <= maxX + band) return "e";
-  if (alongZ && x < minX && x >= minX - band) return "w";
+  const h = pickLotHandle(bounds, x, z, band);
+  if (!h) return null;
+  if (h === "n" || h === "s" || h === "e" || h === "w") return h;
+  if (h.startsWith("n")) return "n";
+  if (h.startsWith("s")) return "s";
+  return h.includes("e") ? "e" : "w";
+}
+
+export function resizeFootprint(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  handle: Handle,
+  hx: number,
+  hz: number,
+  minW: number,
+  minD: number,
+) {
+  let { x0, x1, z0, z1 } = boxMinMax(x, z, w, d);
+  const sx = snap(hx);
+  const sz = snap(hz);
+  if (handle.includes("e")) x1 = sx;
+  if (handle.includes("w")) x0 = sx;
+  if (handle.includes("n")) z1 = sz;
+  if (handle.includes("s")) z0 = sz;
+  if (x1 < x0) [x0, x1] = [x1, x0];
+  if (z1 < z0) [z0, z1] = [z1, z0];
+  if (x1 - x0 < minW) {
+    if (handle.includes("w") && !handle.includes("e")) x0 = x1 - minW;
+    else x1 = x0 + minW;
+  }
+  if (z1 - z0 < minD) {
+    if (handle.includes("s") && !handle.includes("n")) z0 = z1 - minD;
+    else z1 = z0 + minD;
+  }
+  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 };
+}
+
+export function setLotHandle(spec: LayoutSpec, handle: Handle, x: number, z: number): LayoutSpec {
+  const b = spec.bounds;
+  const next = resizeFootprint(
+    (b.minX + b.maxX) / 2,
+    (b.minZ + b.maxZ) / 2,
+    b.maxX - b.minX,
+    b.maxZ - b.minZ,
+    handle,
+    x,
+    z,
+    LOT_MIN.w,
+    LOT_MIN.d,
+  );
+  const bounds = {
+    minX: snap(next.x - next.w / 2),
+    maxX: snap(next.x + next.w / 2),
+    minZ: snap(next.z - next.d / 2),
+    maxZ: snap(next.z + next.d / 2),
+  };
+  if (bounds.maxX - bounds.minX > LOT_MAX.w || bounds.maxZ - bounds.minZ > LOT_MAX.d) return spec;
+  if (
+    bounds.minX === b.minX &&
+    bounds.maxX === b.maxX &&
+    bounds.minZ === b.minZ &&
+    bounds.maxZ === b.maxZ
+  ) {
+    return spec;
+  }
+  const out = cloneSpec(spec);
+  out.bounds = bounds;
+  return out;
+}
+
+export function resizableBox(spec: LayoutSpec, item: StudioItem) {
+  if (item.kind === "building") {
+    const b = spec.buildings?.[item.i];
+    return b ? { x: b.x, z: b.z, w: b.w, d: b.d, minW: BUILD_MIN, minD: BUILD_MIN } : null;
+  }
+  if (item.kind === "slab") {
+    const s = spec.slabs?.[item.i];
+    return s ? { x: s.x, z: s.z, w: s.w, d: s.d, minW: 4, minD: 4 } : null;
+  }
+  if (item.kind === "partition") {
+    const p = spec.partitions?.[item.i];
+    if (!p) return null;
+    const alongX = p.w >= p.d;
+    return { x: p.x, z: p.z, w: p.w, d: p.d, minW: alongX ? 2 : T, minD: alongX ? T : 2 };
+  }
   return null;
+}
+
+export function pickResizeHandle(spec: LayoutSpec, item: StudioItem, x: number, z: number): Handle | null {
+  const box = resizableBox(spec, item);
+  if (!box) return null;
+  return pickHandleOnBox(box.x, box.z, box.w, box.d, x, z, 1.45);
+}
+
+export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x: number, z: number): LayoutSpec {
+  const box = resizableBox(spec, item);
+  if (!box) return spec;
+  const nextBox = resizeFootprint(box.x, box.z, box.w, box.d, handle, x, z, box.minW, box.minD);
+  const next = cloneSpec(spec);
+  if (item.kind === "building") {
+    const b = next.buildings?.[item.i];
+    if (!b) return spec;
+    b.x = nextBox.x;
+    b.z = nextBox.z;
+    b.w = nextBox.w;
+    b.d = nextBox.d;
+    return next;
+  }
+  if (item.kind === "slab") {
+    const s = next.slabs?.[item.i];
+    if (!s) return spec;
+    s.x = nextBox.x;
+    s.z = nextBox.z;
+    s.w = nextBox.w;
+    s.d = nextBox.d;
+    return next;
+  }
+  if (item.kind === "partition") {
+    const p = next.partitions?.[item.i];
+    if (!p) return spec;
+    p.x = nextBox.x;
+    p.z = nextBox.z;
+    p.w = nextBox.w;
+    p.d = nextBox.d;
+    return next;
+  }
+  return spec;
+}
+
+export function moveItems(spec: LayoutSpec, items: StudioItem[], dx: number, dz: number): LayoutSpec {
+  let next = spec;
+  for (const item of items) {
+    const pos = itemPos(next, item);
+    if (!pos) continue;
+    next = moveItem(next, item, pos.x + dx, pos.z + dz);
+  }
+  return next;
+}
+
+export function deleteItems(spec: LayoutSpec, items: StudioItem[]): LayoutSpec {
+  const ordered = [...items].sort((a, b) => (a.kind === b.kind ? b.i - a.i : a.kind.localeCompare(b.kind)));
+  let next = spec;
+  for (const item of ordered) next = deleteItem(next, item);
+  return next;
+}
+
+export function allItems(spec: LayoutSpec): StudioItem[] {
+  const out: StudioItem[] = [];
+  const push = (kind: StudioItem["kind"], n: number) => {
+    for (let i = 0; i < n; i++) out.push({ kind, i } as StudioItem);
+  };
+  push("building", spec.buildings?.length ?? 0);
+  push("slab", spec.slabs?.length ?? 0);
+  push("partition", spec.partitions?.length ?? 0);
+  push("cover", spec.cover?.length ?? 0);
+  push("climb", spec.climbs?.length ?? 0);
+  push("site", spec.sites.length);
+  push("plant", spec.plantSpawns.length);
+  push("watch", spec.watchSpawns.length);
+  push("lamp", spec.lamps?.length ?? 0);
+  push("tree", spec.trees?.length ?? 0);
+  return out;
+}
+
+export function itemsInRect(spec: LayoutSpec, x0: number, z0: number, x1: number, z1: number): StudioItem[] {
+  const minX = Math.min(x0, x1);
+  const maxX = Math.max(x0, x1);
+  const minZ = Math.min(z0, z1);
+  const maxZ = Math.max(z0, z1);
+  return allItems(spec).filter((item) => {
+    const p = itemPos(spec, item);
+    return !!p && p.x >= minX && p.x <= maxX && p.z >= minZ && p.z <= maxZ;
+  });
+}
+
+export function pickStudioHit(spec: LayoutSpec, x: number, z: number, sels: StudioItem[]): StudioHit {
+  const lot = pickLotHandle(spec.bounds, x, z, LOT_BAND);
+  const isCorner = !!lot && lot.length === 2;
+  if (isCorner) return { type: "lot", handle: lot };
+  for (const sel of sels) {
+    const handle = pickResizeHandle(spec, sel, x, z);
+    if (handle) return { type: "resize", item: sel, handle };
+  }
+  const item = pickItem(spec, x, z);
+  if (item) {
+    const handle = pickResizeHandle(spec, item, x, z);
+    if (handle) return { type: "resize", item, handle };
+    return { type: "item", item };
+  }
+  if (lot) return { type: "lot", handle: lot };
+  return { type: "empty" };
+}
+
+export function inSelection(sels: StudioItem[], item: StudioItem | null) {
+  return !!item && sels.some((s) => sameItem(s, item));
 }
 
 export function setLotEdge(spec: LayoutSpec, edge: LotEdge, value: number): LayoutSpec {
@@ -817,17 +1051,60 @@ export function makeLotHandles(bounds: LayoutSpec["bounds"]) {
   const d = maxZ - minZ;
   const group = new THREE.Group();
   group.name = "studio-lot";
-  const mat = new THREE.MeshBasicMaterial({ color: 0xc8c4bc, transparent: true, opacity: 0.55, depthWrite: false });
-  const bar = (x: number, z: number, sx: number, sz: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.28, sz), mat);
-    m.position.set(x, 0.2, z);
-    m.userData.lot = true;
+  const mat = new THREE.MeshBasicMaterial({ color: 0xc8c4bc, transparent: true, opacity: 0.62, depthWrite: false });
+  const cornerMat = new THREE.MeshBasicMaterial({ color: 0xe8d9a8, transparent: true, opacity: 0.9, depthWrite: false });
+  const bar = (x: number, z: number, sx: number, sz: number, m = mat) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.36, sz), m);
+    mesh.position.set(x, 0.22, z);
+    mesh.userData.lot = true;
+    group.add(mesh);
+  };
+  bar((minX + maxX) / 2, maxZ, Math.max(4, w - 3), 1.7);
+  bar((minX + maxX) / 2, minZ, Math.max(4, w - 3), 1.7);
+  bar(maxX, (minZ + maxZ) / 2, 1.7, Math.max(4, d - 3));
+  bar(minX, (minZ + maxZ) / 2, 1.7, Math.max(4, d - 3));
+  const post = 2.1;
+  bar(maxX, maxZ, post, post, cornerMat);
+  bar(minX, maxZ, post, post, cornerMat);
+  bar(maxX, minZ, post, post, cornerMat);
+  bar(minX, minZ, post, post, cornerMat);
+  return group;
+}
+
+function addHandleKnobs(group: THREE.Group, x: number, y: number, z: number, w: number, d: number) {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xf2e6b8, transparent: true, opacity: 0.95, depthWrite: false });
+  const knob = (kx: number, kz: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.55, 1.05), mat);
+    m.position.set(kx, y, kz);
     group.add(m);
   };
-  bar((minX + maxX) / 2, maxZ + 1.1, w + 2.2, 1.6);
-  bar((minX + maxX) / 2, minZ - 1.1, w + 2.2, 1.6);
-  bar(maxX + 1.1, (minZ + maxZ) / 2, 1.6, d);
-  bar(minX - 1.1, (minZ + maxZ) / 2, 1.6, d);
+  const x0 = x - w / 2;
+  const x1 = x + w / 2;
+  const z0 = z - d / 2;
+  const z1 = z + d / 2;
+  knob(x, z1);
+  knob(x, z0);
+  knob(x1, z);
+  knob(x0, z);
+  knob(x1, z1);
+  knob(x0, z1);
+  knob(x1, z0);
+  knob(x0, z0);
+}
+
+export function makeStudioGizmos(spec: LayoutSpec, sels: StudioItem[]) {
+  const group = makeLotHandles(spec.bounds);
+  group.name = "studio-gizmos";
+  const glow = new THREE.MeshBasicMaterial({ color: 0xe8d9a8, transparent: true, opacity: 0.2, depthWrite: false });
+  for (const item of sels) {
+    const box = itemBox(spec, item);
+    if (!box) continue;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(box.sx + 0.24, box.sy + 0.24, box.sz + 0.24), glow);
+    frame.position.set(box.x, box.y, box.z);
+    group.add(frame);
+    const resize = resizableBox(spec, item);
+    if (resize) addHandleKnobs(group, resize.x, box.y + box.sy / 2 + 0.2, resize.z, resize.w, resize.d);
+  }
   return group;
 }
 
@@ -934,13 +1211,13 @@ export function orbitDrag(cam: OrbitCam, dx: number, dy: number) {
 }
 
 export function panDrag(cam: OrbitCam, dx: number, dy: number) {
-  const scale = cam.dist * 0.0018;
+  const scale = cam.dist * 0.0024;
   const rx = Math.cos(cam.phi);
   const rz = -Math.sin(cam.phi);
   const fx = -Math.sin(cam.phi);
   const fz = -Math.cos(cam.phi);
-  cam.tx -= rx * dx * scale + fx * dy * scale;
-  cam.tz -= rz * dx * scale + fz * dy * scale;
+  cam.tx += rx * dx * scale - fx * dy * scale;
+  cam.tz += rz * dx * scale - fz * dy * scale;
 }
 
 export function zoomOrbit(cam: OrbitCam, deltaY: number, maxDist = 280) {

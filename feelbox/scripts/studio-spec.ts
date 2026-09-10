@@ -21,8 +21,16 @@ import {
   snapFloor,
   playableSpec,
   placeBuildingRect,
+  pickLotHandle,
+  pickStudioHit,
+  resizeItem,
+  setLotHandle,
+  itemsInRect,
+  defaultOrbit,
+  panDrag,
   toolFromCode,
 } from "../src/maps/studio.ts";
+import { addVersion, emptyLibrary, revertVersion, writeActive } from "../src/maps/studio-lib.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -205,6 +213,43 @@ check(
 );
 check("ghost erase still small", ghostSize("erase", 12, 10).join() === "2,0.2,2");
 check("ghost ladder is tall and thin", ghostSize("ladder", 12, 10)[1] === STOREY);
+check("crates fill the 2m grid square", COVER_SIZE.jumpCrate[0] === 2 && COVER_SIZE.crate[0] === 2 && COVER_SIZE.fullCrate[0] === 2);
+
+let sized = blankSpec();
+sized = place(sized, "building", 0, 0, { bw: 12, bd: 10 });
+const east = resizeItem(sized, { kind: "building", i: 0 }, "e", 10, 0);
+check("east handle grows the building", (east.buildings?.[0]?.w ?? 0) >= 16);
+check("east handle keeps the west face", Math.abs((east.buildings?.[0]?.x ?? 0) - (east.buildings?.[0]?.w ?? 0) / 2 + 6) < 0.05 || (east.buildings?.[0]?.w ?? 0) > 12);
+
+const lot = blankSpec();
+const corner = pickLotHandle(lot.bounds, lot.bounds.maxX, lot.bounds.maxZ);
+check("lot corner is a two-axis handle", corner === "ne");
+const insideN = pickLotHandle(lot.bounds, 0, lot.bounds.maxZ - 0.4);
+check("north rim is grabable from inside", insideN === "n" || insideN === "ne" || insideN === "nw");
+const grownN = setLotHandle(lot, "n", 0, lot.bounds.maxZ + 8);
+check("north handle grows maxZ", grownN.bounds.maxZ > lot.bounds.maxZ && grownN.bounds.minZ === lot.bounds.minZ);
+const grownNE = setLotHandle(lot, "ne", lot.bounds.maxX + 8, lot.bounds.maxZ + 8);
+check("corner handle grows both axes", grownNE.bounds.maxX > lot.bounds.maxX && grownNE.bounds.maxZ > lot.bounds.maxZ);
+
+sized = place(sized, "crate", 8, 8);
+sized = place(sized, "crate", 12, 8);
+const boxed = itemsInRect(sized, 6, 6, 14, 10);
+check("marquee selects both crates", boxed.filter((i) => i.kind === "cover").length >= 2);
+const ptr = pickStudioHit(sized, 0, -5, []);
+check("building south rim is a resize hit", ptr.type === "resize" && ptr.handle.includes("s"));
+
+const cam = defaultOrbit(lot.bounds);
+const tx0 = cam.tx;
+panDrag(cam, 20, 0);
+check("pan right moves look-at with the cursor", cam.tx > tx0);
+
+const lib = emptyLibrary(blankSpec());
+const named = writeActive(lib, { ...blankSpec(), title: "Yard" });
+check("library keeps the map name", named.docs[0]?.title === "Yard");
+const v1 = addVersion(named, { ...blankSpec(), title: "Yard", buildings: [{ x: 0, z: 0, w: 12, d: 10 }] });
+check("save writes a version", v1.docs[0]!.versions.length >= 2);
+const back = revertVersion(v1, 1);
+check("revert restores an older version", !!back && (back.spec.buildings?.length ?? 0) === 0);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
