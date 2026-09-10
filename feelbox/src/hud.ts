@@ -2,7 +2,9 @@ import type { World } from "./world";
 import { actorTag, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
-import { kd, line, topThree } from "./stats";
+import { holdScoreboard, kd, line, topThree } from "./stats";
+
+export { holdScoreboard };
 import { killWayIcons, type KillFeedItem } from "./net";
 
 const deathEl = document.querySelector<HTMLElement>("#death")!;

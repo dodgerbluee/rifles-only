@@ -7,7 +7,7 @@ import { killWayIcons, killWayLabel } from "../src/net.ts";
 import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
 import { reseatPeer, seatPeer } from "../src/peers.ts";
-import { line, noteKill, swapLines } from "../src/stats.ts";
+import { holdScoreboard, line, noteKill, swapLines } from "../src/stats.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -88,6 +88,14 @@ check("stats follow the player", line(seated.slotId).kills === fromK);
 check("old seat does not keep the player line", line(from).kills === botK);
 check("old seat is a bot again", slotById(match, from)?.kind === "bot");
 check("old seat does not still show the player name", slotById(match, from)?.name !== "Mina");
+
+check("Tab holds the scoreboard in a match", holdScoreboard(new Set(["Tab"]), { started: true }));
+check("KeyTab also holds the scoreboard", holdScoreboard(new Set(["KeyTab"]), { started: true }));
+check("release hides the scoreboard", !holdScoreboard(new Set(), { started: true }));
+check("studio walk does not open the match board", !holdScoreboard(new Set(["Tab"]), { started: true, studio: true }));
+check("locker does not steal Tab", !holdScoreboard(new Set(["Tab"]), { started: true, locker: true }));
+check("settings does not steal Tab", !holdScoreboard(new Set(["Tab"]), { started: true, settings: true }));
+check("home does not open a board", !holdScoreboard(new Set(["Tab"]), { started: false }));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

@@ -4,12 +4,16 @@
 import * as THREE from "three";
 import {
   addBotSlot,
+  combatBodies,
   concludeBestPlay,
   countLiving,
   createMatch,
   dropWire,
+  giveWireToPlanter,
   humanCount,
+  livingSeatIds,
   markDead,
+  markSeatsFromBodies,
   pickupWire,
   plantWire,
   plantingTeam,
@@ -21,6 +25,7 @@ import {
   slotTag,
   tickMatch,
   trySkipBestPlay,
+  type SiteId,
   type Team,
 } from "./match";
 import type { ClientEvent, KillFeedItem, KillWay, Pawn, PlayerInput, Snapshot } from "./net";
@@ -92,6 +97,10 @@ export type Sim = {
   event: (peerId: number, event: ClientEvent) => void;
   snapshot: () => Snapshot;
   status: () => SimStatus;
+  /** Scripted tests: sit the Wire without walking to a pad. */
+  armWire: (site?: SiteId) => boolean;
+  /** Scripted tests: drop a body through the same hurt/frag path as a fight. */
+  slay: (id: number) => boolean;
 };
 
 export function createSim(opts?: {
@@ -252,6 +261,11 @@ export function createSim(opts?: {
     else line(victim).deaths += 1;
     markDead(match, victimId, x, y, z);
     if (victim !== victimId) markDead(match, victim, x, y, z);
+    const remote = [...remotes.values()].find((x) => x.slotId === victimId || x.homeId === victimId);
+    if (remote) {
+      markDead(match, remote.homeId, x, y, z);
+      markDead(match, remote.slotId, x, y, z);
+    }
     const bomb = way === "bomb";
     const cowed = way === "cow";
     roundKills.push({
@@ -526,14 +540,26 @@ export function createSim(opts?: {
 
       for (const r of remotes.values()) {
         tickRemote(r, dt, time, world, froze);
+        if (bots.some((b) => b.id === r.slotId)) despawnBot(scene, bots, r.slotId);
       }
+
+      markSeatsFromBodies(
+        match,
+        livingSeatIds({
+          bots,
+          remotes: remotes.values(),
+        }),
+      );
 
       tickMatch(match, dt, {
         living: (team) =>
-          countLiving(team, [
-            ...bots.map((b) => ({ team: b.team, alive: b.hp > 0 })),
-            ...[...remotes.values()].map((r) => ({ team: r.team, alive: r.alive })),
-          ]),
+          countLiving(
+            team,
+            combatBodies({
+              bots,
+              remotes: remotes.values(),
+            }),
+          ),
         inSite: (site, x, z, y) => inSite(world, site, x, z, y),
         holdingUse: false,
         actor: { id: -1, team: "ember", x: 0, y: 0, z: 0, alive: false },
@@ -804,6 +830,36 @@ export function createSim(opts?: {
         max: match.perTeam * 2,
         online: true as const,
       };
+    },
+
+    armWire(site: SiteId = "loft") {
+      if (humanCount(match) === 0) return false;
+      if (match.phase === "freeze") {
+        match.phase = "live";
+        match.timeLeft = tuning.round;
+      }
+      if (match.phase !== "live" && match.phase !== "planted") return false;
+      if (match.wire.mode === "planted" && match.phase === "planted") return true;
+      if (match.wire.mode !== "carried") giveWireToPlanter(match);
+      const pad = world.sites.find((s) => s.id === site);
+      if (!pad) return false;
+      plantWire(match, site, pad.x, pad.y, pad.z);
+      return match.phase === "planted" && match.wire.mode === "planted";
+    },
+
+    slay(id) {
+      const bot = bots.find((b) => b.id === id);
+      if (bot && bot.hp > 0) {
+        if (hurtBot(bot, 400, time)) frag(-1, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, "cow");
+        return true;
+      }
+      const remote = [...remotes.values()].find((x) => x.slotId === id || x.homeId === id);
+      if (remote && remote.alive) {
+        hurtRemote(remote, 400, -1, "cow");
+        return true;
+      }
+      markDead(match, id, 0, 0, 0);
+      return false;
     },
   };
 }

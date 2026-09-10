@@ -61,3 +61,19 @@ export function topThree(ids: { id: number; name: string }[]) {
     .sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)
     .slice(0, 3);
 }
+
+/** Hold-Tab scoreboard, like CS. Off in studio / locker / settings / home. */
+export function holdScoreboard(
+  keys: ReadonlySet<string>,
+  ui: {
+    started?: boolean;
+    studio?: boolean;
+    locker?: boolean;
+    settings?: boolean;
+    admin?: boolean;
+    podium?: boolean;
+  } = {},
+): boolean {
+  if (ui.started === false || ui.studio || ui.locker || ui.settings || ui.admin || ui.podium) return false;
+  return keys.has("Tab") || keys.has("KeyTab");
+}

@@ -10,6 +10,7 @@ import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, po
 import {
   hideDeath,
   hidePodium,
+  holdScoreboard,
   placeName,
   renderScoreboard,
   setCook,
@@ -46,8 +47,11 @@ import {
 import {
   claimSlot,
   concludeBestPlay,
+  combatBodies,
   countLiving,
   createMatch,
+  livingSeatIds,
+  markSeatsFromBodies,
   dropWire,
   restartMatch,
   humanCount,
@@ -923,10 +927,10 @@ function paintStudio() {
       : "Middle-drag pans · Shift-click or drag-box to multi-select · Yellow corners resize the lot · Knobs resize buildings · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
-  const b = studio.spec.bounds;
+  const lot = studio.spec.bounds;
   if (status) {
     const sel = studio.sels.length ? ` · ${studio.sels.length} selected` : "";
-    status.textContent = `${studio.spec.title} · lot ${b.maxX - b.minX}×${b.maxZ - b.minZ}${sel}`;
+    status.textContent = `${studio.spec.title} · lot ${lot.maxX - lot.minX}×${lot.maxZ - lot.minZ}${sel}`;
   }
 }
 
@@ -1915,6 +1919,14 @@ addEventListener("keydown", (e) => {
     return;
   }
   if (["Space", "KeyW", "KeyA", "KeyS", "KeyD"].includes(e.code)) e.preventDefault();
+  if (e.code === "Tab" || e.key === "Tab") {
+    const inMatch =
+      document.body.classList.contains("started") &&
+      !locker.on &&
+      !studio.on &&
+      !document.body.classList.contains("settings");
+    if (inMatch) e.preventDefault();
+  }
   if (e.code === "Space" && match.phase === "bestplay") {
     trySkipReel();
     return;
@@ -3962,13 +3974,27 @@ function frame(now: number) {
   }
 
   if (!isClient && !studio.on && !locker.on) {
+  const youSeat = slotById(match, playerId);
+  markSeatsFromBodies(
+    match,
+    livingSeatIds({
+      local: { id: playerId, alive },
+      bots,
+      remotes: remotes.values(),
+      possessId,
+    }),
+  );
   tickMatch(match, dt, {
     living: (team) =>
-      countLiving(team, [
-        { team: slotById(match, actorId())?.team ?? "ember", alive },
-        ...bots.map((b) => ({ team: b.team, alive: b.hp > 0 && b.id !== possessId })),
-        ...[...remotes.values()].map((r) => ({ team: r.team, alive: r.alive })),
-      ]),
+      countLiving(
+        team,
+        combatBodies({
+          local: youSeat ? { team: youSeat.team, alive } : null,
+          bots,
+          remotes: remotes.values(),
+          possessId,
+        }),
+      ),
     inSite: (id, x, z, y) => inSite(world, id, x, z, y),
     holdingUse: locked && alive && keys.has("KeyF") && !isCow(playerId),
     actor: {
@@ -4400,13 +4426,16 @@ function frame(now: number) {
     nextMap: nextId ? MAPS.find((m) => m.id === nextId)?.title ?? nextId : undefined,
   });
   syncKillFeed(lastSnap?.feed, lastSnap?.time ?? time);
-  const shiftBoard =
-    (keys.has("ShiftLeft") || keys.has("ShiftRight")) &&
-    !document.body.classList.contains("settings") &&
-    !document.body.classList.contains("admin") &&
-    !document.body.classList.contains("podium");
-  const showBoard = shiftBoard || match.phase === "matchover";
-  document.body.classList.toggle("board", shiftBoard);
+  const holdBoard = holdScoreboard(keys, {
+    started: document.body.classList.contains("started"),
+    studio: studio.on,
+    locker: locker.on,
+    settings: document.body.classList.contains("settings"),
+    admin: document.body.classList.contains("admin"),
+    podium: document.body.classList.contains("podium"),
+  });
+  const showBoard = holdBoard || match.phase === "matchover";
+  document.body.classList.toggle("board", holdBoard);
   if (showBoard) {
     renderScoreboard(match, viewId, (id) => {
       if (id === viewId) return net.role === "client" ? net.pingMs : 0;

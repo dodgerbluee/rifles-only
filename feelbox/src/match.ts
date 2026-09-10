@@ -121,6 +121,56 @@ export function countLiving(team: Team, bodies: Array<{ team: Team; alive: boole
   return bodies.filter((b) => b.team === team && b.alive).length;
 }
 
+/**
+ * Combatants the wipe rules may count. Skips a bot whose seat a human is
+ * occupying (takeover / possess) so one body cannot be two lives.
+ */
+export function combatBodies(opts: {
+  local?: { team: Team; alive: boolean } | null;
+  bots: Array<{ id: number; team: Team; hp: number }>;
+  remotes: Iterable<{ slotId: number; team: Team; alive: boolean }>;
+  possessId?: number | null;
+}): Array<{ team: Team; alive: boolean }> {
+  const taken = new Set<number>();
+  if (opts.possessId != null) taken.add(opts.possessId);
+  const remoteList = [...opts.remotes];
+  for (const r of remoteList) taken.add(r.slotId);
+  const bodies: Array<{ team: Team; alive: boolean }> = [];
+  if (opts.local) bodies.push({ team: opts.local.team, alive: opts.local.alive });
+  for (const b of opts.bots) {
+    if (taken.has(b.id)) continue;
+    bodies.push({ team: b.team, alive: b.hp > 0 });
+  }
+  for (const r of remoteList) bodies.push({ team: r.team, alive: r.alive });
+  return bodies;
+}
+
+/** One roster pip per living body. Vacated home seats stay down. */
+export function livingSeatIds(opts: {
+  local?: { id: number; alive: boolean } | null;
+  bots: Array<{ id: number; hp: number }>;
+  remotes: Iterable<{ homeId: number; slotId: number; alive: boolean }>;
+  possessId?: number | null;
+}): number[] {
+  const taken = new Set<number>();
+  if (opts.possessId != null) taken.add(opts.possessId);
+  const ids: number[] = [];
+  if (opts.local?.alive) ids.push(opts.local.id);
+  for (const r of opts.remotes) {
+    taken.add(r.slotId);
+    if (r.alive) ids.push(r.homeId);
+  }
+  for (const b of opts.bots) {
+    if (b.hp > 0 && !taken.has(b.id)) ids.push(b.id);
+  }
+  return ids;
+}
+
+export function markSeatsFromBodies(m: Match, aliveIds: Iterable<number>) {
+  const up = new Set(aliveIds);
+  for (const s of m.slots) s.alive = up.has(s.id);
+}
+
 /** Live fight plus the gap after a win, before freeze / recap / match over. */
 export function roundCombatOpen(phase: Phase) {
   return phase === "live" || phase === "planted" || phase === "settle" || phase === "ending";
@@ -297,6 +347,18 @@ function holdEmptyServer(m: Match, spawn: { x: number; y: number; z: number }) {
   m.timeLeft = m.freezeTime;
 }
 
+/**
+ * Round end (what actually stops the clock):
+ * 1. No plant, all planters dead → watchers, now
+ * 2. No plant, all watchers dead → planters, now
+ * 3. Planted, all watchers dead → planters, now (do not wait for the fuse)
+ * 4. Planted, all planters dead, a watcher still up → keep going until cut or detonate
+ * 5. Fuse out → planters
+ * 6. Cut → watchers
+ * 7. Round timer, never planted → watchers
+ * 8. No human has joined → freeze, do not end
+ * Dead humans, vacated takeover seats, and dead bots are not living.
+ */
 export function tickMatch(
   m: Match,
   dt: number,
@@ -369,23 +431,22 @@ export function tickMatch(
 
   if (m.phase === "live") {
     m.timeLeft -= dt;
-    const planters = ctx.living(plantingTeam(m));
-    const watchers = ctx.living(watchingTeam(m));
-    if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to watch the Bomb");
-    if (planters <= 0 && m.wire.mode !== "planted")
-      return finish(m, watchingTeam(m), "The Bomb never left the dock");
-    if (m.timeLeft <= 0) return finish(m, watchingTeam(m), "Time died. The Bomb never sat");
+    if (tryWipe(m, ctx.living)) return;
+    if (m.timeLeft <= 0 && m.wire.mode !== "planted")
+      return finish(m, watchingTeam(m), "Time died. The Bomb never sat");
   }
 
-  if (m.phase === "planted") {
-    m.bombTime -= dt;
-    if (m.bombTime <= 0) {
-      ctx.onDetonate?.(m.wire.x, m.wire.y, m.wire.z);
-      return finish(m, plantingTeam(m), "The Bomb ran out");
+  if (m.phase === "planted" || m.wire.mode === "planted") {
+    if (m.phase === "planted") {
+      m.bombTime -= dt;
+      if (m.bombTime <= 0) {
+        ctx.onDetonate?.(m.wire.x, m.wire.y, m.wire.z);
+        return finish(m, plantingTeam(m), "The Bomb ran out");
+      }
     }
-    const watchers = ctx.living(watchingTeam(m));
-    if (watchers <= 0) return finish(m, plantingTeam(m), "No one left to cut");
-    if (m.wire.cutHold >= tuning.cut) return finish(m, watchingTeam(m), "The Bomb was cut");
+    if (tryWipe(m, ctx.living)) return;
+    if (m.phase === "planted" && m.wire.cutHold >= tuning.cut)
+      return finish(m, watchingTeam(m), "The Bomb was cut");
   }
 
   const people =
@@ -412,7 +473,10 @@ export function tickMatch(
           : null;
       if (site) {
         m.wire.plantHold += dt;
-        if (m.wire.plantHold >= tuning.plant) plantWire(m, site, carrier.x, carrier.y, carrier.z);
+        if (m.wire.plantHold >= tuning.plant) {
+          plantWire(m, site, carrier.x, carrier.y, carrier.z);
+          if (tryWipe(m, ctx.living)) return;
+        }
       } else m.wire.plantHold = 0;
     } else m.wire.plantHold = 0;
   }
@@ -431,7 +495,25 @@ export function tickMatch(
   }
 }
 
+/** Watcher wipe ends a planted round immediately. Planter wipe does not. */
+function tryWipe(m: Match, living: (team: Team) => number) {
+  if (m.phase !== "live" && m.phase !== "planted") return false;
+  const planted = m.phase === "planted" || m.wire.mode === "planted";
+  const planters = living(plantingTeam(m));
+  const watchers = living(watchingTeam(m));
+  if (watchers <= 0) {
+    finish(m, plantingTeam(m), planted ? "No one left to cut" : "No one left to watch the Bomb");
+    return true;
+  }
+  if (planters <= 0 && !planted) {
+    finish(m, watchingTeam(m), "The Bomb never left the dock");
+    return true;
+  }
+  return false;
+}
+
 function finish(m: Match, winner: Team, text: string) {
+  if (m.phase === "settle" || m.phase === "bestplay" || m.phase === "ending" || m.phase === "matchover") return;
   if (winner === "ember") m.emberScore += 1;
   else m.stoneScore += 1;
   m.endText = text;
