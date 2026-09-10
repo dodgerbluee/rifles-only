@@ -46,7 +46,7 @@ That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play*
 ## Bounds
 
 - Playable area about 60–80m on the long axis. Bigger is not better.
-- Cover is a handful of `jumpCrate` / `crate` / `fullCrate` / `low` / `high` / `truck` entries, not a crate maze. Jump crate (0.9m, 2×2m) is the standable CS box; crate (1.1m, 0.5×0.5m / one studio cell) is the little stamp; full crate (2.2m, 2×2m) hides a standing player.
+- Cover is a handful of `jumpCrate` / `crate` / `fullCrate` / `low` / `high` / `truck` entries, not a crate maze. Jump crate (0.9m, 2×2m) is the standable CS box; crate (1.1m, 0.5×0.5m / one studio cell) is the little stamp; full crate (1.96m, 2×2m) covers a standing head (eye 1.64 cannot peek).
 - Existing hand maps (Wharf, Harbor, Parish, Cut) stay until someone redesigns them through this process. Do not “improve” them by dumping boxes.
 
 ## LayoutSpec
@@ -56,4 +56,4 @@ See `feelbox/src/maps/layout.ts` (`LayoutSpec`, `YARD_SPEC`) and `feelbox/src/ma
 - **Stacking** — a building drawn on a deck uses `y` from `surfaceAt` (center + corners). Same footprint on a 1-storey roof increments `floors`. `interior: "empty"` is a tall shell (no decks); omitted / `"floors"` emits walk slabs between storeys. Same-Y overlapping decks `punchRects` the later slab.
 - **Cut / holes** — `SlabSpec.holes` are world-space rects. The compiler `punchRects` / `subtractRect` leftover-splits the deck (min ~0.12m). A hole that covers the slab deletes it. Cut never stamps a new slab.
 - **Wall / partitions** — `partitions[]` are T-thick (0.32) room shells. Inside a building they sit on the interior floor (or decks), not the roof, so you can divide rooms. Drag: longer axis is length, the other is T. Height is `STOREY`, or the remaining shell height in an `empty` volume.
-- **Ladder** — `climbs[].kind: "ladder"` (default stairs). `kit.ladder` is steep walkable rungs (rise ~0.3, run ~0.15). Studio snaps to the nearest building wall. Do not replace existing Siding / multi-floor stair climbs.
+- **Ladder** — `climbs[].kind: "ladder"` (default stairs). `kit.ladder` is steep walkable rungs (rise ~0.3, run ~0.075). Studio snaps to the nearest building wall. Do not replace existing Siding / multi-floor stair climbs.

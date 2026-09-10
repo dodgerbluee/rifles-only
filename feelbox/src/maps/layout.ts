@@ -70,7 +70,7 @@ export type CoverSpec = {
 export const COVER_SIZE: Record<CoverKind, [number, number, number]> = {
   crate: [0.5, 1.1, 0.5], // 1 studio cell (GRID); stand-peek (eye 1.64)
   jumpCrate: [2, 0.9, 2], // jump-on + rim peek (crouch eye 1.1 still clears)
-  fullCrate: [2, 2.2, 2], // taller than stand body 1.78 / eye 1.64
+  fullCrate: [2, 1.96, 2], // just over head top (~1.92); stand eye 1.64 cannot peek
   low: [2.4, 0.9, 0.7],
   high: [0.7, 2.1, 2.6],
   truck: [5.2, 1.4, 2.1],

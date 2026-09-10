@@ -225,7 +225,7 @@ export function makeKit(scene: THREE.Scene): Kit {
 
   const ladder: Kit["ladder"] = (x, z, dir, height, width = 1.1, startY = 0) => {
     const rise = 0.3;
-    const run = 0.15;
+    const run = 0.075;
     const treadH = 0.08;
     const steps = Math.max(2, Math.ceil(height / rise));
     const ax = dir === "+x" ? 1 : dir === "-x" ? -1 : 0;

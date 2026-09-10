@@ -151,7 +151,7 @@ const jumpBox = jumpHits.find((c) => Math.abs(c.max.y - COVER_SIZE.jumpCrate[1])
 const fullBox = fullHits.find((c) => Math.abs(c.max.y - COVER_SIZE.fullCrate[1]) < 0.02);
 const midBox = midHits.find((c) => Math.abs(c.max.y - COVER_SIZE.crate[1]) < 0.02);
 check("jump crate is 0.9m and walkable", !!jumpBox && jumpBox.walk === true && jumpBox.max.y === 0.9);
-check("full crate is 2.2m over stand eye", !!fullBox && fullBox.max.y === 2.2 && fullBox.max.y > 1.64 && fullBox.walk === true);
+check("full crate is 1.96m, covers stand heads", !!fullBox && fullBox.max.y === 1.96 && fullBox.max.y > 1.64 && fullBox.walk === true);
 check("legacy crate is standable", !!midBox && midBox.max.y === 1.1 && midBox.walk === true);
 check("ghost matches compiler jump crate", ghostSize("jumpCrate", 12, 10).join() === COVER_SIZE.jumpCrate.join());
 check("ghost matches compiler full crate", ghostSize("fullCrate", 12, 10).join() === COVER_SIZE.fullCrate.join());
