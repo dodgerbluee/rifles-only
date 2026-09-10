@@ -50,8 +50,12 @@ export type Pawn = {
   deaths?: number;
   ping?: number;
   stun?: boolean;
+  cow?: boolean;
   skin?: "rifle" | "field" | "unit" | "frame";
 };
+
+/** Admin cow: flaming, no weapons, then explode. */
+export const COW_SECS = 10;
 
 export type WireSnap = {
   mode: "carried" | "ground" | "planted";

@@ -2,6 +2,7 @@
  * Stance, recap skip, takeover nades, and dummy pawns.
  */
 import { createSim } from "../src/sim.ts";
+import { COW_SECS } from "../src/net.ts";
 import {
   BESTPLAY_HOLD,
   claimSlot,
@@ -120,14 +121,14 @@ const mate = snap.pawns.find((p) => p.team === "ember" && (p.netId ?? 0) === 0 &
 check("a teammate bot is up for takeover", !!self && !!mate);
 if (self && mate) {
   fight.event(1, { kind: "cow", slotId: self.id });
-  for (let i = 0; i < 120; i++) fight.tick(0.05);
+  for (let i = 0; i < 220; i++) fight.tick(0.05);
   fight.event(1, { kind: "takeover", slotId: mate.id });
   for (let i = 0; i < 4; i++) fight.tick(0.05);
   snap = fight.snapshot();
   for (const p of snap.pawns) {
     if (p.team === "ember") fight.event(1, { kind: "cow", slotId: p.id });
   }
-  for (let i = 0; i < 140; i++) fight.tick(0.05);
+  for (let i = 0; i < 220; i++) fight.tick(0.05);
   snap = fight.snapshot();
   const emberUp = snap.pawns.filter((p) => p.team === "ember" && p.alive && !p.absent).length;
   check("takeover wipe still shows no living planters", emberUp === 0, `emberUp=${emberUp}`);
@@ -145,13 +146,39 @@ const watchSnap = watchWipe.snapshot();
 for (const p of watchSnap.pawns) {
   if (p.team === "stone") watchWipe.event(1, { kind: "cow", slotId: p.id });
 }
-for (let i = 0; i < 140; i++) watchWipe.tick(0.05);
+for (let i = 0; i < 220; i++) watchWipe.tick(0.05);
 const afterWatch = watchWipe.snapshot();
 check(
   "wiping watchers ends the live round",
   afterWatch.phase === "settle" || afterWatch.phase === "bestplay" || afterWatch.phase === "ending" || afterWatch.phase === "matchover",
   `phase=${afterWatch.phase} text=${afterWatch.endText}`,
 );
+
+const cowed = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 2, highlights: false, botSkill: "easy" });
+cowed.join(1, "Reed", "ember");
+for (let i = 0; i < 20; i++) cowed.tick(0.05);
+const cowStart = cowed.snapshot();
+const cowTarget = cowStart.pawns.find((p) => p.alive && (p.netId ?? 0) === 0);
+check("cow has a live bot to transform", !!cowTarget);
+if (cowTarget) {
+  cowed.event(1, { kind: "cow", slotId: cowTarget.id });
+  for (let i = 0; i < 20; i++) cowed.tick(0.05);
+  const at1s = cowed.snapshot().pawns.find((p) => p.id === cowTarget.id);
+  check("cow target is still alive at 1s", !!at1s?.alive, `alive=${at1s?.alive} hp=${at1s?.hp}`);
+  check("cow target is marked cow at 1s", at1s?.cow === true, `cow=${at1s?.cow}`);
+  for (let i = 0; i < 160; i++) cowed.tick(0.05);
+  const at9s = cowed.snapshot().pawns.find((p) => p.id === cowTarget.id);
+  check("cow target is still alive at 9s", !!at9s?.alive, `alive=${at9s?.alive} hp=${at9s?.hp}`);
+  check("cow target is still a cow at 9s", at9s?.cow === true, `cow=${at9s?.cow}`);
+  for (let i = 0; i < 40; i++) cowed.tick(0.05);
+  const after = cowed.snapshot();
+  const atEnd = after.pawns.find((p) => p.id === cowTarget.id);
+  check("cow target dies after 10s", !!atEnd && !atEnd.alive, `alive=${atEnd?.alive} hp=${atEnd?.hp}`);
+  check("cow target is not still a cow after explode", !atEnd?.cow, `cow=${atEnd?.cow}`);
+  const cowKill = after.feed.find((k) => k.victimId === cowTarget.id && k.way === "cow");
+  check("cow explode writes a cow'd frag", !!cowKill, `feed=${after.feed.map((k) => k.way).join(",")}`);
+  check("cow fuse is 10 seconds", COW_SECS === 10, `COW_SECS=${COW_SECS}`);
+}
 
 const idle = createSim({ name: "Last Wire", freezeTime: 0.4, highlights: false });
 for (let i = 0; i < 40; i++) idle.tick(0.05);

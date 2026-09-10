@@ -13,6 +13,7 @@ import {
   tickMatch,
   watchingTeam,
 } from "../src/match.ts";
+import { createSim } from "../src/sim.ts";
 import { tuning } from "../src/tuning.ts";
 
 let failed = 0;
@@ -89,6 +90,52 @@ tickMatch(phantom, 0.05, {
   living: (team) => countLiving(team, bodies),
 });
 check("empty watcher bodies end a planted round even if seats look up", phantom.phase === "settle", `phase=${phantom.phase}`);
+
+const grab = createMatch({ claimLocal: true });
+grab.phase = "live";
+grab.timeLeft = 90;
+grab.wire.mode = "ground";
+grab.wire.carrierId = null;
+grab.wire.x = 4;
+grab.wire.y = 0.2;
+grab.wire.z = -3;
+const grabKeys = { holdingUse: false };
+tickMatch(grab, 0.05, {
+  ...dummy,
+  ...grabKeys,
+  actor: { id: 0, team: "ember", x: 4.2, y: 0.2, z: -2.9, alive: true },
+});
+check("walk-over picks up the grounded wire without F", grab.wire.mode === "carried" && grab.wire.carrierId === 0, `mode=${grab.wire.mode} carrier=${grab.wire.carrierId}`);
+check("pickup tick did not hold use", grabKeys.holdingUse === false);
+
+const walk = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 1, highlights: false, botSkill: "easy" });
+walk.join(1, "Reed", "ember");
+for (let i = 0; i < 10; i++) walk.tick(1 / 30);
+walk.event(1, { kind: "dropWire" });
+const noF = {
+  keys: [] as string[],
+  yaw: 0,
+  pitch: 0,
+  fire: false,
+  ads: false,
+  lean: 0,
+  weapon: "kar" as const,
+  crouch: false,
+  jump: false,
+  use: false,
+  mx: 0,
+  my: 0,
+};
+walk.setInput(1, noF);
+walk.tick(1 / 30);
+const taken = walk.snapshot();
+const reed = taken.pawns.find((p) => p.netId === 1);
+check(
+  "sim walk-over picks up without KeyF",
+  taken.wire.mode === "carried" && taken.wire.carrierId === reed?.id,
+  `mode=${taken.wire.mode} carrier=${taken.wire.carrierId}`,
+);
+check("sim pickup input has no KeyF", !noF.keys.includes("KeyF") && noF.use === false);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

@@ -618,7 +618,7 @@ export function syncClientPawns(
       g.userData.team = p.team;
       g.userData.name = p.name;
     }
-    g.visible = true;
+    g.visible = !p.cow;
     const err = Math.hypot(p.x - g.position.x, p.z - g.position.z);
     if (force || err > HARD_SNAP_XZ || Math.abs(p.y - g.position.y) > HARD_SNAP_Y) {
       g.position.set(p.x, p.y, p.z);

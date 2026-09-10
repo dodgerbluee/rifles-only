@@ -201,7 +201,7 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, type NetHandle, type Snapshot } from "./net";
+import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -508,22 +508,67 @@ let lastRecord = -1;
 let seenPhase = match.phase;
 let cowUntil = 0;
 let cowId: number | null = null;
-let cowMesh: THREE.Group | null = null;
+const cowMeshes = new Map<number, THREE.Group>();
+const cowed = new Set<number>();
 let podiumOn = false;
 
 function isCow(id: number) {
-  return cowId === id && time < cowUntil;
+  return cowed.has(id) || (cowId === id && time < cowUntil);
+}
+
+function hideCowPawn(id: number, hide: boolean) {
+  if (net.role !== "client") {
+    const b = bots.find((x) => x.id === id);
+    if (b && b.hp > 0) b.root.visible = !hide;
+    const r = [...remotes.values()].find((x) => x.slotId === id || x.homeId === id);
+    if (r) r.root.visible = !hide;
+  }
+  const g = clientPawns.get(id);
+  if (g) g.visible = !hide;
+}
+
+function ensureCowMesh(id: number) {
+  if (cowMeshes.has(id)) return;
+  const mesh = makeCowMesh();
+  scene.add(mesh);
+  cowMeshes.set(id, mesh);
+  hideCowPawn(id, true);
+}
+
+function dropCowMesh(id: number, blast: boolean) {
+  const mesh = cowMeshes.get(id);
+  if (!mesh) return;
+  if (blast) playBlast(mesh.position.x, mesh.position.y, mesh.position.z);
+  scene.remove(mesh);
+  cowMeshes.delete(id);
+  hideCowPawn(id, false);
 }
 
 function clearCow() {
   cowUntil = 0;
   cowId = null;
-  if (cowMesh) {
-    scene.remove(cowMesh);
-    cowMesh = null;
+  cowed.clear();
+  for (const id of [...cowMeshes.keys()]) dropCowMesh(id, false);
+  if (net.role !== "client") {
+    for (const b of bots) if (b.hp > 0) b.root.visible = true;
+    for (const r of remotes.values()) r.root.visible = true;
   }
-  for (const b of bots) if (b.hp > 0) b.root.visible = true;
-  for (const r of remotes.values()) r.root.visible = true;
+}
+
+function refreshCows() {
+  const want = new Set<number>();
+  if (cowId != null && time < cowUntil) want.add(cowId);
+  if (lastSnap) {
+    for (const p of lastSnap.pawns) {
+      if (p.cow && p.alive) want.add(p.id);
+    }
+  }
+  cowed.clear();
+  for (const id of want) cowed.add(id);
+  for (const id of [...cowMeshes.keys()]) {
+    if (!want.has(id)) dropCowMesh(id, true);
+  }
+  for (const id of want) ensureCowMesh(id);
 }
 
 function makeCowMesh() {
@@ -554,15 +599,10 @@ function makeCowMesh() {
 }
 
 function applyCow(slot: Slot) {
-  clearCow();
   cowId = slot.id;
-  cowUntil = time + 5;
-  cowMesh = makeCowMesh();
-  scene.add(cowMesh);
-  const b = bots.find((x) => x.id === slot.id);
-  if (b) b.root.visible = false;
-  const r = [...remotes.values()].find((x) => x.slotId === slot.id);
-  if (r) r.root.visible = false;
+  cowUntil = time + COW_SECS;
+  ensureCowMesh(slot.id);
+  cowed.add(slot.id);
 }
 
 function explodeCow() {
@@ -572,6 +612,7 @@ function explodeCow() {
   let z = pz;
   const b = bots.find((t) => t.id === id);
   const r = [...remotes.values()].find((t) => t.slotId === id);
+  const p = lastSnap?.pawns.find((t) => t.id === id);
   if (b) {
     x = b.x;
     y = b.y;
@@ -580,16 +621,24 @@ function explodeCow() {
     x = r.x;
     y = r.y;
     z = r.z;
+  } else if (p) {
+    x = p.x;
+    y = p.y;
+    z = p.z;
   }
   playBlast(x, y, z);
-  if (id === playerId || id === possessId) hurtPlayer(400, "a flaming cow", undefined, true);
-  else if (b && hurtBot(b, 400, time)) markDead(match, b.id, b.x, b.y, b.z);
-  else if (r) {
-    r.hp = 0;
-    r.alive = false;
-    markDead(match, r.slotId, r.x, r.y, r.z);
+  if (net.role !== "client") {
+    if (id === playerId || id === possessId) hurtPlayer(400, "a flaming cow", undefined, true);
+    else if (b && hurtBot(b, 400, time)) markDead(match, b.id, b.x, b.y, b.z);
+    else if (r) {
+      r.hp = 0;
+      r.alive = false;
+      markDead(match, r.slotId, r.x, r.y, r.z);
+    }
   }
-  clearCow();
+  cowUntil = 0;
+  cowId = null;
+  if (id != null) dropCowMesh(id, false);
 }
 
 function restartRoom() {
@@ -1449,6 +1498,7 @@ bindAdmin({
     net.sendEvent({ kind: "kick", slotId: slot.id });
   },
   onCow: (slot) => {
+    if (net.role !== "client") applyCow(slot);
     net.sendEvent({ kind: "cow", slotId: slot.id });
   },
   onPawnStyle: (classic) => {
@@ -2490,7 +2540,6 @@ function chestOff() {
 
 function skipAi() {
   const ids: number[] = [];
-  if (cowId != null && isCow(cowId)) ids.push(cowId);
   if (possessId != null) ids.push(possessId);
   return ids;
 }
@@ -3541,6 +3590,7 @@ function roundSpawn() {
 }
 
 function botShoot(from: THREE.Vector3, dir: THREE.Vector3, target: { id: number; team: string }, shooterId: number) {
+  if (isCow(shooterId)) return;
   const worldHit = rayShot(from, dir, 80, world.colliders);
   bang(150, 0.06, 0.035);
   const shooter = nearestBot(from);
@@ -3693,11 +3743,12 @@ function maxLean(desired: number, height: number) {
 }
 
 function applyRemoteUse(r: Remote, dt: number) {
-  if (!r.alive || !r.input.use) return;
+  if (!r.alive) return;
   const team = r.team;
   if (match.wire.mode === "ground" && team === plantingTeam(match)) {
     if (Math.hypot(r.x - match.wire.x, r.z - match.wire.z) < 1.15) pickupWire(match, r.slotId, team);
   }
+  if (!r.input.use) return;
   if (match.wire.mode === "carried" && match.wire.carrierId === r.slotId && match.phase === "live") {
     const site = inSite(world, "loft", r.x, r.z, r.y) ? "loft" : inSite(world, "well", r.x, r.z, r.y) ? "well" : null;
     if (site) {
@@ -3766,25 +3817,34 @@ function frame(now: number) {
   time += dt;
 
   if (cowId != null && time >= cowUntil) explodeCow();
-  if (cowMesh && cowId != null) {
+  refreshCows();
+  for (const [id, mesh] of cowMeshes) {
     let cx = px;
     let cy = py;
     let cz = pz;
-    const b = bots.find((t) => t.id === cowId);
-    const r = [...remotes.values()].find((t) => t.slotId === cowId);
-    if (b) {
-      cx = b.x;
-      cy = b.y;
-      cz = b.z;
-    } else if (r) {
-      cx = r.x;
-      cy = r.y;
-      cz = r.z;
+    if (id !== playerId && id !== possessId) {
+      const p = lastSnap?.pawns.find((t) => t.id === id);
+      const b = bots.find((t) => t.id === id);
+      const r = [...remotes.values()].find((t) => t.slotId === id);
+      if (p) {
+        cx = p.x;
+        cy = p.y;
+        cz = p.z;
+      } else if (b) {
+        cx = b.x;
+        cy = b.y;
+        cz = b.z;
+      } else if (r) {
+        cx = r.x;
+        cy = r.y;
+        cz = r.z;
+      }
     }
-    cowMesh.position.set(cx, cy, cz);
-    cowMesh.rotation.y = time * 3;
-    cowMesh.scale.setScalar(1 + Math.sin(time * 18) * 0.04);
-    cowMesh.visible = cowId !== playerId || reel !== null;
+    mesh.position.set(cx, cy, cz);
+    mesh.rotation.y = time * 3;
+    mesh.scale.setScalar(1 + Math.sin(time * 18) * 0.04);
+    mesh.visible = id !== playerId || reel !== null;
+    hideCowPawn(id, true);
   }
 
   const isClient = net.role === "client";
@@ -3828,7 +3888,7 @@ function frame(now: number) {
   const gh = groundHeight(world.colliders, px, pz, RADIUS, py);
   grounded = py <= gh + 0.06 && vy <= 0.2;
 
-  if (!studio.on && alive && !froze && !isCow(playerId) && locked) {
+  if (!studio.on && alive && !froze && locked) {
     const forwardX = -Math.sin(yaw);
     const forwardZ = -Math.cos(yaw);
     const rightX = Math.cos(yaw);
@@ -4085,12 +4145,12 @@ function frame(now: number) {
 
   if (net.role === "host" && !reeling) {
     for (const r of remotes.values()) {
-      const cowed = isCow(r.slotId);
-      tickRemote(r, dt, time, world, froze || cowed);
-      if (!cowed) applyRemoteUse(r, dt);
+      const cowPawn = isCow(r.slotId);
+      tickRemote(r, dt, time, world, froze);
+      if (!cowPawn) applyRemoteUse(r, dt);
       if (r.input.fire && !r.fireQ.held) pressFire(r.fireQ);
       else if (!r.input.fire && r.fireQ.held) releaseFire(r.fireQ);
-      if (fireWantsShot(r.fireQ) && r.alive && !combatLock && !cowed && remoteFire(r)) consumeFire(r.fireQ);
+      if (fireWantsShot(r.fireQ) && r.alive && !combatLock && !cowPawn && remoteFire(r)) consumeFire(r.fireQ);
     }
   }
 
@@ -4107,6 +4167,7 @@ function frame(now: number) {
       for (const p of lastSnap.pawns) {
         if ((p.netId ?? 0) === net.peerId) continue;
         const g = clientPawns.get(p.id);
+        if (g && p.cow) g.visible = false;
         if (g && p.alive) restorePawnHead(g);
       }
       for (const b of bots) b.root.visible = false;
@@ -4294,9 +4355,10 @@ function frame(now: number) {
         const throwing = throwT > 0;
         const boltK = boltT > 0 ? 1 - boltT / boltDur : 0;
         const throwK = throwing ? 1 - throwT / throwDur : 0;
-        showRifle(rifleKind, !studio.on && alive && weapon === "rifle" && !bashing && !throwing);
-        knife.visible = !studio.on && alive && (weapon === "knife" || bashing) && !throwing;
-        nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing);
+        const cowedSelf = isCow(playerId);
+        showRifle(rifleKind, !studio.on && alive && weapon === "rifle" && !bashing && !throwing && !cowedSelf);
+        knife.visible = !studio.on && alive && (weapon === "knife" || bashing) && !throwing && !cowedSelf;
+        nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing) && !cowedSelf;
         if (bashing) poseKnifeSlash(knife, 1 - bashT / 0.42);
         else poseKnifeRest(knife);
         if (throwing) poseThrow(nadeView, throwK, throwDrop);
@@ -4414,8 +4476,6 @@ function frame(now: number) {
     prompt = site
       ? "HOLD F · PLANT"
       : "You have the Bomb · gold pad at A or B";
-  } else if (match.wire.mode === "ground" && youTeam === planter) {
-    if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.4) prompt = "HOLD F · PICK UP THE BOMB";
   } else if (match.wire.mode === "planted" && youTeam !== planter) {
     if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE BOMB";
   } else if (match.phase === "planted") {
@@ -4530,38 +4590,39 @@ function frame(now: number) {
   if (netLine) match.lastJoin = netLine;
 
   if (net.role === "host") {
-    net.sendSnapshot(
-      buildSnapshot(
-        match,
-        {
-          id: playerId,
-          netId: net.peerId ?? 0,
-          name: slotById(match, playerId)?.name ?? prefs.name,
-          team: slotById(match, playerId)?.team ?? "ember",
-          x: px,
-          y: py,
-          z: pz,
-          yaw,
-          pitch,
-          hp,
-          alive,
-          weapon: weapon === "rifle" ? rifleKind : weapon,
-          ads,
-          crouch,
-          prone,
-          nades: { ...nadeBag },
-          kills: line(playerId).kills,
-          assists: line(playerId).assists,
-          deaths: line(playerId).deaths,
-          ping: 0,
-          skin: prefs.skin,
-        },
-        bots,
-        remotes,
-        mapId,
-        time,
-      ),
+    const snap = buildSnapshot(
+      match,
+      {
+        id: playerId,
+        netId: net.peerId ?? 0,
+        name: slotById(match, playerId)?.name ?? prefs.name,
+        team: slotById(match, playerId)?.team ?? "ember",
+        x: px,
+        y: py,
+        z: pz,
+        yaw,
+        pitch,
+        hp,
+        alive,
+        weapon: weapon === "rifle" ? rifleKind : weapon,
+        ads,
+        crouch,
+        prone,
+        nades: { ...nadeBag },
+        kills: line(playerId).kills,
+        assists: line(playerId).assists,
+        deaths: line(playerId).deaths,
+        ping: 0,
+        skin: prefs.skin,
+        cow: isCow(playerId),
+      },
+      bots,
+      remotes,
+      mapId,
+      time,
     );
+    for (const p of snap.pawns) p.cow = isCow(p.id);
+    net.sendSnapshot(snap);
   }
   if (net.role === "client") {
     net.sendInput(
@@ -4569,7 +4630,7 @@ function frame(now: number) {
         keys: studio.on || locker.on ? new Set() : keys,
         yaw,
         pitch,
-        fire: studio.on || locker.on ? false : wantShot,
+        fire: studio.on || locker.on || isCow(playerId) ? false : wantShot,
         ads: studio.on || locker.on ? false : ads,
         lean: studio.on || locker.on ? 0 : lean,
         weapon: weapon === "rifle" ? rifleKind : weapon,

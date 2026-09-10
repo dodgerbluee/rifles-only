@@ -28,7 +28,7 @@ import {
   type SiteId,
   type Team,
 } from "./match";
-import type { ClientEvent, KillFeedItem, KillWay, Pawn, PlayerInput, Snapshot } from "./net";
+import { COW_SECS, type ClientEvent, type KillFeedItem, type KillWay, type Pawn, type PlayerInput, type Snapshot } from "./net";
 import { inSite, rayShot, spawnYaw, hasLos } from "./world";
 import { buildMap, MAPS, type MapId } from "./maps";
 import {
@@ -369,6 +369,7 @@ export function createSim(opts?: {
   }
 
   function botShoot(from: THREE.Vector3, dir: THREE.Vector3, _target: { id: number; team: string }, shooterId: number) {
+    if (isCowed(shooterId)) return;
     const worldHit = rayShot(from, dir, 80, world.colliders);
     shotPeople(from, dir, worldHit, shooterId);
   }
@@ -458,22 +459,30 @@ export function createSim(opts?: {
     }
   }
 
+  function isCowed(id: number) {
+    return cows.some((c) => c.id === id && time < c.until);
+  }
+
   function explodeCow(id: number) {
     const bot = bots.find((b) => b.id === id);
-    const remote = [...remotes.values()].find((x) => x.slotId === id);
+    const remote = [...remotes.values()].find((x) => x.slotId === id || x.homeId === id);
     const x = bot?.x ?? remote?.x ?? 0;
     const y = bot?.y ?? remote?.y ?? 0;
     const z = bot?.z ?? remote?.z ?? 0;
     for (const b of bots) {
       if (b.hp <= 0) continue;
-      if (Math.hypot(b.x - x, b.y - y, b.z - z) < 6.5 && hurtBot(b, 400, time)) {
+      if (Math.hypot(b.x - x, b.y - y, b.z - z) < FRAG_R && hurtBot(b, 400, time)) {
         frag(-1, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z, "cow");
       }
     }
     for (const r of remotes.values()) {
       if (!r.alive) continue;
-      if (Math.hypot(r.x - x, r.y - y, r.z - z) < 6.5) hurtRemote(r, 400, -1, "cow");
+      if (Math.hypot(r.x - x, r.y - y, r.z - z) < FRAG_R) hurtRemote(r, 400, -1, "cow");
     }
+    if (bot && bot.hp > 0 && hurtBot(bot, 400, time)) {
+      frag(-1, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, "cow");
+    }
+    if (remote && remote.alive) hurtRemote(remote, 400, -1, "cow");
   }
 
   function syncWireCarry() {
@@ -600,6 +609,7 @@ export function createSim(opts?: {
 
       if (match.round !== seenRound) {
         seenRound = match.round;
+        cows.length = 0;
         roundKills.length = 0;
         pendingHeads.length = 0;
         restoreHomeSeats(match, remotes);
@@ -637,7 +647,7 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "throwSmoke") {
-        if (!r?.alive) return;
+        if (!r?.alive || isCowed(r.slotId)) return;
         if (time - r.lastThrow < 0.45) return;
         const kind = event.nade ?? "smoke";
         if (!spendNade(r.nades, kind)) return;
@@ -675,7 +685,9 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "cow") {
-        if (!cows.some((c) => c.id === event.slotId)) cows.push({ id: event.slotId, until: time + 5 });
+        const slot = slotById(match, event.slotId);
+        if (slot && !slot.alive) return;
+        if (!cows.some((c) => c.id === event.slotId)) cows.push({ id: event.slotId, until: time + COW_SECS });
         return;
       }
       if (event.kind === "rules") {
@@ -691,7 +703,7 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "shot") {
-        if (!r?.alive) return;
+        if (!r?.alive || isCowed(r.slotId)) return;
         if (!roundCombatOpen(match.phase)) return;
         const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
         if (dir.lengthSq() < 1e-6) return;
@@ -703,7 +715,7 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "melee") {
-        if (!r?.alive) return;
+        if (!r?.alive || isCowed(r.slotId)) return;
         if (!roundCombatOpen(match.phase)) return;
         const dir = new THREE.Vector3(event.dx, event.dy, event.dz);
         if (dir.lengthSq() < 1e-6) return;
@@ -748,6 +760,7 @@ export function createSim(opts?: {
             assists: line(r.homeId).assists,
             deaths: line(r.homeId).deaths,
             ping: r.ping,
+            cow: isCowed(r.slotId) || isCowed(r.homeId),
           }),
         ),
         ...bots.map(
@@ -765,10 +778,11 @@ export function createSim(opts?: {
             hp: b.hp,
             alive: b.hp > 0,
             weapon: "kar",
-            ads: b.aim && b.stunUntil <= time,
+            ads: b.aim && b.stunUntil <= time && !isCowed(b.id),
             crouch: false,
             prone: false,
             stun: b.stunUntil > time,
+            cow: isCowed(b.id),
             nades: { ...b.nades },
             kills: line(b.id).kills,
             assists: line(b.id).assists,

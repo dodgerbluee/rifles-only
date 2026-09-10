@@ -459,7 +459,7 @@ export function tickMatch(
     if (!a.alive) continue;
     if (m.wire.mode === "ground") {
       const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
-      if (d < 1.15 && a.team === plantingTeam(m) && a.holdingUse) pickupWire(m, a.id, a.team);
+      if (d < 1.15 && a.team === plantingTeam(m)) pickupWire(m, a.id, a.team);
     }
   }
 
