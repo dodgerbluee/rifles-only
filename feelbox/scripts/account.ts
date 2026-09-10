@@ -115,7 +115,7 @@ try {
   check("lobby reload keeps opaque look", reloaded?.look === look);
 
   check("registered key may join", admitPlayer(reopened, key).ok === true);
-  check("unknown key cannot join", admitPlayer(reopened, generatePlayerKey()).ok === false);
+  check("a well-formed key may join even if this process has no copy", admitPlayer(reopened, generatePlayerKey()).ok === true);
   reopened.ban(key);
   const denied = admitPlayer(reopened, key);
   check("banned key cannot join", denied.ok === false && denied.reason === "banned");

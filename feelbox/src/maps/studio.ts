@@ -13,6 +13,7 @@ import {
   YARD_SPEC,
   buildingBase,
   buildingFloors,
+  buildingHasDecks,
   buildingHeight,
   buildingInterior,
   punchRects,
@@ -29,7 +30,10 @@ import {
 } from "./layout";
 
 export const STUDIO_STORE = "rifles-studio-spec";
-export const GRID = 2;
+/** Quarter of the old 2m cell. Stamps sit in a cell; building edges sit on the lines. */
+export const GRID = 0.5;
+export const HANDLE_KNOB = 0.48;
+export const HANDLE_BAND = 0.72;
 
 export type PaletteId = "hand" | "build" | "kit";
 
@@ -155,6 +159,7 @@ export const LOT_MAX = { w: 160, d: 120 };
 export const LOT_BAND = 2.8;
 export const BUILD_MIN = GRID;
 export const BUILD_MAX = 80;
+export const STAMP = GRID;
 export const DOOR_W = { door: 2.4, window: 1.8 };
 export const SLAB_Y = 0.16;
 
@@ -241,6 +246,32 @@ export function snap(n: number, grid = GRID) {
   return Math.round(n / grid) * grid;
 }
 
+/** Center of the cell that contains n. Crate / peg stamps sit here so they fill a box. */
+export function snapCell(n: number, grid = GRID) {
+  return Math.floor(n / grid) * grid + grid / 2;
+}
+
+export function cellRect(x: number, z: number, grid = GRID) {
+  const x0 = Math.floor(x / grid) * grid;
+  const z0 = Math.floor(z / grid) * grid;
+  return { x: x0 + grid / 2, z: z0 + grid / 2, w: grid, d: grid };
+}
+
+/** Snap both corners to grid lines, then derive center + size so edges never land between boxes. */
+export function snapRect(x0: number, z0: number, x1: number, z1: number, min = GRID) {
+  let ax = snap(x0);
+  let bx = snap(x1);
+  let az = snap(z0);
+  let bz = snap(z1);
+  if (ax === bx) bx = ax + (x1 >= x0 ? min : -min);
+  if (az === bz) bz = az + (z1 >= z0 ? min : -min);
+  if (bx < ax) [ax, bx] = [bx, ax];
+  if (bz < az) [az, bz] = [bz, az];
+  if (bx - ax < min) bx = ax + min;
+  if (bz - az < min) bz = az + min;
+  return { x: (ax + bx) / 2, z: (az + bz) / 2, w: bx - ax, d: bz - az, x0: ax, z0: az, x1: bx, z1: bz };
+}
+
 export function dirFromYaw(yaw: number): ClimbDir {
   const fx = -Math.sin(yaw);
   const fz = -Math.cos(yaw);
@@ -265,25 +296,32 @@ export function place(
   opts: { yaw?: number; bw?: number; bd?: number; y?: number } = {},
 ): LayoutSpec {
   const next = cloneSpec(spec);
+  const cell = cellRect(x, z);
   const gx = snap(x);
   const gz = snap(z);
-  const bw = opts.bw ?? 12;
-  const bd = opts.bd ?? 10;
+  const px = snapCell(x);
+  const pz = snapCell(z);
+  const bw = opts.bw ?? STAMP;
+  const bd = opts.bd ?? STAMP;
   const dir = dirFromYaw(opts.yaw ?? 0);
 
   if (tool === "select") return next;
   if (tool === "erase") return eraseNear(spec, gx, gz);
 
   if (tool === "building") {
-    const y0 = opts.y ?? surfaceAt(spec, gx, gz);
-    const raised = raiseStoreyIfMatch(spec, gx, gz, bw, bd, y0);
+    const cx = opts.bw != null ? x : cell.x;
+    const cz = opts.bd != null ? z : cell.z;
+    const ww = opts.bw ?? cell.w;
+    const dd = opts.bd ?? cell.d;
+    const y0 = opts.y ?? surfaceAt(spec, cx, cz);
+    const raised = raiseStoreyIfMatch(spec, cx, cz, ww, dd, y0);
     if (raised) return raised;
     next.buildings = next.buildings ?? [];
     next.buildings.push({
-      x: gx,
-      z: gz,
-      w: bw,
-      d: bd,
+      x: cx,
+      z: cz,
+      w: ww,
+      d: dd,
       y: y0,
       h: STOREY,
       floors: 1,
@@ -294,10 +332,10 @@ export function place(
   if (tool === "floor") {
     next.slabs = next.slabs ?? [];
     next.slabs.push({
-      x: gx,
-      z: gz,
-      w: bw,
-      d: bd,
+      x: opts.bw != null ? x : cell.x,
+      z: opts.bd != null ? z : cell.z,
+      w: opts.bw ?? cell.w,
+      d: opts.bd ?? cell.d,
       y: Math.max(SLAB_Y, opts.y ?? SLAB_Y),
     });
     return next;
@@ -307,21 +345,28 @@ export function place(
   }
   if (tool === "wall") {
     const alongX = dir === "+z" || dir === "-z";
-    const length = Math.max(2, alongX ? bw : bd);
+    const length = Math.max(STAMP, alongX ? bw : bd);
+    const wx = gx;
+    const wz = gz;
+    const y = opts.y ?? interiorYAt(spec, wx, wz);
     next.partitions = next.partitions ?? [];
     next.partitions.push({
-      x: gx,
-      z: gz,
+      x: wx,
+      z: wz,
       w: alongX ? length : T,
       d: alongX ? T : length,
-      y: opts.y ?? surfaceAt(spec, gx, gz),
-      h: STOREY,
+      y,
+      h: wallHeightAt(spec, wx, wz, y),
     });
     return next;
   }
   if (COVER.includes(tool as CoverSpec["kind"])) {
     next.cover = next.cover ?? [];
-    next.cover.push({ x: gx, z: gz, kind: tool as CoverSpec["kind"] });
+    next.cover.push({
+      x: tool === "crate" ? px : gx,
+      z: tool === "crate" ? pz : gz,
+      kind: tool as CoverSpec["kind"],
+    });
     return next;
   }
   if (tool === "siteA" || tool === "siteB") {
@@ -329,16 +374,16 @@ export function place(
     const call = tool === "siteA" ? "A" : "B";
     const name = call;
     next.sites = next.sites.filter((s) => s.id !== id);
-    next.sites.push({ id, call, name, x: gx, z: gz });
+    next.sites.push({ id, call, name, x: px, z: pz });
     return next;
   }
   if (tool === "plant") {
-    next.plantSpawns.push([gx, gz]);
+    next.plantSpawns.push([px, pz]);
     if (next.plantSpawns.length > 8) next.plantSpawns.splice(0, next.plantSpawns.length - 8);
     return next;
   }
   if (tool === "watch") {
-    next.watchSpawns.push([gx, gz]);
+    next.watchSpawns.push([px, pz]);
     if (next.watchSpawns.length > 8) next.watchSpawns.splice(0, next.watchSpawns.length - 8);
     return next;
   }
@@ -352,12 +397,12 @@ export function place(
   }
   if (tool === "lamp") {
     next.lamps = next.lamps ?? [];
-    next.lamps.push([gx, gz]);
+    next.lamps.push([px, pz]);
     return next;
   }
   if (tool === "tree") {
     next.trees = next.trees ?? [];
-    next.trees.push([gx, gz]);
+    next.trees.push([px, pz]);
     return next;
   }
   return next;
@@ -433,6 +478,40 @@ export function surfaceAt(spec: LayoutSpec, x: number, z: number) {
   return y;
 }
 
+/** Walk / wall height inside a building: decks and ground, not the roof. */
+export function interiorYAt(spec: LayoutSpec, x: number, z: number, hintY = 0) {
+  let y = 0;
+  for (const s of spec.slabs ?? []) {
+    if (containsXZ(x, z, s.x, s.z, s.w, s.d) && !inSlabHole(s, x, z) && s.y <= hintY + STOREY) {
+      y = Math.max(y, s.y);
+    }
+  }
+  for (const b of spec.buildings ?? []) {
+    if (!containsXZ(x, z, b.x, b.z, b.w, b.d, -0.12)) continue;
+    const base = buildingBase(b);
+    const floors = buildingFloors(b);
+    const roof = base + buildingHeight(b);
+    if (hintY >= roof - 0.25) continue;
+    let floor = 0;
+    if (floors > 1 && buildingHasDecks(b)) {
+      floor = Math.max(0, Math.min(floors - 1, Math.floor((Math.max(hintY, base) - base) / STOREY)));
+    }
+    y = Math.max(y, base + floor * STOREY);
+  }
+  return y;
+}
+
+export function wallHeightAt(spec: LayoutSpec, x: number, z: number, y: number) {
+  for (const b of spec.buildings ?? []) {
+    if (!containsXZ(x, z, b.x, b.z, b.w, b.d, -0.12)) continue;
+    const roof = buildingBase(b) + buildingHeight(b);
+    if (y >= roof - 0.2) continue;
+    if (buildingInterior(b) === "empty") return Math.max(STOREY, roof - y);
+    return STOREY;
+  }
+  return STOREY;
+}
+
 export function rectSurfaceY(spec: LayoutSpec, x0: number, z0: number, x1: number, z1: number) {
   const cx = (x0 + x1) / 2;
   const cz = (z0 + z1) / 2;
@@ -449,10 +528,14 @@ export function wallFootprint(x0: number, z0: number, x1: number, z1: number) {
   const dx = x1 - x0;
   const dz = z1 - z0;
   const alongX = Math.abs(dx) >= Math.abs(dz);
-  const length = Math.max(T, alongX ? Math.abs(dx) : Math.abs(dz));
+  const a = alongX ? snap(x0) : snap(z0);
+  const b = alongX ? snap(x1) : snap(z1);
+  const length = Math.max(STAMP, Math.abs(b - a) || STAMP);
+  const mid = (a + b) / 2;
+  const thin = alongX ? snap(z0) : snap(x0);
   return {
-    x: (x0 + x1) / 2,
-    z: (z0 + z1) / 2,
+    x: alongX ? mid : thin,
+    z: alongX ? thin : mid,
     w: alongX ? length : T,
     d: alongX ? T : length,
   };
@@ -721,68 +804,66 @@ export function itemPos(spec: LayoutSpec, item: StudioItem): { x: number; z: num
 
 export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: number): LayoutSpec {
   const next = cloneSpec(spec);
-  const gx = snap(x);
-  const gz = snap(z);
   if (item.kind === "building") {
     const b = next.buildings?.[item.i];
     if (!b) return spec;
-    if (b.x === gx && b.z === gz) return spec;
-    b.x = gx;
-    b.z = gz;
+    if (b.x === x && b.z === z) return spec;
+    b.x = x;
+    b.z = z;
     return next;
   }
   if (item.kind === "slab") {
     const s = next.slabs?.[item.i];
     if (!s) return spec;
-    s.x = gx;
-    s.z = gz;
+    s.x = x;
+    s.z = z;
     return next;
   }
   if (item.kind === "partition") {
     const p = next.partitions?.[item.i];
     if (!p) return spec;
-    p.x = gx;
-    p.z = gz;
+    p.x = x;
+    p.z = z;
     return next;
   }
   if (item.kind === "cover") {
     const c = next.cover?.[item.i];
     if (!c) return spec;
-    c.x = gx;
-    c.z = gz;
+    c.x = x;
+    c.z = z;
     return next;
   }
   if (item.kind === "climb") {
     const c = next.climbs?.[item.i];
     if (!c) return spec;
-    c.x = gx;
-    c.z = gz;
+    c.x = x;
+    c.z = z;
     return next;
   }
   if (item.kind === "site") {
     const s = next.sites[item.i];
     if (!s) return spec;
-    s.x = gx;
-    s.z = gz;
+    s.x = x;
+    s.z = z;
     return next;
   }
   if (item.kind === "plant") {
     if (!next.plantSpawns[item.i]) return spec;
-    next.plantSpawns[item.i] = [gx, gz];
+    next.plantSpawns[item.i] = [x, z];
     return next;
   }
   if (item.kind === "watch") {
     if (!next.watchSpawns[item.i]) return spec;
-    next.watchSpawns[item.i] = [gx, gz];
+    next.watchSpawns[item.i] = [x, z];
     return next;
   }
   if (item.kind === "lamp") {
     if (!next.lamps?.[item.i]) return spec;
-    next.lamps[item.i] = [gx, gz];
+    next.lamps[item.i] = [x, z];
     return next;
   }
   if (!next.trees?.[item.i]) return spec;
-  next.trees[item.i] = [gx, gz];
+  next.trees[item.i] = [x, z];
   return next;
 }
 
@@ -856,27 +937,65 @@ export function pickHandleOnBox(
   d: number,
   px: number,
   pz: number,
-  band = 1.4,
+  band = HANDLE_BAND,
 ): Handle | null {
-  const { x0, x1, z0, z1 } = boxMinMax(x, z, w, d);
-  const inX = px >= x0 - band && px <= x1 + band;
-  const inZ = pz >= z0 - band && pz <= z1 + band;
-  if (!inX || !inZ) return null;
-  const nearE = Math.abs(px - x1) <= band;
-  const nearW = Math.abs(px - x0) <= band;
-  const nearN = Math.abs(pz - z1) <= band;
-  const nearS = Math.abs(pz - z0) <= band;
-  const ns = nearN ? "n" : nearS ? "s" : "";
-  const ew = nearE ? "e" : nearW ? "w" : "";
-  if (!ns && !ew) return null;
-  if (ns && ew) return `${ns}${ew}` as Handle;
-  return (ns || ew) as Handle;
+  return pickHandleKnob(x, z, w, d, px, pz, band);
+}
+
+export function handleKnobs(x: number, z: number, w: number, d: number): { handle: Handle; x: number; z: number }[] {
+  const x0 = x - w / 2;
+  const x1 = x + w / 2;
+  const z0 = z - d / 2;
+  const z1 = z + d / 2;
+  return [
+    { handle: "n", x, z: z1 },
+    { handle: "s", x, z: z0 },
+    { handle: "e", x: x1, z },
+    { handle: "w", x: x0, z },
+    { handle: "ne", x: x1, z: z1 },
+    { handle: "nw", x: x0, z: z1 },
+    { handle: "se", x: x1, z: z0 },
+    { handle: "sw", x: x0, z: z0 },
+  ];
+}
+
+export function pickHandleKnob(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  px: number,
+  pz: number,
+  band = HANDLE_BAND,
+): Handle | null {
+  let best: Handle | null = null;
+  let dist = band;
+  for (const k of handleKnobs(x, z, w, d)) {
+    const n = Math.hypot(px - k.x, pz - k.z);
+    if (n < dist) {
+      dist = n;
+      best = k.handle;
+    }
+  }
+  return best;
 }
 
 export function pickLotHandle(bounds: LayoutSpec["bounds"], x: number, z: number, band = LOT_BAND): Handle | null {
   const w = bounds.maxX - bounds.minX;
   const d = bounds.maxZ - bounds.minZ;
-  return pickHandleOnBox((bounds.minX + bounds.maxX) / 2, (bounds.minZ + bounds.maxZ) / 2, w, d, x, z, band);
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cz = (bounds.minZ + bounds.maxZ) / 2;
+  const knobs = handleKnobs(cx, cz, w, d);
+  let best: Handle | null = null;
+  let dist = band;
+  for (const k of knobs) {
+    const n = Math.hypot(x - k.x, z - k.z);
+    if (n < dist) {
+      dist = n;
+      best = k.handle;
+    }
+  }
+  return best;
 }
 
 export function pickLotEdge(bounds: LayoutSpec["bounds"], x: number, z: number, band = LOT_BAND): LotEdge | null {
@@ -959,13 +1078,13 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
   }
   if (item.kind === "slab") {
     const s = spec.slabs?.[item.i];
-    return s ? { x: s.x, z: s.z, w: s.w, d: s.d, minW: 4, minD: 4 } : null;
+    return s ? { x: s.x, z: s.z, w: s.w, d: s.d, minW: GRID, minD: GRID } : null;
   }
   if (item.kind === "partition") {
     const p = spec.partitions?.[item.i];
     if (!p) return null;
     const alongX = p.w >= p.d;
-    return { x: p.x, z: p.z, w: p.w, d: p.d, minW: alongX ? 2 : T, minD: alongX ? T : 2 };
+    return { x: p.x, z: p.z, w: p.w, d: p.d, minW: alongX ? GRID : T, minD: alongX ? T : GRID };
   }
   return null;
 }
@@ -973,7 +1092,7 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
 export function pickResizeHandle(spec: LayoutSpec, item: StudioItem, x: number, z: number): Handle | null {
   const box = resizableBox(spec, item);
   if (!box) return null;
-  return pickHandleOnBox(box.x, box.z, box.w, box.d, x, z, 1.45);
+  return pickHandleKnob(box.x, box.z, box.w, box.d, x, z, HANDLE_BAND);
 }
 
 export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x: number, z: number): LayoutSpec {
@@ -1012,11 +1131,14 @@ export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x
 }
 
 export function moveItems(spec: LayoutSpec, items: StudioItem[], dx: number, dz: number): LayoutSpec {
+  const sx = snap(dx);
+  const sz = snap(dz);
+  if (sx === 0 && sz === 0) return spec;
   let next = spec;
   for (const item of items) {
     const pos = itemPos(next, item);
     if (!pos) continue;
-    next = moveItem(next, item, pos.x + dx, pos.z + dz);
+    next = moveItem(next, item, pos.x + sx, pos.z + sz);
   }
   return next;
 }
@@ -1058,19 +1180,13 @@ export function itemsInRect(spec: LayoutSpec, x0: number, z0: number, x1: number
 }
 
 export function pickStudioHit(spec: LayoutSpec, x: number, z: number, sels: StudioItem[]): StudioHit {
-  const lot = pickLotHandle(spec.bounds, x, z, LOT_BAND);
-  const isCorner = !!lot && lot.length === 2;
-  if (isCorner) return { type: "lot", handle: lot };
   for (const sel of sels) {
     const handle = pickResizeHandle(spec, sel, x, z);
     if (handle) return { type: "resize", item: sel, handle };
   }
   const item = pickItem(spec, x, z);
-  if (item) {
-    const handle = pickResizeHandle(spec, item, x, z);
-    if (handle) return { type: "resize", item, handle };
-    return { type: "item", item };
-  }
+  if (item) return { type: "item", item };
+  const lot = pickLotHandle(spec.bounds, x, z, LOT_BAND);
   if (lot) return { type: "lot", handle: lot };
   return { type: "empty" };
 }
@@ -1125,23 +1241,12 @@ export function makeLotHandles(bounds: LayoutSpec["bounds"]) {
 
 function addHandleKnobs(group: THREE.Group, x: number, y: number, z: number, w: number, d: number) {
   const mat = new THREE.MeshBasicMaterial({ color: 0xf2e6b8, transparent: true, opacity: 0.95, depthWrite: false });
-  const knob = (kx: number, kz: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.55, 1.05), mat);
-    m.position.set(kx, y, kz);
+  const s = HANDLE_KNOB;
+  for (const k of handleKnobs(x, z, w, d)) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(s, 0.4, s), mat);
+    m.position.set(k.x, y, k.z);
     group.add(m);
-  };
-  const x0 = x - w / 2;
-  const x1 = x + w / 2;
-  const z0 = z - d / 2;
-  const z1 = z + d / 2;
-  knob(x, z1);
-  knob(x, z0);
-  knob(x1, z);
-  knob(x0, z);
-  knob(x1, z1);
-  knob(x0, z1);
-  knob(x1, z0);
-  knob(x0, z0);
+  }
 }
 
 export function makeStudioGizmos(spec: LayoutSpec, sels: StudioItem[]) {
@@ -1199,7 +1304,7 @@ export async function postDraft(spec: LayoutSpec) {
 }
 
 export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number, number] {
-  if (tool === "erase") return [2, 0.2, 2];
+  if (tool === "erase") return [GRID, 0.2, GRID];
   if (tool === "building") return [bw, STOREY, bd];
   if (tool === "cut") return [GRID, 0.16, GRID];
   if (tool === "floor") return [bw, 0.16, bd];
@@ -1213,7 +1318,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
   if (tool === "lamp") return [0.2, 3.2, 0.2];
   if (tool === "tree") return [1.8, 4, 1.8];
-  return [2, 0.2, 2];
+  return [GRID, 0.2, GRID];
 }
 
 export function nextTheme(cur: ThemeId): ThemeId {
@@ -1318,6 +1423,28 @@ export function makeStudioGrid(bounds: LayoutSpec["bounds"]) {
   return grid;
 }
 
+/** Google-maps-style peg you drop onto the lot to enter walk. */
+export function makePegMesh() {
+  const g = new THREE.Group();
+  g.name = "studio-peg";
+  const yellow = new THREE.MeshBasicMaterial({ color: 0xf0c94a, depthWrite: false });
+  const dark = new THREE.MeshBasicMaterial({ color: 0x3a2e12, depthWrite: false });
+  const pin = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.42, 8), yellow);
+  pin.position.y = 0.21;
+  pin.rotation.x = Math.PI;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.48, 8), yellow);
+  body.position.y = 0.72;
+  body.position.y = 0.72;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), yellow);
+  head.position.y = 1.12;
+  const face = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), dark);
+  face.position.set(0, 1.14, 0.12);
+  g.add(pin, body, head, face);
+  g.visible = false;
+  g.frustumCulled = false;
+  return g;
+}
+
 export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId | null {
   if (code === "KeyQ" || code === "KeyH") return "select";
   if (code === "KeyX") return "erase";
@@ -1413,30 +1540,28 @@ export function placeBuildingRect(
   if (tool === "wall") {
     const foot = wallFootprint(x0, z0, x1, z1);
     const next = cloneSpec(spec);
+    const wy = interiorYAt(spec, foot.x, foot.z, y);
     next.partitions = next.partitions ?? [];
     next.partitions.push({
       x: foot.x,
       z: foot.z,
       w: foot.w,
       d: foot.d,
-      y: rectSurfaceY(spec, x0, z0, x1, z1),
-      h: STOREY,
+      y: wy,
+      h: wallHeightAt(spec, foot.x, foot.z, wy),
     });
     return next;
   }
-  const w = clampBuildSize(Math.abs(x1 - x0));
-  const d = clampBuildSize(Math.abs(z1 - z0));
-  const cx = (x0 + x1) / 2;
-  const cz = (z0 + z1) / 2;
+  const rect = snapRect(x0, z0, x1, z1);
   if (tool === "floor") {
     const placeY = Math.max(SLAB_Y, y || SLAB_Y);
-    const fit = snapFloor(spec, x0, z0, x1, z1, placeY);
+    const fit = snapFloor(spec, rect.x0, rect.z0, rect.x1, rect.z1, placeY, { w: rect.w, d: rect.d });
     return place(spec, "floor", fit.x, fit.z, { yaw, bw: fit.w, bd: fit.d, y: fit.y });
   }
-  const placeY = rectSurfaceY(spec, x0, z0, x1, z1);
-  const raised = raiseStoreyIfMatch(spec, cx, cz, w, d, placeY);
+  const placeY = rectSurfaceY(spec, rect.x0, rect.z0, rect.x1, rect.z1);
+  const raised = raiseStoreyIfMatch(spec, rect.x, rect.z, rect.w, rect.d, placeY);
   if (raised) return raised;
-  return place(spec, "building", cx, cz, { yaw, bw: w, bd: d, y: placeY });
+  return place(spec, "building", rect.x, rect.z, { yaw, bw: rect.w, bd: rect.d, y: placeY });
 }
 
 function distToSeg(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {

@@ -112,6 +112,23 @@ export function selectDoc(lib: StudioLibrary, id: string): StudioLibrary | null 
   return { ...lib, activeId: id };
 }
 
+export function seedCatalog(lib: StudioLibrary, builtins: LayoutSpec[]): StudioLibrary {
+  const next = clone(lib);
+  for (const spec of builtins) {
+    if (next.docs.some((d) => d.id === spec.id)) continue;
+    const now = Date.now();
+    const copy = clone(spec);
+    next.docs.push({
+      id: spec.id,
+      title: spec.title || spec.id,
+      updatedAt: now,
+      spec: copy,
+      versions: [{ at: now, spec: clone(copy) }],
+    });
+  }
+  return next;
+}
+
 export function readBrowserLibrary(fallback: LayoutSpec): StudioLibrary {
   try {
     const lib = parseLibrary(localStorage.getItem(STUDIO_LIB), fallback);

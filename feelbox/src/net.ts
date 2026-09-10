@@ -3,6 +3,7 @@
  * snapshots come in.
  */
 import { DEFAULT_LOOK, packLook } from "./look";
+import type { LayoutSpec } from "./maps/layout";
 
 export type NetRole = "host" | "client" | "offline";
 
@@ -175,7 +176,7 @@ export type ClientEvent =
   | { kind: "cut" }
   | { kind: "dropWire" }
   | { kind: "pickupWire" }
-  | { kind: "changeMap"; mapId: string }
+  | { kind: "changeMap"; mapId: string; spec?: LayoutSpec }
   | { kind: "restart" }
   | { kind: "addBot"; team: Team }
   | { kind: "removeBot"; team: Team }
@@ -217,6 +218,7 @@ export type Snapshot = {
   lastWinner?: Team | null;
   mapId?: string;
   nextMap?: string;
+  mapCustom?: boolean;
   endT?: number;
 };
 
@@ -237,6 +239,7 @@ export type NetHandle = {
   onEvent(cb: (peerId: number, event: ClientEvent) => void): void;
   onPeerJoin(cb: (peer: { id: number; name: string }) => void): void;
   onPeerLeave(cb: (id: number) => void): void;
+  onMap(cb: (info: { mapId: string; spec?: LayoutSpec }) => void): void;
   destroy(): void;
 };
 
@@ -316,6 +319,7 @@ export function connectNet(url?: string): NetHandle {
   const eventCbs: Array<(peerId: number, event: ClientEvent) => void> = [];
   const joinCbs: Array<(peer: { id: number; name: string }) => void> = [];
   const leaveCbs: Array<(id: number) => void> = [];
+  const mapCbs: Array<(info: { mapId: string; spec?: LayoutSpec }) => void> = [];
 
   const handle: NetHandle = {
     role: "offline",
@@ -354,6 +358,9 @@ export function connectNet(url?: string): NetHandle {
     },
     onPeerLeave(cb) {
       leaveCbs.push(cb);
+    },
+    onMap(cb) {
+      mapCbs.push(cb);
     },
     destroy() {
       dead = true;
@@ -486,6 +493,13 @@ export function connectNet(url?: string): NetHandle {
       const id = Number(msg.id);
       if (!Number.isFinite(id)) return;
       for (const cb of leaveCbs) cb(id);
+      return;
+    }
+    if (msg.type === "map") {
+      const mapId = typeof msg.mapId === "string" ? msg.mapId : "";
+      if (!mapId) return;
+      const spec = msg.spec as LayoutSpec | undefined;
+      for (const cb of mapCbs) cb({ mapId, spec });
     }
   }
 

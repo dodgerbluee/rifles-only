@@ -6,6 +6,7 @@ import { compileLayout, COVER_SIZE, punchRects, STOREY } from "../src/maps/layou
 import { T } from "../src/maps/kit.ts";
 import {
   blankSpec,
+  cellRect,
   ghostSize,
   paletteOf,
   toolsFor,
@@ -18,7 +19,9 @@ import {
   deleteItem,
   setLotEdge,
   surfaceAt,
+  interiorYAt,
   snapFloor,
+  snapRect,
   playableSpec,
   placeBuildingRect,
   pickLotHandle,
@@ -34,7 +37,8 @@ import {
   toolFromCode,
   walkKeepsTool,
 } from "../src/maps/studio.ts";
-import { addVersion, emptyLibrary, revertVersion, writeActive } from "../src/maps/studio-lib.ts";
+import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } from "../src/maps/studio-lib.ts";
+import { SIDING_SPEC } from "../src/maps/siding.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -43,28 +47,39 @@ function check(name: string, ok: boolean, extra = "") {
 }
 
 let spec = blankSpec();
+const cell = cellRect(1.2, -0.4);
 spec = place(spec, "building", 1.2, -0.4);
-spec = place(spec, "crate", 4, 4);
+spec = place(spec, "crate", 4.1, 4.1);
+spec = place(spec, "jumpCrate", 6, 4);
+spec = place(spec, "fullCrate", 8, 4);
+spec = place(spec, "climb", 0, 8, { yaw: 0 });
+spec = place(spec, "siteA", -10.1, 10.1);
+
+const clickHouse = spec.buildings?.[0];
+check("click building fills one cell", clickHouse?.w === GRID && clickHouse?.d === GRID);
+check("click building sits in the cell", clickHouse?.x === cell.x && clickHouse?.z === cell.z);
+check("building has no default door", (spec.buildings?.[0]?.doors?.length ?? 0) === 0);
+check("studio building is one storey", spec.buildings?.[0]?.h === STOREY);
+const little = spec.cover?.find((c) => c.kind === "crate");
+check("little crate sits on a cell center", little?.x === 4.25 && little?.z === 4.25);
+check("jump crate stamped", spec.cover?.some((c) => c.kind === "jumpCrate" && c.x === 6 && c.z === 4) === true);
+check("full crate stamped", spec.cover?.some((c) => c.kind === "fullCrate" && c.x === 8 && c.z === 4) === true);
+check("climb faces -z when looking north", spec.climbs?.[0]?.dir === "-z");
+check("site A snapped to a cell", spec.sites.find((s) => s.id === "loft")?.x === -10.25);
+
+spec = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 });
+spec = place(spec, "crate", 4.1, 4.1);
 spec = place(spec, "jumpCrate", 6, 4);
 spec = place(spec, "fullCrate", 8, 4);
 spec = place(spec, "climb", 0, 8, { yaw: 0 });
 spec = place(spec, "siteA", -10, 10);
 
-check("building snapped to grid", spec.buildings?.[0]?.x === 2 && spec.buildings?.[0]?.z === 0);
-check("building has no default door", (spec.buildings?.[0]?.doors?.length ?? 0) === 0);
-check("studio building is one storey", spec.buildings?.[0]?.h === STOREY);
-check("cover stamped", spec.cover?.some((c) => c.kind === "crate") === true);
-check("jump crate stamped", spec.cover?.some((c) => c.kind === "jumpCrate" && c.x === 6 && c.z === 4) === true);
-check("full crate stamped", spec.cover?.some((c) => c.kind === "fullCrate" && c.x === 8 && c.z === 4) === true);
-check("climb faces -z when looking north", spec.climbs?.[0]?.dir === "-z");
-check("site A moved", spec.sites.find((s) => s.id === "loft")?.x === -10);
-
-const roof = surfaceAt(spec, 2, 0);
-spec = place(spec, "floor", 2, 0, { bw: 12, bd: 10, y: roof });
+const roof = surfaceAt(spec, 0, 0);
+spec = place(spec, "floor", 0, 0, { bw: 12, bd: 10, y: roof });
 check("floor sits on the building", spec.slabs?.[0]?.y === roof && roof === STOREY);
 
-const house = spec.buildings?.find((b) => (b.y ?? 0) === 0 && b.x === 2);
-const deck = snapFloor(spec, 2, 0, 3, 1, 0);
+const house = spec.buildings?.find((b) => (b.y ?? 0) === 0 && b.x === 0);
+const deck = snapFloor(spec, 0, 0, 1, 1, 0);
 check(
   "floor snaps to the building outer faces",
   !!house && deck.x === house.x && deck.z === house.z && deck.w === house.w + T && deck.d === house.d + T,
@@ -73,8 +88,8 @@ check(
 check("floor sits on the first-storey wall top", !!house && deck.y === (house.h ?? STOREY));
 
 const beforeStack = spec.buildings?.length ?? 0;
-spec = placeBuildingRect(spec, -4, -4, 8, 6, "building", 0, 0);
-const raised = spec.buildings?.find((b) => b.x === 2 && (b.y ?? 0) === 0);
+spec = placeBuildingRect(spec, -6, -5, 6, 5, "building", 0, roof);
+const raised = spec.buildings?.find((b) => b.x === 0 && (b.y ?? 0) === 0);
 check(
   "same-size building on a floored house raises floors",
   (spec.buildings?.length ?? 0) === beforeStack && (raised?.floors ?? 1) >= 2,
@@ -153,7 +168,7 @@ if (groundB) {
   const item = { kind: "building" as const, i: spec.buildings!.indexOf(groundB) };
   spec = deleteItem(spec, item);
 }
-check("delete removes the ground building", !(spec.buildings ?? []).some((b) => (b.y ?? 0) === 0 && b.x === 2));
+check("delete removes the ground building", !(spec.buildings ?? []).some((b) => (b.y ?? 0) === 0 && b.x === 0));
 
 spec = eraseNear(spec, 10, 6);
 check("erase still removes cover", !(spec.cover ?? []).some((c) => c.x === 10 && c.z === 6));
@@ -262,9 +277,9 @@ check(
   "ladder compiles walkable rungs",
   ladWorld.colliders.some((c) => c.walk && c.max.y - c.min.y < 0.2 && c.max.y > 0.2 && c.max.y < STOREY + 0.4),
 );
-check("ghost erase still small", ghostSize("erase", 12, 10).join() === "2,0.2,2");
+check("ghost erase still small", ghostSize("erase", 12, 10).join() === `${GRID},0.2,${GRID}`);
 check("ghost ladder is tall and thin", ghostSize("ladder", 12, 10)[1] === STOREY);
-check("crates fill the 2m grid square", COVER_SIZE.jumpCrate[0] === 2 && COVER_SIZE.crate[0] === 2 && COVER_SIZE.fullCrate[0] === 2);
+check("little crate fills one studio cell", COVER_SIZE.crate[0] === GRID && COVER_SIZE.crate[2] === GRID);
 
 function thinWalkAt(
   w: { colliders: { walk?: boolean; min: THREE.Vector3; max: THREE.Vector3 }[] },
@@ -358,7 +373,7 @@ check(
   "1 block building compiles walls",
   hutWorld.colliders.some((c) => Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5 && c.max.y > 1),
 );
-const shrunken = resizeItem(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), { kind: "building", i: 0 }, "e", -4, 0);
+const shrunken = resizeItem(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), { kind: "building", i: 0 }, "e", -6, 0);
 check("resize can shrink to one block", (shrunken.buildings?.[0]?.w ?? 0) === GRID, `w=${shrunken.buildings?.[0]?.w}`);
 
 let sized = blankSpec();
@@ -382,7 +397,27 @@ sized = place(sized, "crate", 12, 8);
 const boxed = itemsInRect(sized, 6, 6, 14, 10);
 check("marquee selects both crates", boxed.filter((i) => i.kind === "cover").length >= 2);
 const ptr = pickStudioHit(sized, 0, -5, []);
-check("building south rim is a resize hit", ptr.type === "resize" && ptr.handle.includes("s"));
+check("unselected building body is a grab, not a resize", ptr.type === "item" && ptr.item.kind === "building");
+const southKnob = pickStudioHit(sized, 0, -5, [{ kind: "building", i: 0 }]);
+check(
+  "selected south knob resizes",
+  southKnob.type === "resize" && southKnob.handle.includes("s"),
+  `hit=${southKnob.type}`,
+);
+
+const aligned = snapRect(0.2, 0.1, 4.2, 3.3);
+check("drag width is a whole number of cells", Math.abs(aligned.w / GRID - Math.round(aligned.w / GRID)) < 1e-6);
+check("drag depth is a whole number of cells", Math.abs(aligned.d / GRID - Math.round(aligned.d / GRID)) < 1e-6);
+
+let inside = place(blankSpec(), "building", 0, 0, { bw: 16, bd: 12 });
+inside = placeBuildingRect(inside, -3, 0, 3, 0.1, "wall", 0);
+const inner = inside.partitions?.[0];
+check("interior wall sits on the floor", (inner?.y ?? -1) === 0);
+check("interior wall is not on the roof", (inner?.y ?? 9) < surfaceAt(inside, 0, 0) - 1);
+check("interiorYAt is ground inside a 1F house", interiorYAt(inside, 0, 0) === 0);
+
+const catalog = seedCatalog(emptyLibrary(blankSpec()), [SIDING_SPEC]);
+check("siding is in the studio catalog", catalog.docs.some((d) => d.id === "siding"));
 
 const cam = defaultOrbit(lot.bounds);
 const tx0 = cam.tx;

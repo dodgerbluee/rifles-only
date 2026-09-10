@@ -419,10 +419,6 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     if (!key) return;
     try {
       const res = await fetch(`/api/account?key=${encodeURIComponent(key)}`);
-      if (res.status === 404) {
-        logout();
-        return;
-      }
       if (!res.ok) return;
       const body = (await res.json()) as { name?: string; look?: string; username?: string };
       if (typeof body.look === "string" && body.look && body.look !== rec.look) {

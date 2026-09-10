@@ -2,7 +2,7 @@
  * Master lobby: static client, server list, and a WebSocket proxy onto the
  * dedicated game process. Never simulates the match.
  */
-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,12 @@ const STATIC_DIR = STATIC_ENV === ""
 const GAME_WS = process.env.GAME_WS ?? "ws://127.0.0.1:8081/ws";
 const STALE_MS = 5000;
 const DRAFT_PATH = path.join(ROOT, "studio-draft.json");
+const MAPS_DIR = path.join(ROOT, "studio-maps");
+
+function mapFileName(id) {
+  const slug = String(id || "draft").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "draft";
+  return `${slug}.json`;
+}
 const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.join(ROOT, "accounts.json");
 const accounts = createAccountBook(ACCOUNT_PATH);
 
@@ -116,6 +122,71 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname === "/api/servers" && req.method === "GET") {
     json(res, 200, listServers());
+    return;
+  }
+
+  if (url.pathname === "/api/studio-maps" && req.method === "GET") {
+    if (!existsSync(MAPS_DIR)) {
+      json(res, 200, []);
+      return;
+    }
+    try {
+      const files = readdirSync(MAPS_DIR).filter((f) => f.endsWith(".json"));
+      const list = [];
+      for (const f of files) {
+        try {
+          const spec = JSON.parse(readFileSync(path.join(MAPS_DIR, f), "utf8"));
+          if (spec?.id && spec.bounds) list.push({ id: spec.id, title: spec.title || spec.id });
+        } catch {
+          /* skip */
+        }
+      }
+      json(res, 200, list);
+    } catch {
+      json(res, 200, []);
+    }
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/studio-maps/") && req.method === "GET") {
+    const id = decodeURIComponent(url.pathname.slice("/api/studio-maps/".length));
+    const file = path.join(MAPS_DIR, mapFileName(id));
+    if (!existsSync(file)) {
+      json(res, 404, { ok: false });
+      return;
+    }
+    try {
+      json(res, 200, JSON.parse(readFileSync(file, "utf8")));
+    } catch {
+      json(res, 400, { ok: false });
+    }
+    return;
+  }
+
+  if (url.pathname === "/api/studio-maps" && req.method === "POST") {
+    const chunks = [];
+    let n = 0;
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > 256 * 1024) req.destroy();
+      else chunks.push(c);
+    });
+    req.on("end", () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (!body || typeof body.id !== "string" || !body.bounds) {
+          json(res, 400, { ok: false });
+          return;
+        }
+        mkdirSync(MAPS_DIR, { recursive: true });
+        const file = path.join(MAPS_DIR, mapFileName(body.id));
+        writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`);
+        writeFileSync(DRAFT_PATH, `${JSON.stringify(body, null, 2)}\n`);
+        json(res, 200, { ok: true, id: body.id });
+      } catch {
+        json(res, 400, { ok: false });
+      }
+    });
     return;
   }
 

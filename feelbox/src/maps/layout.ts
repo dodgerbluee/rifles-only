@@ -68,7 +68,7 @@ export type CoverSpec = {
  * needs height under ~0.97 and walk:true so groundHeight will land you.
  */
 export const COVER_SIZE: Record<CoverKind, [number, number, number]> = {
-  crate: [2, 1.1, 2], // fills the 2m studio grid square; stand-peek (eye 1.64)
+  crate: [0.5, 1.1, 0.5], // 1 studio cell (GRID); stand-peek (eye 1.64)
   jumpCrate: [2, 0.9, 2], // jump-on + rim peek (crouch eye 1.1 still clears)
   fullCrate: [2, 2.2, 2], // taller than stand body 1.78 / eye 1.64
   low: [2.4, 0.9, 0.7],
@@ -237,6 +237,16 @@ export function buildingHeight(b: BuildingSpec, wallH = 6.2) {
 
 export function buildingBase(b: BuildingSpec) {
   return b.y ?? 0;
+}
+
+export function asLayoutSpec(raw: unknown): LayoutSpec | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as LayoutSpec;
+  if (typeof s.id !== "string" || !s.bounds) return null;
+  const b = s.bounds;
+  if (![b.minX, b.maxX, b.minZ, b.maxZ].every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  if (!Array.isArray(s.sites) || !Array.isArray(s.plantSpawns) || !Array.isArray(s.watchSpawns)) return null;
+  return s;
 }
 
 function alongOf(b: BuildingSpec, wall: DoorWall) {

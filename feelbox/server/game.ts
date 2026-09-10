@@ -186,6 +186,8 @@ wss.on("connection", (ws) => {
       peer.name = cleanName(msg.name, id);
       sim.join(id, peer.name, undefined, msg.skin, msg.look);
       send(ws, { type: "welcome", id, role: "client" });
+      const map = sim.mapState();
+      send(ws, { type: "map", mapId: map.mapId, spec: map.spec });
       for (const o of living()) {
         if (o.id === id) continue;
         send(ws, { type: "peerJoin", id: o.id, name: o.name });
@@ -210,6 +212,10 @@ wss.on("connection", (ws) => {
         peer.playerKey = cleanKey(event.playerKey);
       }
       sim.event(id, event);
+      if (event?.kind === "changeMap") {
+        const map = sim.mapState();
+        for (const o of living()) send(o.ws, { type: "map", mapId: map.mapId, spec: map.spec });
+      }
     }
   });
 

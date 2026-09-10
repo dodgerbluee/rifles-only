@@ -40,4 +40,5 @@ game/UserSettings/
 # Feelbox local
 feelbox/verify-*.png
 feelbox/studio-draft.json
+feelbox/studio-maps/
 feelbox/accounts.json

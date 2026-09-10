@@ -2432,6 +2432,36 @@ body.studio.studio-walk.playing #view {
   color: #e8d9a8;
 }
 
+#studio-peg {
+  width: 40px;
+  height: 48px;
+  padding: 4px 6px;
+  cursor: grab;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+#studio-peg:active,
+body.studio-peg #studio-peg {
+  cursor: grabbing;
+}
+
+.peg-fig {
+  width: 16px;
+  height: 36px;
+  display: block;
+  background:
+    radial-gradient(circle at 50% 7px, #f0c94a 0 6px, transparent 7px),
+    linear-gradient(#f0c94a, #f0c94a) 4px 14px / 8px 14px no-repeat,
+    linear-gradient(#f0c94a, #e2b43a) 6px 28px / 4px 8px no-repeat;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+body.studio.studio-peg #view {
+  cursor: grabbing;
+}
+
 #studio-building {
   display: none;
   margin-bottom: 8px;

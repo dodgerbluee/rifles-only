@@ -125,10 +125,14 @@ function findByEmail(data, email) {
   return null;
 }
 
+/**
+ * Join needs a well-formed, unbanned key. Credentials live on the lobby;
+ * lobby and game often do not share a disk, so do not require this book
+ * to already contain the key.
+ */
 export function admitPlayer(book, playerKey) {
   if (!isPlayerKey(playerKey)) return { ok: false, reason: "register" };
   if (book.isBanned(playerKey)) return { ok: false, reason: "banned" };
-  if (!book.get(playerKey)) return { ok: false, reason: "register" };
   return { ok: true };
 }
 

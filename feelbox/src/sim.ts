@@ -32,7 +32,9 @@ import {
 } from "./match";
 import { COW_SECS, type ClientEvent, type KillFeedItem, type KillWay, type Pawn, type PlayerInput, type Snapshot } from "./net";
 import { inSite, rayShot, spawnYaw, hasLos } from "./world";
-import { buildMap, MAPS, type MapId } from "./maps";
+import { buildMap, MAPS, compileLayout, type MapId } from "./maps";
+import { asLayoutSpec, type LayoutSpec } from "./maps/layout";
+import { playableSpec } from "./maps/studio";
 import {
   botTargets,
   createBots,
@@ -83,7 +85,7 @@ const HP = 100;
 export type SimStatus = {
   id: string;
   name: string;
-  map: MapId;
+  map: string;
   mapTitle: string;
   phase: string;
   players: number;
@@ -97,6 +99,14 @@ export type Sim = {
   leave: (peerId: number) => void;
   setInput: (peerId: number, input: PlayerInput) => void;
   event: (peerId: number, event: ClientEvent) => void;
+  snapshot: () => Snapshot;
+  status: () => SimStatus;
+  mapState: () => { mapId: string; spec?: LayoutSpec };
+  /** Scripted tests: sit the Wire without walking to a pad. */
+  armWire: (site?: SiteId) => boolean;
+  /** Scripted tests: drop a body through the same hurt/frag path as a fight. */
+  slay: (id: number) => boolean;
+};
   snapshot: () => Snapshot;
   status: () => SimStatus;
   /** Scripted tests: sit the Wire without walking to a pad. */
@@ -124,9 +134,10 @@ export function createSim(opts?: {
   const name = opts?.name ?? "Last Wire";
   const scene = new THREE.Scene();
   const rotation = (opts?.rotation?.filter((m) => MAPS.some((x) => x.id === m)) ?? MAPS.map((m) => m.id)) as MapId[];
-  let mapId: MapId = opts?.mapId && MAPS.some((m) => m.id === opts.mapId) ? opts.mapId : (rotation[0] ?? "wharf");
-  let rotAt = Math.max(0, rotation.indexOf(mapId));
-  let world = buildMap(scene, mapId);
+  let mapId: string = opts?.mapId && MAPS.some((m) => m.id === opts.mapId) ? opts.mapId : (rotation[0] ?? "wharf");
+  let rotAt = Math.max(0, rotation.indexOf(mapId as MapId));
+  let customSpec: LayoutSpec | null = null;
+  let world = buildMap(scene, mapId as MapId);
   const match = createMatch({
     claimLocal: false,
     perTeam: opts?.perTeam,
@@ -189,18 +200,27 @@ export function createSim(opts?: {
     seenRound = match.round;
   }
 
-  function loadMap(next: MapId) {
-    if (!MAPS.some((m) => m.id === next)) return;
+  function loadMap(next: string, spec?: LayoutSpec | null) {
+    const parsed = spec ? asLayoutSpec(spec) : null;
     clearNades(scene);
     for (const b of [...bots]) despawnBot(scene, bots, b.id);
     const keep = new Set<THREE.Object3D>([...remotes.values()].map((r) => r.root));
     for (const c of [...scene.children]) {
       if (!keep.has(c)) scene.remove(c);
     }
-    mapId = next;
-    rotAt = Math.max(0, rotation.indexOf(next));
-    world = buildMap(scene, next);
-    match.mapTitle = world.title ?? MAPS.find((m) => m.id === next)?.title ?? next;
+    if (parsed) {
+      const play = playableSpec(parsed);
+      customSpec = play;
+      mapId = play.id || next;
+      world = compileLayout(scene, play);
+    } else {
+      if (!MAPS.some((m) => m.id === next)) return;
+      customSpec = null;
+      mapId = next;
+      rotAt = Math.max(0, rotation.indexOf(next as MapId));
+      world = buildMap(scene, next as MapId);
+    }
+    match.mapTitle = world.title ?? MAPS.find((m) => m.id === mapId)?.title ?? mapId;
     for (const r of remotes.values()) {
       if (!r.root.parent) scene.add(r.root);
     }
@@ -674,7 +694,7 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "changeMap") {
-        loadMap(event.mapId as MapId);
+        loadMap(event.mapId, event.spec);
         return;
       }
       if (event.kind === "restart") {
@@ -845,6 +865,7 @@ export function createSim(opts?: {
         lastWinner: match.lastWinner,
         mapId,
         nextMap: nextMapId(),
+        mapCustom: !!customSpec,
         endT: match.endT,
       };
     },
@@ -860,6 +881,10 @@ export function createSim(opts?: {
         max: match.perTeam * 2,
         online: true as const,
       };
+    },
+
+    mapState() {
+      return { mapId, spec: customSpec ?? undefined };
     },
 
     armWire(site: SiteId = "loft") {
