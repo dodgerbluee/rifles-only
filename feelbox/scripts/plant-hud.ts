@@ -1,7 +1,18 @@
 /**
  * Planting must charge, then the fuse clock has to tick while the Bomb is live.
  */
-import { createMatch, formatTime, plantedTag, plantWire, roundCombatOpen, tickMatch } from "../src/match.ts";
+import {
+  countLiving,
+  createMatch,
+  formatTime,
+  markDead,
+  plantedTag,
+  plantingTeam,
+  plantWire,
+  roundCombatOpen,
+  tickMatch,
+  watchingTeam,
+} from "../src/match.ts";
 import { tuning } from "../src/tuning.ts";
 
 let failed = 0;
@@ -49,6 +60,35 @@ tickMatch(cut, 0.02, { ...dummy, holdingUse: false });
 check("cut finish zeros the hold ticks", cut.wire.cutHold === 0 && cut.wire.plantHold === 0, `cut=${cut.wire.cutHold} plant=${cut.wire.plantHold}`);
 check("cut finish settles the round", cut.phase === "settle", `phase=${cut.phase}`);
 check("settle still allows combat", roundCombatOpen(cut.phase));
+
+const wipe = createMatch({ claimLocal: true });
+wipe.phase = "live";
+wipe.timeLeft = 90;
+plantWire(wipe, "loft", -9, 3.4, 20.5);
+const fuseAtPlant = wipe.bombTime;
+for (const s of wipe.slots) {
+  if (s.team === watchingTeam(wipe)) markDead(wipe, s.id, 0, 0, 0);
+}
+tickMatch(wipe, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  living: (team) => wipe.slots.filter((s) => s.team === team && s.alive).length,
+});
+check("plant then wipe watchers ends before the fuse", wipe.phase === "settle", `phase=${wipe.phase}`);
+check("planters win when no one can cut", wipe.lastWinner === plantingTeam(wipe), `winner=${wipe.lastWinner}`);
+check("fuse did not have to run out", wipe.bombTime > fuseAtPlant - 1, `bomb=${wipe.bombTime}`);
+
+const phantom = createMatch({ claimLocal: true });
+phantom.phase = "live";
+plantWire(phantom, "well", 10, 0.2, -16);
+const watch = watchingTeam(phantom);
+const bodies = phantom.slots.map((s) => ({ team: s.team, alive: s.team !== watch }));
+tickMatch(phantom, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  living: (team) => countLiving(team, bodies),
+});
+check("empty watcher bodies end a planted round even if seats look up", phantom.phase === "settle", `phase=${phantom.phase}`);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

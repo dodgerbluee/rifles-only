@@ -2,7 +2,14 @@
  * Stance, recap skip, takeover nades, and dummy pawns.
  */
 import { createSim } from "../src/sim.ts";
-import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch } from "../src/match.ts";
+import {
+  BESTPLAY_HOLD,
+  claimSlot,
+  createMatch,
+  markDead,
+  plantingTeam,
+  tickMatch,
+} from "../src/match.ts";
 import { fillAbsentSlots } from "../src/peers.ts";
 import { NADE_MAX } from "../src/smoke.ts";
 
@@ -86,6 +93,69 @@ sim.event(1, {
 sim.tick(1 / 30);
 const thrown = sim.snapshot().pawns.find((p) => p.netId === 1);
 check("throw spends a smoke", thrown?.nades?.smoke === NADE_MAX.smoke - 1, `smoke=${thrown?.nades?.smoke}`);
+
+const wiped = createMatch({ claimLocal: true });
+wiped.phase = "live";
+wiped.timeLeft = 80;
+const plantSide = plantingTeam(wiped);
+for (const s of wiped.slots) {
+  if (s.team === plantSide) markDead(wiped, s.id, 0, 0, 0);
+}
+const deadHuman = wiped.slots.find((s) => s.kind === "human");
+check("human is still seated after dying", !!deadHuman && deadHuman.alive === false && deadHuman.kind === "human");
+tickMatch(wiped, 0.05, {
+  ...dummy,
+  living: (team) => wiped.slots.filter((s) => s.team === team && s.alive).length,
+});
+check("wiping planters with a dead human ends the round", wiped.phase === "settle", `phase=${wiped.phase}`);
+check("watchers win when the Wire never sat", wiped.lastWinner !== plantSide, `winner=${wiped.lastWinner}`);
+
+const fight = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 3, highlights: false, botSkill: "easy" });
+fight.join(1, "Reed", "ember");
+for (let i = 0; i < 20; i++) fight.tick(0.05);
+let snap = fight.snapshot();
+check("human in the room goes live", snap.phase === "live", `phase=${snap.phase}`);
+const self = snap.pawns.find((p) => p.netId === 1);
+const mate = snap.pawns.find((p) => p.team === "ember" && (p.netId ?? 0) === 0 && p.alive);
+check("a teammate bot is up for takeover", !!self && !!mate);
+if (self && mate) {
+  fight.event(1, { kind: "cow", slotId: self.id });
+  for (let i = 0; i < 120; i++) fight.tick(0.05);
+  fight.event(1, { kind: "takeover", slotId: mate.id });
+  for (let i = 0; i < 4; i++) fight.tick(0.05);
+  snap = fight.snapshot();
+  for (const p of snap.pawns) {
+    if (p.team === "ember") fight.event(1, { kind: "cow", slotId: p.id });
+  }
+  for (let i = 0; i < 140; i++) fight.tick(0.05);
+  snap = fight.snapshot();
+  const emberUp = snap.pawns.filter((p) => p.team === "ember" && p.alive && !p.absent).length;
+  check("takeover wipe still shows no living planters", emberUp === 0, `emberUp=${emberUp}`);
+  check(
+    "takeover wipe ends the round instead of ticking live",
+    snap.phase === "settle" || snap.phase === "bestplay" || snap.phase === "ending" || snap.phase === "matchover",
+    `phase=${snap.phase} text=${snap.endText}`,
+  );
+}
+
+const watchWipe = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 2, highlights: false, botSkill: "easy" });
+watchWipe.join(1, "Reed", "ember");
+for (let i = 0; i < 20; i++) watchWipe.tick(0.05);
+const watchSnap = watchWipe.snapshot();
+for (const p of watchSnap.pawns) {
+  if (p.team === "stone") watchWipe.event(1, { kind: "cow", slotId: p.id });
+}
+for (let i = 0; i < 140; i++) watchWipe.tick(0.05);
+const afterWatch = watchWipe.snapshot();
+check(
+  "wiping watchers ends the live round",
+  afterWatch.phase === "settle" || afterWatch.phase === "bestplay" || afterWatch.phase === "ending" || afterWatch.phase === "matchover",
+  `phase=${afterWatch.phase} text=${afterWatch.endText}`,
+);
+
+const idle = createSim({ name: "Last Wire", freezeTime: 0.4, highlights: false });
+for (let i = 0; i < 40; i++) idle.tick(0.05);
+check("empty sim stays in freeze", idle.snapshot().phase === "freeze", `phase=${idle.snapshot().phase}`);
 
 const absentPawns: { absent?: boolean }[] = [];
 fillAbsentSlots(

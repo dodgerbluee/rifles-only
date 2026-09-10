@@ -46,6 +46,7 @@ import {
 import {
   claimSlot,
   concludeBestPlay,
+  countLiving,
   createMatch,
   dropWire,
   restartMatch,
@@ -3962,7 +3963,12 @@ function frame(now: number) {
 
   if (!isClient && !studio.on && !locker.on) {
   tickMatch(match, dt, {
-    living: (team) => match.slots.filter((s) => s.team === team && s.alive).length,
+    living: (team) =>
+      countLiving(team, [
+        { team: slotById(match, actorId())?.team ?? "ember", alive },
+        ...bots.map((b) => ({ team: b.team, alive: b.hp > 0 && b.id !== possessId })),
+        ...[...remotes.values()].map((r) => ({ team: r.team, alive: r.alive })),
+      ]),
     inSite: (id, x, z, y) => inSite(world, id, x, z, y),
     holdingUse: locked && alive && keys.has("KeyF") && !isCow(playerId),
     actor: {

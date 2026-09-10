@@ -5,6 +5,7 @@ import * as THREE from "three";
 import {
   addBotSlot,
   concludeBestPlay,
+  countLiving,
   createMatch,
   dropWire,
   humanCount,
@@ -528,7 +529,11 @@ export function createSim(opts?: {
       }
 
       tickMatch(match, dt, {
-        living: (team) => match.slots.filter((s) => s.team === team && s.alive).length,
+        living: (team) =>
+          countLiving(team, [
+            ...bots.map((b) => ({ team: b.team, alive: b.hp > 0 })),
+            ...[...remotes.values()].map((r) => ({ team: r.team, alive: r.alive })),
+          ]),
         inSite: (site, x, z, y) => inSite(world, site, x, z, y),
         holdingUse: false,
         actor: { id: -1, team: "ember", x: 0, y: 0, z: 0, alive: false },

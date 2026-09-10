@@ -116,6 +116,11 @@ export function humanCount(m: Match) {
   return m.slots.filter((s) => s.kind === "human").length;
 }
 
+/** Bodies that can still plant or cut — not leftover seat flags after takeover. */
+export function countLiving(team: Team, bodies: Array<{ team: Team; alive: boolean }>) {
+  return bodies.filter((b) => b.team === team && b.alive).length;
+}
+
 /** Live fight plus the gap after a win, before freeze / recap / match over. */
 export function roundCombatOpen(phase: Phase) {
   return phase === "live" || phase === "planted" || phase === "settle" || phase === "ending";
