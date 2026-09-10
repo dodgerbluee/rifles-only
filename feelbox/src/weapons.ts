@@ -4,12 +4,20 @@ import type { MeleeId } from "./look";
 
 export type RifleId = "kar" | "mosin";
 
-export const RIFLES: Record<
-  RifleId,
-  { name: string; mag: number; cycle: number; adsFov: number }
-> = {
-  kar: { name: "Kar98k", mag: 5, cycle: 0.74, adsFov: 38 },
-  mosin: { name: "Mosin", mag: 5, cycle: 0.9, adsFov: 40 },
+export type RifleSpec = {
+  name: string;
+  mag: number;
+  cycle: number;
+  adsFov: number;
+  /** Mouse scale while ADS. */
+  adsSens: number;
+  /** CoD1-style screen glass. Viewmodel hides once the zoom is in. */
+  glass: boolean;
+};
+
+export const RIFLES: Record<RifleId, RifleSpec> = {
+  kar: { name: "Kar98k", mag: 5, cycle: 0.8, adsFov: 26, adsSens: 0.26, glass: true },
+  mosin: { name: "Mosin", mag: 5, cycle: 0.9, adsFov: 40, adsSens: 0.42, glass: false },
 };
 
 export type RifleView = {
@@ -147,10 +155,32 @@ function alignY(mesh: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) {
 function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.007;
   const thick = 0.0028;
-  const gap = 0.007;
+  const gap = 0.0046;
   place(root, cylY(thick, earH, steel, 6), -gap, floorY + earH * 0.5, z);
   place(root, cylY(thick, earH, steel, 6), gap, floorY + earH * 0.5, z);
   place(root, cylX(thick, gap * 2 + thick, steel, 6), 0, floorY, z);
+}
+
+/** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
+function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
+  const tubeR = 0.0066;
+  const tubeLen = 0.15;
+  const axisY = recTop + 0.01 + tubeR;
+  const midZ = -0.055;
+  place(root, cylZ(tubeR, tubeLen, steel, 10), 0, axisY, midZ);
+  place(root, cylZ(0.008, 0.018, steel, 10), 0, axisY, midZ + tubeLen * 0.5 + 0.004);
+  const ocular = new THREE.Mesh(new THREE.TorusGeometry(0.0042, 0.0011, 8, 16), steel);
+  ocular.rotation.x = Math.PI / 2;
+  ocular.userData.karOcular = true;
+  place(root, ocular, 0, axisY, midZ + tubeLen * 0.5 + 0.012);
+  place(root, cylZ(0.0085, 0.02, steel, 10), 0, axisY, midZ - tubeLen * 0.5 - 0.002);
+  const obj = new THREE.Mesh(new THREE.TorusGeometry(0.006, 0.0012, 8, 16), steel);
+  obj.rotation.x = Math.PI / 2;
+  place(root, obj, 0, axisY, midZ - tubeLen * 0.5 - 0.01);
+  const mountH = axisY - recTop;
+  place(root, cylY(0.0022, mountH, steel, 6), 0, recTop + mountH * 0.5, midZ + 0.04);
+  place(root, cylY(0.0022, mountH, steel, 6), 0, recTop + mountH * 0.5, midZ - 0.04);
+  return { axisY, ocularZ: ocular.position.z };
 }
 
 function makeBolt(root: THREE.Group, home: THREE.Vector3, knob: THREE.Vector3) {
@@ -195,12 +225,16 @@ export function makeKar98(): RifleView {
   const rampH = recTop - barTop;
   place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
   place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
+  const wingH = postH + 0.004;
+  place(root, cylY(0.0014, wingH, steel, 5), -0.0042, recTop + wingH * 0.35, postZ);
+  place(root, cylY(0.0014, wingH, steel, 5), 0.0042, recTop + wingH * 0.35, postZ);
+  const scope = karScope(root, recTop, steel);
 
   const flash = flashMesh(0, axisY, -0.52);
   root.add(flash);
   const { rounds, clip } = makeAmmoKit(root, axisY, "kar", steel);
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
-  const adsPos = new THREE.Vector3(0, -(recTop + postH), -0.11);
+  const adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
   root.position.copy(hipPos);
   return { id: "kar", root, flash, hipPos, adsPos, bolt, rounds, clip };
 }

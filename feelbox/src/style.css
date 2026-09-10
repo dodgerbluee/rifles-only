@@ -97,13 +97,17 @@ body {
   top: calc(var(--ch-dot) / -2);
 }
 
-#crosshair.ch-t .ch-s,
-.ch-draw.ch-t .ch-s,
+#crosshair.ch-t .ch-n,
+.ch-draw.ch-t .ch-n,
 #crosshair.ch-no-arms .ch-arm,
 .ch-draw.ch-no-arms .ch-arm,
 #crosshair.ch-no-dot .ch-dot,
 .ch-draw.ch-no-dot .ch-dot {
   display: none;
+}
+
+body:not(.started) #crosshair {
+  visibility: hidden;
 }
 
 #hitmark {
@@ -403,6 +407,73 @@ body.started #killfeed {
 
 body.ads #crosshair {
   opacity: 0;
+}
+
+#kar-glass {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: none;
+}
+
+.kar-glass-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle closest-side at 50% 50%,
+    transparent 50%,
+    rgba(8, 9, 7, 0.38) 71%,
+    #080907 75.5%
+  );
+}
+
+.kar-glass-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(75.5vmin, 75.5vh);
+  height: min(75.5vmin, 75.5vh);
+  margin: calc(min(75.5vmin, 75.5vh) / -2) 0 0 calc(min(75.5vmin, 75.5vh) / -2);
+  border: 3px solid #1c1e18;
+  border-radius: 50%;
+  box-shadow: inset 0 0 18px 8px rgba(8, 9, 7, 0.55), 0 0 0 1px rgba(232, 217, 168, 0.12);
+}
+
+.kar-glass-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
+.kar-glass-bar {
+  position: absolute;
+  background: #11140e;
+  box-shadow: 0 0 0 1px rgba(239, 230, 210, 0.35);
+}
+
+.kar-glass-bar-s {
+  left: -1px;
+  top: 7px;
+  width: 2px;
+  height: min(28vmin, 28vh);
+}
+
+.kar-glass-bar-l {
+  top: -1px;
+  right: 7px;
+  height: 2px;
+  width: min(22vmin, 22vh);
+}
+
+.kar-glass-bar-r {
+  top: -1px;
+  left: 7px;
+  height: 2px;
+  width: min(22vmin, 22vh);
 }
 
 #roster {
@@ -1008,7 +1079,8 @@ body.admin #view {
   inset: 0;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(circle at center, rgba(255, 200, 80, 0.85) 0%, rgba(180, 40, 8, 0.35) 42%, transparent 70%);
+  z-index: 14;
+  background: radial-gradient(circle at center, rgba(255, 210, 90, 0.92) 0%, rgba(200, 50, 8, 0.45) 38%, transparent 72%);
 }
 
 #admin {
@@ -1206,7 +1278,11 @@ body.settings #settings {
 
 #home-studio:hover,
 #home-locker:hover,
-#locker-back:hover {
+#locker-back:hover,
+#reg-go:hover,
+#login-go:hover,
+#home-logout:hover,
+#locker-save-look:hover {
   border-color: #e8d9a8;
 }
 
@@ -1276,7 +1352,8 @@ body.locker.locker-drag #view {
   color: #cfc6b2;
 }
 
-.locker-name input {
+.locker-name input,
+.locker-stack input {
   background: #1c1e18;
   color: #e8e4d4;
   border: 1px solid rgba(232, 217, 168, 0.35);
@@ -1284,27 +1361,24 @@ body.locker.locker-drag #view {
   font: inherit;
 }
 
-.locker-key {
-  display: grid;
-  grid-template-columns: 56px 1fr auto;
-  gap: 10px;
-  align-items: center;
+.locker-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   width: 100%;
   color: #cfc6b2;
 }
 
-.locker-key input {
-  background: #1c1e18;
-  color: #e8e4d4;
-  border: 1px solid rgba(232, 217, 168, 0.35);
-  padding: 8px 10px;
-  font: inherit;
-  user-select: text;
+.locker-stack span {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8d8676;
 }
 
-.locker-key button,
-#home-id-copy,
 #reg-go,
+#login-go,
+#home-logout,
 #locker-save-look {
   background: #1c1e18;
   color: #e8d9a8;
@@ -1314,12 +1388,51 @@ body.locker.locker-drag #view {
   cursor: pointer;
 }
 
+#reg-go:disabled,
+#login-go:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 #register {
   display: none;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
   width: min(440px, 100%);
+}
+
+#register form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+#register form[hidden] {
+  display: none !important;
+}
+
+.locker-err {
+  margin: 0;
+  font-size: 12px;
+  color: #c45c4a;
+}
+
+.locker-text {
+  background: none;
+  border: none;
+  color: #8d8676;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.locker-text:hover {
+  color: #e8d9a8;
 }
 
 body.register #register {
@@ -1353,15 +1466,6 @@ body.register #home-id,
   margin: 0;
   color: #e8d9a8;
   font-weight: 650;
-}
-
-.home-id-key {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  color: #8d8676;
-  user-select: text;
-  word-break: break-all;
 }
 
 #locker-save-look {
@@ -1729,7 +1833,7 @@ body.locker #vitals {
 .ch-slot {
   position: relative;
   flex: 1;
-  height: 48px;
+  height: 52px;
   margin: 0;
   padding: 0;
   background: #0a0b08;
@@ -1740,6 +1844,7 @@ body.locker #vitals {
 
 .ch-slot.on {
   border-color: #e8d9a8;
+  box-shadow: inset 0 0 0 1px #e8d9a8;
 }
 
 #ch-preview {

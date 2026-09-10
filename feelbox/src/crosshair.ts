@@ -301,7 +301,7 @@ export function bindCrosshairSettings(bank: Bank, save: () => void) {
     slotsEl.querySelectorAll<HTMLElement>(".ch-slot").forEach((btn, i) => {
       btn.classList.toggle("on", i === bank.crosshairSlot);
       const draw = btn.querySelector<HTMLElement>(".ch-draw");
-      if (draw && bank.crosshairs[i]) paintCrosshair(draw, bank.crosshairs[i]!, 0, Math.min(0.5, viewScale()));
+      if (draw && bank.crosshairs[i]) paintCrosshair(draw, bank.crosshairs[i]!, 0, 1.35);
     });
     colorsEl.querySelectorAll<HTMLElement>(".ch-swatch").forEach((btn, i) => {
       const c = CROSSHAIR_COLORS[i]!;

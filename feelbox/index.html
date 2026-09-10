@@ -12,6 +12,15 @@
     <div id="smoke-veil"></div>
     <div id="flash-veil"></div>
     <div id="stun-veil"></div>
+    <div id="kar-glass" aria-hidden="true">
+      <div class="kar-glass-shade"></div>
+      <div class="kar-glass-ring"></div>
+      <div class="kar-glass-reticle">
+        <span class="kar-glass-bar kar-glass-bar-s"></span>
+        <span class="kar-glass-bar kar-glass-bar-l"></span>
+        <span class="kar-glass-bar kar-glass-bar-r"></span>
+      </div>
+    </div>
     <div id="crosshair">
       <span class="ch-arm ch-n"></span>
       <span class="ch-arm ch-e"></span>
@@ -98,24 +107,34 @@
       <div id="server-list"></div>
       <div id="home-id">
         <p class="home-id-name" id="home-id-name">You</p>
-        <p class="home-id-key" id="home-id-key"></p>
-        <button type="button" id="home-id-copy">Copy key</button>
+        <button type="button" id="home-logout">Log out</button>
       </div>
       <div id="home-actions">
         <button type="button" id="home-studio">Map studio</button>
         <button type="button" id="home-locker">Player</button>
       </div>
       <div id="register" hidden>
-        <p class="locker-kicker">Register</p>
-        <label class="locker-name"><span>Name</span><input id="reg-name" type="text" maxlength="18" /></label>
-        <label class="locker-key"><span>Primary key</span><input id="reg-key" type="text" readonly spellcheck="false" /><button type="button" id="reg-copy">Copy</button></label>
-        <p class="locker-hint">Copy / save this. It’s how we ban you — not your name.</p>
-        <button type="button" id="reg-go">Save and continue</button>
+        <p class="locker-kicker" id="auth-kicker">Register</p>
+        <form id="auth-register">
+          <label class="locker-stack"><span>Email</span><input id="reg-email" type="email" autocomplete="email" maxlength="120" required /></label>
+          <label class="locker-stack"><span>Username</span><input id="reg-user" type="text" autocomplete="username" maxlength="18" spellcheck="false" required /></label>
+          <label class="locker-stack"><span>Password</span><input id="reg-pass" type="password" autocomplete="new-password" maxlength="200" required /></label>
+          <p id="reg-err" class="locker-err" hidden></p>
+          <p class="locker-hint">Email is just for the account — we don’t verify it. Username and password keep your player.</p>
+          <button type="submit" id="reg-go">Create account</button>
+          <button type="button" id="auth-to-login" class="locker-text">Already have an account? Log in</button>
+        </form>
+        <form id="auth-login" hidden>
+          <label class="locker-stack"><span>Username or email</span><input id="login-user" type="text" autocomplete="username" maxlength="120" spellcheck="false" required /></label>
+          <label class="locker-stack"><span>Password</span><input id="login-pass" type="password" autocomplete="current-password" maxlength="200" required /></label>
+          <p id="login-err" class="locker-err" hidden></p>
+          <button type="submit" id="login-go">Log in</button>
+          <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
+        </form>
       </div>
       <div id="locker" hidden>
         <p class="locker-kicker">Player</p>
         <label class="locker-name"><span>Name</span><input id="locker-name" type="text" maxlength="18" /></label>
-        <label class="locker-key"><span>Key</span><input id="locker-key" type="text" readonly spellcheck="false" /><button type="button" id="locker-copy">Copy</button></label>
         <button type="button" id="locker-save-look">Save character</button>
         <p class="locker-label">Design a player</p>
         <div id="locker-look">

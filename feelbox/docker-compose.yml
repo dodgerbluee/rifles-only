@@ -15,6 +15,9 @@ services:
       ROLE: lobby
       GAME_STATIC: dist
       GAME_WS: ws://game:8081/ws
+      ACCOUNTS_PATH: /data/accounts.json
+    volumes:
+      - accounts:/data
     restart: unless-stopped
 
   game:
@@ -29,8 +32,14 @@ services:
       # Optional: SERVER_CONFIG=/app/server.json
       GAME_MAP: wharf
       GAME_PER_TEAM: "5"
+      ACCOUNTS_PATH: /data/accounts.json
+    volumes:
+      - accounts:/data
     expose:
       - "8081"
     depends_on:
       - lobby
     restart: unless-stopped
+
+volumes:
+  accounts:

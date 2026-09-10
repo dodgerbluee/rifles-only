@@ -46,6 +46,7 @@ match.wire.carrierId = 0;
 
 tickMatch(match, 0.5, dummy);
 check("holding plant charges the wire", match.wire.plantHold > 0.4, `hold=${match.wire.plantHold.toFixed(2)}`);
+check("plant and cut are both five seconds", tuning.plant === 5 && tuning.cut === 5, `plant=${tuning.plant} cut=${tuning.cut}`);
 check(
   "carrier holding F in site is planting",
   isPlanting(match, { id: 0, x: -9, y: 3.4, z: 20.5, holdingUse: true }, dummy.inSite),
@@ -97,6 +98,36 @@ tickMatch(cut, 0.02, { ...dummy, holdingUse: false });
 check("cut finish zeros the hold ticks", cut.wire.cutHold === 0 && cut.wire.plantHold === 0, `cut=${cut.wire.cutHold} plant=${cut.wire.plantHold}`);
 check("cut finish settles the round", cut.phase === "settle", `phase=${cut.phase}`);
 check("settle still allows combat", roundCombatOpen(cut.phase));
+
+const midCut = createMatch({ claimLocal: true });
+midCut.phase = "planted";
+midCut.wire.mode = "planted";
+midCut.wire.x = -9;
+midCut.wire.y = 3.4;
+midCut.wire.z = 20.5;
+midCut.wire.cutHold = 2.4;
+const cutterBody = { id: 5, team: "stone" as const, x: -9, y: 3.4, z: 20.5, alive: true };
+tickMatch(midCut, 0.5, { ...dummy, holdingUse: true, actor: cutterBody });
+check("cut charges while held", midCut.wire.cutHold > 2.8, `hold=${midCut.wire.cutHold.toFixed(2)}`);
+tickMatch(midCut, 0.02, { ...dummy, holdingUse: false, actor: cutterBody });
+check("releasing cut resets the timer", midCut.wire.cutHold === 0, `hold=${midCut.wire.cutHold}`);
+
+let blasted = false;
+const boom = createMatch({ claimLocal: true });
+boom.phase = "planted";
+boom.wire.mode = "planted";
+boom.wire.x = -9;
+boom.wire.y = 3.4;
+boom.wire.z = 20.5;
+boom.bombTime = 0.01;
+tickMatch(boom, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  onDetonate: () => {
+    blasted = true;
+  },
+});
+check("fuse out detonates the bomb", blasted && boom.phase === "settle", `blasted=${blasted} phase=${boom.phase}`);
 
 const wipe = createMatch({ claimLocal: true });
 wipe.phase = "live";

@@ -9,10 +9,12 @@ services:
       - PORT=8080
       - GAME_STATIC=dist
       - GAME_WS=ws://game:8081/ws
+      - ACCOUNTS_PATH=/data/accounts.json
     ports:
       - "8080:8080"
     volumes:
       - /etc/localtime:/etc/localtime:ro
+      - accounts:/data
 
   game:
     image: ghcr.io/dodgerbluee/rifles-only:latest
@@ -25,9 +27,14 @@ services:
       - LOBBY_URL=http://lobby:8080
       - GAME_NAME=Last Wire
       - GAME_ID=default
+      - ACCOUNTS_PATH=/data/accounts.json
     expose:
       - "8081"
     depends_on:
       - lobby
     volumes:
       - /etc/localtime:/etc/localtime:ro
+      - accounts:/data
+
+volumes:
+  accounts:

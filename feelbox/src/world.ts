@@ -110,8 +110,8 @@ export function buildWorld(scene: THREE.Scene): World {
   siteMarker(scene, new THREE.Vector3(10, 3.35, -16), "B");
   siteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
 
-  const plantSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
-  const watchSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
+  const plantSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
+  const watchSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
 
   return {
     id: "wharf",

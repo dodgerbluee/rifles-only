@@ -1,12 +1,13 @@
 /**
  * Bots should leave spawn and keep moving along their route, not pin on the
- * same wall. Fail if anyone stays stuck far from their path.
+ * same wall. Fail if anyone stays stuck far from their site.
  */
 import * as THREE from "three";
 import { createBots, updateBots } from "../src/bots.ts";
 import { createMatch } from "../src/match.ts";
 import { buildMap, MAPS, type MapId } from "../src/maps/index.ts";
 import { collideXZ, groundHeight } from "../src/world.ts";
+import { clearWalk } from "../src/nav.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -48,8 +49,19 @@ function runMap(id: MapId) {
   const start = bots.map((b) => ({ x: b.x, y: b.y, z: b.z }));
   const pin = bots.map(() => 0);
 
+  const gap: string[] = [];
+  for (const b of bots) {
+    for (let i = 0; i < b.path.length - 1; i++) {
+      const a = b.path[i]!;
+      const c = b.path[i + 1]!;
+      if (!clearWalk(world.colliders, a.x, a.z, a.y, c.x, c.z) && Math.abs(a.y - c.y) < 1.2) {
+        gap.push(`id=${b.id} ${i}->${i + 1} ${a.x.toFixed(0)},${a.z.toFixed(0)}>${c.x.toFixed(0)},${c.z.toFixed(0)}`);
+      }
+    }
+  }
+
   let t = 1;
-  for (let i = 0; i < 480; i++) {
+  for (let i = 0; i < 840; i++) {
     t += 1 / 30;
     const before = bots.map((b) => ({ x: b.x, z: b.z }));
     updateBots(bots, 1 / 30, t, world.colliders, world, match, [], false, () => {}, () => false, []);
@@ -60,25 +72,33 @@ function runMap(id: MapId) {
   }
 
   const stuck: string[] = [];
+  const far: string[] = [];
   for (const [i, b] of bots.entries()) {
     const s = start[i]!;
     const moved = Math.hypot(b.x - s.x, b.z - s.z);
     const last = b.path[b.path.length - 1] ?? b.spawn;
     const left = Math.hypot(b.x - last.x, b.z - last.z);
+    const site = world.sites.find((site) => site.id === b.site)!;
+    const toSite = Math.hypot(b.x - site.x, b.z - site.z);
     const first = b.path[0] ?? b.spawn;
     const toFirst = walkTo(world.colliders, s.x, s.z, s.y, first.x, first.z);
     const d0 = Math.hypot(first.x - s.x, first.z - s.z);
     const tgt = b.path[b.wp] ?? last;
-    const line = `id=${b.id} ${b.team} pin=${pin[i]!.toFixed(1)}s moved=${moved.toFixed(1)} left=${left.toFixed(1)} wp=${b.wp}/${b.path.length} y=${b.y.toFixed(1)} tgtY=${tgt.y.toFixed(1)} d0=${d0.toFixed(1)} firstWalk=${toFirst.ok} pos=${b.x.toFixed(1)},${b.z.toFixed(1)}`;
-    if (pin[i]! > 3 && left > 3) {
+    const line = `id=${b.id} ${b.team} ${b.site} pin=${pin[i]!.toFixed(1)}s moved=${moved.toFixed(1)} left=${left.toFixed(1)} toSite=${toSite.toFixed(1)} wp=${b.wp}/${b.path.length} y=${b.y.toFixed(1)} tgtY=${tgt.y.toFixed(1)} d0=${d0.toFixed(1)} firstWalk=${toFirst.ok} pos=${b.x.toFixed(1)},${b.z.toFixed(1)}`;
+    if (pin[i]! > 4 && toSite > 8) {
       const pts = b.path.map((p) => `${p.x.toFixed(0)},${p.z.toFixed(0)}`).join(">");
       stuck.push(`${line} path=${pts}`);
     }
+    if (toSite > 12) far.push(line);
   }
 
-  console.log(`\n${id}  bots=${bots.length} stuck=${stuck.length}`);
+  console.log(`\n${id}  bots=${bots.length} stuck=${stuck.length} far=${far.length} gaps=${gap.length}`);
   for (const line of stuck) console.log(`  PIN ${line}`);
+  for (const line of far) console.log(`  FAR ${line}`);
+  for (const line of gap.slice(0, 6)) console.log(`  GAP ${line}`);
   check(`${id}: bots do not pin on walls`, stuck.length === 0, `stuck=${stuck.length}/${bots.length}`);
+  check(`${id}: bots reach their site`, far.length === 0, `far=${far.length}/${bots.length}`);
+  check(`${id}: bot routes are walkable`, gap.length === 0, `gaps=${gap.length}`);
 }
 
 for (const m of MAPS) runMap(m.id);

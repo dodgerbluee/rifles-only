@@ -59,9 +59,7 @@ import {
   humanCount,
   humanSlot,
   markDead,
-  pickupWire,
   plantingTeam,
-  plantWire,
   roundCombatOpen,
   roundFrozen,
   slotById,
@@ -1149,6 +1147,7 @@ function paintLocker() {
     b.classList.toggle("on", b.dataset.side === locker.team);
   });
   paintIdentity();
+  if (document.body.classList.contains("register")) return;
   const title = document.querySelector("#start-title");
   const blurb = document.querySelector("#start-blurb");
   if (title) title.textContent = locker.on ? "Player" : "Servers";
@@ -1618,6 +1617,9 @@ bindIdentity({
     setNetPlayerKey(accountKey() || prefs.playerKey);
     paintLocker();
   },
+  onRegistered() {
+    enterLocker();
+  },
 });
 
 {
@@ -1772,6 +1774,23 @@ function liveRifle() {
 function showRifle(kind: RifleId, on: boolean) {
   kar.root.visible = on && kind === "kar";
   mosin.root.visible = on && kind === "mosin";
+}
+
+const karGlassEl = document.querySelector<HTMLElement>("#kar-glass");
+
+function adsZoomK(kind: RifleId, currentFov: number) {
+  const z = RIFLES[kind].adsFov;
+  return THREE.MathUtils.clamp((90 - currentFov) / Math.max(1, 90 - z), 0, 1);
+}
+
+function setKarGlass(kind: RifleId, aiming: boolean, zoom: number) {
+  if (!karGlassEl) return;
+  const on = aiming && RIFLES[kind].glass && zoom > 0.04;
+  karGlassEl.style.opacity = on ? String(Math.min(1, (zoom - 0.04) / 0.7)) : "0";
+}
+
+function glassHidesRifle(kind: RifleId, aiming: boolean, zoom: number) {
+  return aiming && RIFLES[kind].glass && zoom > 0.7;
 }
 
 let knife = makeMelee(prefs.look.melee);
@@ -2436,7 +2455,8 @@ addEventListener("mousemove", (e) => {
     return;
   }
   if (!locked || !alive) return;
-  const scale = (ads ? 0.42 : 1) * MOUSE * prefs.sens * (stunT > 0 ? 0.28 : 1);
+  const adsScale = ads ? RIFLES[rifleKind].adsSens : 1;
+  const scale = adsScale * MOUSE * prefs.sens * (stunT > 0 ? 0.28 : 1);
   yaw -= e.movementX * scale;
   pitch -= e.movementY * scale;
   pitch = Math.max(-1.4, Math.min(1.4, pitch));
@@ -3112,21 +3132,33 @@ function tryFire() {
   mag -= 1;
   plantBroke = true;
   interruptPlant(match, actorId());
-  const adsMul = ads ? 0.55 : 1;
   const rec = tuning.recoil;
-  pitch -= 0.016 * adsMul * rec;
-  yaw += (Math.random() - 0.45) * 0.012 * adsMul * rec;
-  punchP += 1.25 * adsMul * rec;
-  punchY += (Math.random() - 0.5) * 0.55 * rec;
-  punchR += (Math.random() - 0.5) * 0.8 * rec;
-  gunKickZ = 0.08 * rec;
+  if (RIFLES[rifleKind].glass) {
+    const adsMul = ads ? 0.9 : 1;
+    pitch -= 0.032 * adsMul * rec;
+    yaw += (Math.random() - 0.5) * 0.007 * adsMul * rec;
+    punchP += 2.05 * adsMul * rec;
+    punchY += (Math.random() - 0.5) * 0.22 * rec;
+    punchR += (Math.random() - 0.5) * 0.32 * rec;
+    gunKickZ = 0.055 * rec;
+    fov += ads ? 0.2 : 2.4;
+    bang(76, 0.13, 0.11);
+  } else {
+    const adsMul = ads ? 0.55 : 1;
+    pitch -= 0.016 * adsMul * rec;
+    yaw += (Math.random() - 0.45) * 0.012 * adsMul * rec;
+    punchP += 1.25 * adsMul * rec;
+    punchY += (Math.random() - 0.5) * 0.55 * rec;
+    punchR += (Math.random() - 0.5) * 0.8 * rec;
+    gunKickZ = 0.08 * rec;
+    fov += ads ? 1.2 : 2.4;
+    bang(110, 0.09, 0.08);
+  }
   boltDur = RIFLES[rifleKind].cycle;
   boltT = boltDur;
   const flash = liveRifle().flash;
   flash.visible = true;
   flashUntil = time + 0.045;
-  fov += ads ? 1.2 : 2.4;
-  bang(110, 0.09, 0.08);
 
   camera.updateMatrixWorld();
   const origin = new THREE.Vector3();
@@ -3222,7 +3254,7 @@ function collectPoses(): Pose[] {
         weapon: pawnPoseWeapon(self ? (weapon === "rifle" ? rifleKind : weapon) : p.weapon),
         ads: self ? ads && weapon === "rifle" : p.ads,
         bash: self && bashT > 0 ? 1 - bashT / 0.42 : 0,
-        fov: (self ? ads && weapon === "rifle" : p.ads) ? 68 : 90,
+        fov: self && ads && weapon === "rifle" ? RIFLES[rifleKind].adsFov : p.ads ? 68 : 90,
         kick: self ? gunKickZ : 0,
         punchP: self ? punchP : 0,
         punchY: self ? punchY : 0,
@@ -3537,7 +3569,11 @@ function applyReelHands(cam: Pose) {
   const bashing = cam.bash > 0.02;
   const rifleOn = (cam.weapon === "kar" || cam.weapon === "mosin") && !bashing;
   const kind: RifleId = cam.weapon === "mosin" ? "mosin" : "kar";
-  showRifle(kind, rifleOn);
+  const camFov = cam.fov || (cam.ads ? RIFLES[kind].adsFov : 90);
+  const zoom = adsZoomK(kind, camFov);
+  const aiming = cam.ads && rifleOn;
+  showRifle(kind, rifleOn && !glassHidesRifle(kind, aiming, zoom));
+  setKarGlass(kind, aiming, zoom);
   knife.visible = cam.weapon === "knife" || bashing;
   nadeView.visible = isNade(cam.weapon as Weapon) && !bashing;
   if (bashing) poseKnifeSlash(knife, cam.bash);
@@ -3548,7 +3584,7 @@ function applyReelHands(cam: Pose) {
   const g = kind === "mosin" ? mosin.root : kar.root;
   g.position.copy(rest);
   g.position.z += cam.kick;
-  g.rotation.x = (cam.ads ? (kind === "mosin" ? 0 : 0.018) : 0.1) - cam.punchP * 0.04;
+  g.rotation.x = (cam.ads ? 0 : 0.1) - cam.punchP * 0.04;
   g.rotation.y = cam.ads ? 0 : 0.22;
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
   const hold = liveRifleFor(kind);
@@ -3568,7 +3604,7 @@ function applyReelHands(cam: Pose) {
     else if (isNade(cam.weapon as Weapon)) poseArm(arm, nadeWrist(nadeView));
     else poseArm(arm, rifleWrist(hold, 0));
   }
-  camera.fov = cam.fov || (cam.ads ? 65 : 90);
+  camera.fov = camFov;
   camera.updateProjectionMatrix();
   lastReelAds = cam.ads;
 }
@@ -3734,10 +3770,11 @@ function roundSpawn() {
   lastRecord = -1;
   ghost.visible = false;
   for (const b of bots) b.root.visible = true;
+  const dock = world.placeName?.(spawn.x, spawn.z, spawn.y) ?? placeName(spawn.x, spawn.z, spawn.y);
   showSpawn(
     you && you.team === planter
-      ? "Ember dock · you carry the Bomb"
-      : `Stone dock · hold ${world.sites[0]?.name ?? "A"} and ${world.sites[1]?.name ?? "B"}`,
+      ? `${dock} · you carry the Bomb`
+      : `${dock} · hold ${world.sites[0]?.name ?? "A"} and ${world.sites[1]?.name ?? "B"}`,
     time,
   );
 }
@@ -4494,7 +4531,8 @@ function frame(now: number) {
   const leanM = maxLean(lean * tuning.leanM, height);
   lastLeanM = leanM;
 
-  punchP += (0 - punchP) * Math.min(1, dt * 12);
+  const punchSettle = rifleKind === "kar" && ads ? 6.5 : 12;
+  punchP += (0 - punchP) * Math.min(1, dt * punchSettle);
   punchY += (0 - punchY) * Math.min(1, dt * 10);
   punchR += (0 - punchR) * Math.min(1, dt * 10);
   gunKickZ += (0 - gunKickZ) * Math.min(1, dt * 16);
@@ -4503,19 +4541,20 @@ function frame(now: number) {
     mosin.flash.visible = false;
   }
   hipSpread = hipCone();
-  blastFlash += (0 - blastFlash) * Math.min(1, dt * 2.8);
+  blastFlash += (0 - blastFlash) * Math.min(1, dt * 1.7);
   blastEl.style.opacity = String(blastFlash);
 
   for (let i = blasts.length - 1; i >= 0; i--) {
     const b = blasts[i]!;
     b.t -= dt;
-    const k = 1 - Math.max(0, b.t) / 0.9;
-    b.mesh.scale.setScalar(0.6 + k * 11);
-    (b.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.9 * (1 - k));
-    b.light.intensity = 48 * (1 - k);
+    const k = 1 - Math.max(0, b.t) / 1.45;
+    b.mesh.scale.setScalar(0.8 + k * 16);
+    (b.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.95 * (1 - k));
+    b.light.intensity = 72 * (1 - k);
     if (b.t <= 0) {
       scene.remove(b.mesh, b.light);
       b.mesh.geometry.dispose();
+      (b.mesh.material as THREE.Material).dispose();
       blasts.splice(i, 1);
     }
   }
@@ -4535,6 +4574,7 @@ function frame(now: number) {
       camera.fov = fov;
       camera.updateProjectionMatrix();
       showRifle(rifleKind, false);
+      setKarGlass(rifleKind, false, 0);
       knife.visible = false;
       nadeView.visible = false;
       arm.root.visible = false;
@@ -4555,6 +4595,7 @@ function frame(now: number) {
         camera.fov = fov;
         camera.updateProjectionMatrix();
         showRifle(rifleKind, false);
+        setKarGlass(rifleKind, false, 0);
         knife.visible = false;
         nadeView.visible = false;
         arm.root.visible = false;
@@ -4568,7 +4609,8 @@ function frame(now: number) {
         camera.rotation.x = (alive ? pitch : Math.min(pitch + 0.35, 0.6)) - punchP * 0.018;
         camera.rotation.z = -lean * THREE.MathUtils.degToRad(8) - punchR * 0.02;
         const fovTarget = ads ? RIFLES[rifleKind].adsFov : 90;
-        fov += (fovTarget - fov) * Math.min(1, dt * 10);
+        const zoomRate = RIFLES[rifleKind].glass ? 6.5 : 10;
+        fov += (fovTarget - fov) * Math.min(1, dt * zoomRate);
         camera.fov = fov;
         camera.updateProjectionMatrix();
         const bashing = bashT > 0;
@@ -4576,7 +4618,11 @@ function frame(now: number) {
         const boltK = boltT > 0 ? 1 - boltT / boltDur : 0;
         const throwK = throwing ? 1 - throwT / throwDur : 0;
         const cowedSelf = isCow(playerId);
-        showRifle(rifleKind, !studio.on && alive && weapon === "rifle" && !bashing && !throwing && !cowedSelf);
+        const aiming = ads && alive && weapon === "rifle" && !bashing && !throwing && !cowedSelf;
+        const zoom = adsZoomK(rifleKind, fov);
+        const rifleOn = !studio.on && alive && weapon === "rifle" && !bashing && !throwing && !cowedSelf;
+        showRifle(rifleKind, rifleOn && !glassHidesRifle(rifleKind, aiming, zoom));
+        setKarGlass(rifleKind, aiming, zoom);
         knife.visible = !studio.on && alive && (weapon === "knife" || bashing) && !throwing && !cowedSelf;
         nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing) && !cowedSelf;
         if (bashing) poseKnifeSlash(knife, 1 - bashT / 0.42);
@@ -4591,7 +4637,7 @@ function frame(now: number) {
         const g = hold.root;
         g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
-        g.rotation.x = (ads ? (rifleKind === "mosin" ? 0 : 0.018) : 0.1) - punchP * 0.04;
+        g.rotation.x = (ads ? 0 : 0.1) - punchP * 0.04;
         g.rotation.y = ads ? 0 : 0.22;
         g.rotation.z = (ads ? 0 : 0.06) + punchY * 0.05;
         const reloadK = reloading > 0 ? 1 - reloading / RELOAD : 0;
@@ -4870,6 +4916,7 @@ function frame(now: number) {
     for (const b of bots) b.root.visible = false;
     ghost.visible = false;
     showRifle(rifleKind, false);
+    setKarGlass(rifleKind, false, 0);
     knife.visible = false;
     nadeView.visible = false;
     arm.root.visible = false;
@@ -4959,6 +5006,7 @@ function frame(now: number) {
       camera.rotation.z = 0;
       camera.updateProjectionMatrix();
       showRifle(rifleKind, true);
+      setKarGlass(rifleKind, false, 0);
       const hold = liveRifle();
       hold.root.position.copy(hold.hipPos);
       hold.root.rotation.set(0.1, 0.22, 0.06);
@@ -5021,6 +5069,7 @@ function frame(now: number) {
       studioSel.visible = false;
     } else {
       showRifle(rifleKind, false);
+      setKarGlass(rifleKind, false, 0);
       arm.root.visible = false;
       applyOrbit(camera, studio.cam);
       studioSel.visible = false;

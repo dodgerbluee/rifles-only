@@ -7,7 +7,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
-import { createAccountBook, isPlayerKey } from "./accounts.mjs";
+import { createAccountBook, isPlayerKey, publicAccount } from "./accounts.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -41,6 +41,36 @@ const servers = new Map();
 function json(res, code, body) {
   res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
+}
+
+function readJson(req, max = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let n = 0;
+    req.on("data", (c) => {
+      n += c.length;
+      if (n > max) {
+        req.destroy();
+        reject(new Error("too large"));
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        reject(new Error("bad json"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function authPayload(rec) {
+  const pub = publicAccount(rec);
+  if (!pub) return null;
+  return { ok: true, ...pub };
 }
 
 function listServers() {
@@ -126,6 +156,54 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/register" && req.method === "POST") {
+    void readJson(req)
+      .then((body) => {
+        const result = accounts.signup({
+          email: body?.email,
+          username: body?.username,
+          password: body?.password,
+          name: body?.name,
+          look: typeof body?.look === "string" ? body.look : "",
+        });
+        if (!result.ok) {
+          const code = result.reason === "username" || result.reason === "email" ? 409 : 400;
+          json(res, code, { ok: false, reason: result.reason });
+          return;
+        }
+        const payload = authPayload(result.rec);
+        if (!payload) {
+          json(res, 500, { ok: false });
+          return;
+        }
+        json(res, 200, payload);
+      })
+      .catch(() => json(res, 400, { ok: false }));
+    return;
+  }
+
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    void readJson(req)
+      .then((body) => {
+        const result = accounts.login({
+          user: body?.user ?? body?.username ?? body?.email,
+          password: body?.password,
+        });
+        if (!result.ok) {
+          json(res, 401, { ok: false, reason: "auth" });
+          return;
+        }
+        const payload = authPayload(result.rec);
+        if (!payload) {
+          json(res, 401, { ok: false, reason: "auth" });
+          return;
+        }
+        json(res, 200, payload);
+      })
+      .catch(() => json(res, 400, { ok: false }));
+    return;
+  }
+
   if (url.pathname === "/api/account" && req.method === "GET") {
     const key = url.searchParams.get("key") ?? "";
     if (!isPlayerKey(key)) {
@@ -137,35 +215,25 @@ const server = http.createServer((req, res) => {
       json(res, 404, { ok: false });
       return;
     }
-    json(res, 200, { ok: true, name: rec.name, look: rec.look, looks: rec.looks ?? [] });
+    json(res, 200, { ok: true, name: rec.name, look: rec.look, looks: rec.looks ?? [], username: rec.username ?? "" });
     return;
   }
 
   if (url.pathname === "/api/account" && req.method === "POST") {
-    const chunks = [];
-    let n = 0;
-    req.on("data", (c) => {
-      n += c.length;
-      if (n > 16 * 1024) req.destroy();
-      else chunks.push(c);
-    });
-    req.on("end", () => {
-      try {
-        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    void readJson(req)
+      .then((body) => {
         const rec = accounts.register({
-          playerKey: body.playerKey,
-          name: body.name,
-          look: typeof body.look === "string" ? body.look : "",
+          playerKey: body?.playerKey,
+          name: body?.name,
+          look: typeof body?.look === "string" ? body.look : "",
         });
         if (!rec) {
           json(res, 400, { ok: false });
           return;
         }
         json(res, 200, { ok: true, name: rec.name, look: rec.look });
-      } catch {
-        json(res, 400, { ok: false });
-      }
-    });
+      })
+      .catch(() => json(res, 400, { ok: false }));
     return;
   }
 

@@ -1,19 +1,23 @@
 /**
- * Register persists name + opaque look by playerKey; banned keys cannot join.
+ * Credentials mint a server-side playerKey; banned keys cannot join.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  generatePlayerKey,
+  applySession,
   isPlayerKey,
   loadAccount,
   persistAccount,
-  registerAccount,
   saveCharacter,
   type KV,
 } from "../src/account.ts";
-import { admitPlayer, createAccountBook } from "../server/accounts.mjs";
+import {
+  admitPlayer,
+  createAccountBook,
+  generatePlayerKey,
+  publicAccount,
+} from "../server/accounts.mjs";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -28,18 +32,23 @@ function memory(): KV {
     setItem: (k, v) => {
       data.set(k, v);
     },
+    removeItem: (k) => {
+      data.delete(k);
+    },
   };
 }
 
 const look = "2144032";
 const store = memory();
-const rec = registerAccount({ name: "Reed", look }, store);
-check("register yields a long player key", isPlayerKey(rec.playerKey) && rec.playerKey.length >= 24);
-check("register keeps the display name", rec.name === "Reed");
-check("register stores the look string as-is", rec.look === look);
+const minted = generatePlayerKey();
+const rec = applySession({ playerKey: minted, username: "reed", name: "Reed", look }, store);
+check("session stores a server player key", !!rec && rec.playerKey === minted && isPlayerKey(rec.playerKey));
+check("session keeps the display name", rec?.name === "Reed");
+check("session stores the look string as-is", rec?.look === look);
+check("session keeps the username", rec?.username === "reed");
 
 const again = loadAccount(store);
-check("reload keeps the same key", again?.playerKey === rec.playerKey);
+check("reload keeps the same key", again?.playerKey === rec?.playerKey);
 check("reload keeps the same name", again?.name === "Reed");
 check("reload keeps the same look string", again?.look === look);
 
@@ -48,6 +57,9 @@ const saved = saveCharacter(otherLook, store);
 check("save character keeps an opaque look", saved?.look === otherLook);
 check("reload after save still has the new look", loadAccount(store)?.look === otherLook);
 check("name does not become the ban identity", loadAccount(store)?.playerKey !== "Reed");
+
+const empty = memory();
+check("client will not mint its own key", persistAccount({ name: "Cal", look: "0000000" }, empty) === null);
 
 const fresh = memory();
 persistAccount({ playerKey: generatePlayerKey(), name: "Cal", look: "0000000" }, fresh);
@@ -58,24 +70,64 @@ const dir = mkdtempSync(join(tmpdir(), "rifles-account-"));
 const file = join(dir, "accounts.json");
 try {
   const book = createAccountBook(file);
-  const key = rec.playerKey;
-  book.register({ playerKey: key, name: "Reed", look });
+  const signed = book.signup({
+    email: "reed@example.com",
+    username: "Reed",
+    password: "longrifle",
+    name: "Reed",
+    look,
+  });
+  check("signup succeeds", signed.ok === true);
+  const key = signed.rec?.playerKey;
+  check("signup mints a player key", isPlayerKey(key));
+  check("signup stores name and look", signed.rec?.name === "Reed" && signed.rec?.look === look);
+  check("public account hides the password hash", !("passwordHash" in (publicAccount(signed.rec) ?? {})) && !("email" in (publicAccount(signed.rec) ?? {})));
+
   const fromDisk = book.get(key);
-  check("lobby register writes name and look", fromDisk?.name === "Reed" && fromDisk?.look === look);
+  check("lobby signup writes name and look", fromDisk?.name === "Reed" && fromDisk?.look === look);
+
+  const logged = book.login({ user: "reed", password: "longrifle" });
+  check("login with username returns the same key", logged.ok === true && logged.rec?.playerKey === key);
+  const emailed = book.login({ user: "Reed@example.com", password: "longrifle" });
+  check("login with email returns the same key", emailed.ok === true && emailed.rec?.playerKey === key);
+  const badPass = book.login({ user: "reed", password: "wrongpass" });
+  check("wrong password cannot login", badPass.ok === false && badPass.reason === "auth");
+
+  const taken = book.signup({
+    email: "other@example.com",
+    username: "reed",
+    password: "longrifle",
+  });
+  check("duplicate username is rejected", taken.ok === false && taken.reason === "username");
+  const takenEmail = book.signup({
+    email: "reed@example.com",
+    username: "other",
+    password: "longrifle",
+  });
+  check("duplicate email is rejected", takenEmail.ok === false && takenEmail.reason === "email");
+
+  const stray = generatePlayerKey();
+  check("register cannot mint a new key", book.register({ playerKey: stray, name: "Ghost", look }) === null);
 
   const reopened = createAccountBook(file);
   const reloaded = reopened.get(key);
   check("lobby reload keeps name", reloaded?.name === "Reed");
   check("lobby reload keeps opaque look", reloaded?.look === look);
 
-  check("unbanned key may join", admitPlayer(reopened, key).ok === true);
+  check("registered key may join", admitPlayer(reopened, key).ok === true);
+  check("unknown key cannot join", admitPlayer(reopened, generatePlayerKey()).ok === false);
   reopened.ban(key);
   const denied = admitPlayer(reopened, key);
   check("banned key cannot join", denied.ok === false && denied.reason === "banned");
 
   const later = createAccountBook(file);
   check("ban survives lobby reload", admitPlayer(later, key).ok === false && admitPlayer(later, key).reason === "banned");
-  check("a different key may still join", admitPlayer(later, generatePlayerKey()).ok === true);
+  const other = later.signup({
+    email: "cal@example.com",
+    username: "cal",
+    password: "longrifle",
+  });
+  check("a different account may still join", other.ok === true && admitPlayer(later, other.rec.playerKey).ok === true);
   check("name is not enough to join after ban", admitPlayer(later, "Reed").ok === false);
 } finally {
   rmSync(dir, { recursive: true, force: true });

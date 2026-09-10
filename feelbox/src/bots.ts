@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { collideXZ, groundHeight, hasLos, inSite, spawnYaw, type Aabb, type World } from "./world";
+import { snapWalk, stitchPath, walkPath } from "./nav";
 import {
   plantingTeam,
   pickupWire,
@@ -186,14 +187,14 @@ function pathFor(
     for (const p of picked) {
       const prev = raw[raw.length - 1]!;
       if (Math.hypot(p.x - prev.x, p.z - prev.z) < 1.4) continue;
-      const open = openPoint(world.colliders, p);
+      const open = snapWalk(world.colliders, p, world.bounds) ?? openPoint(world.colliders, p);
       if (open) raw.push(open);
     }
   }
-  const end = openPoint(world.colliders, goal) ?? goal.clone();
+  const end = snapWalk(world.colliders, goal, world.bounds) ?? openPoint(world.colliders, goal) ?? goal.clone();
   const last = raw[raw.length - 1]!;
   if (Math.hypot(last.x - end.x, last.z - end.z) > 1.6) raw.push(end);
-  return raw;
+  return stitchPath(world.colliders, world.bounds, raw);
 }
 
 export function botTargets(bots: Bot[], enemyOf?: Team, skipIds: number[] = []) {
@@ -309,7 +310,11 @@ export function updateBots(
         interruptPlant(match, b.id);
         onShoot(new THREE.Vector3(b.x, b.y + 1.45, b.z), dir, enemy, b.id);
       }
-      strafeMove(b, dt, colliders, time);
+      if (enemyDist < 8.5 || onCutDuty || onPlantDuty) strafeMove(b, dt, colliders, time);
+      else {
+        const tgt = b.path[b.wp] ?? b.path[b.path.length - 1] ?? b.spawn;
+        slideToward(b, tgt.x, tgt.z, dt, colliders, time);
+      }
     } else if (onCutDuty && wirePos) {
       b.lookPitch = 0.12;
       const d = Math.hypot(b.x - wirePos.x, b.z - wirePos.z);
@@ -325,13 +330,13 @@ export function updateBots(
         match.wire.plantHold += dt;
         if (match.wire.plantHold >= tuning.plant) plantWire(match, b.site, b.x, b.y, b.z);
       } else {
-        roam(b, dt, colliders, time);
+        roam(b, dt, colliders, time, world);
       }
     } else if (match.wire.mode === "ground" && b.team === plant) {
       seek(b, new THREE.Vector3(match.wire.x, match.wire.y, match.wire.z), dt, colliders, time);
     } else {
       b.lookPitch = 0.04;
-      roam(b, dt, colliders, time);
+      roam(b, dt, colliders, time, world);
     }
 
     const gh = groundHeight(colliders, b.x, b.z, RADIUS, b.y);
@@ -409,7 +414,7 @@ function seek(b: Bot, target: THREE.Vector3, dt: number, colliders: Aabb[], time
   if (len < 0.45) return;
   if (b.stuckT > 0.4) {
     const around = unstickToward(b, target, colliders);
-    if (around) {
+    if (around && Math.hypot(around.x - b.x, around.z - b.z) < 2.2) {
       b.stuckT = 0;
       target = around;
     }
@@ -419,7 +424,7 @@ function seek(b: Bot, target: THREE.Vector3, dt: number, colliders: Aabb[], time
   slideToward(b, target.x, target.z, dt, colliders, time);
 }
 
-function roam(b: Bot, dt: number, colliders: Aabb[], time: number) {
+function roam(b: Bot, dt: number, colliders: Aabb[], time: number, world: World) {
   if (time < b.pauseUntil) {
     b.stuckT = 0;
     b.yaw += Math.sin(time * 0.9 + b.id) * dt * 0.8;
@@ -446,12 +451,34 @@ function roam(b: Bot, dt: number, colliders: Aabb[], time: number) {
       seek(b, target, dt, colliders, time);
       return;
     }
-  } else if (b.stuckT > 0.4) {
-    b.stuckT = 0;
-    const around = unstickToward(b, target, colliders);
-    if (around) {
-      seek(b, around, dt, colliders, time);
+  } else if (b.stuckT > 0.65) {
+    const here = snapWalk(colliders, new THREE.Vector3(b.x, b.y, b.z), world.bounds);
+    if (here && Math.hypot(here.x - b.x, here.z - b.z) > 0.08) {
+      b.x = here.x;
+      b.y = here.y;
+      b.z = here.z;
+    }
+    const goal = last ?? target;
+    const via = walkPath(colliders, world.bounds, new THREE.Vector3(b.x, b.y, b.z), target);
+    const viaLen = via ? via.reduce((s, p, i) => (i ? s + Math.hypot(p.x - via[i - 1]!.x, p.z - via[i - 1]!.z) : 0), 0) : 0;
+    if (via && via.length >= 3 && viaLen < len * 3 + 8) {
+      b.path = [...via, ...b.path.slice(b.wp + 1)];
+      b.wp = 1;
+      b.stuckT = 0;
+      seek(b, b.path[b.wp]!, dt, colliders, time);
       return;
+    }
+    const home = walkPath(colliders, world.bounds, new THREE.Vector3(b.x, b.y, b.z), goal);
+    if (home && home.length >= 2) {
+      b.path = home;
+      b.wp = Math.min(1, b.path.length - 1);
+      b.stuckT = 0;
+      seek(b, b.path[b.wp]!, dt, colliders, time);
+      return;
+    }
+    if (b.wp < b.path.length - 1) {
+      b.wp += 1;
+      b.stuckT = 0.2;
     }
   }
   seek(b, target, dt, colliders, time);
@@ -475,9 +502,6 @@ function slideToward(b: Bot, tx: number, tz: number, dt: number, colliders: Aabb
   let bestX = b.x;
   let bestZ = b.z;
   let bestScore = -1e9;
-  let bestMoved = 0;
-  let slideX = b.x;
-  let slideZ = b.z;
   for (const a of spreads) {
     const ang = base + a + sway * (a === 0 ? 1 : 0.2);
     const c = collideXZ(
@@ -489,11 +513,6 @@ function slideToward(b: Bot, tx: number, tz: number, dt: number, colliders: Aabb
       b.y + 1.7,
     );
     const moved = Math.hypot(c.x - b.x, c.z - b.z);
-    if (moved > bestMoved) {
-      bestMoved = moved;
-      slideX = c.x;
-      slideZ = c.z;
-    }
     if (moved < stepLen * 0.12) continue;
     const remain = Math.hypot(tx - c.x, tz - c.z);
     const score = (dist - remain) * 6 + moved * 0.4 - Math.abs(a) * 0.14;
@@ -503,11 +522,7 @@ function slideToward(b: Bot, tx: number, tz: number, dt: number, colliders: Aabb
       bestZ = c.z;
     }
   }
-  if (bestScore < -1e8 && bestMoved > stepLen * 0.08) {
-    b.x = slideX;
-    b.z = slideZ;
-    return;
-  }
+  if (bestScore < -1e8) return;
   b.x = bestX;
   b.z = bestZ;
 }
