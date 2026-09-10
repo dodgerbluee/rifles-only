@@ -3898,36 +3898,6 @@ function maxLean(desired: number, height: number) {
   return lo * sign;
 }
 
-function applyRemoteUse(r: Remote, dt: number) {
-  if (!r.alive) return;
-  const team = r.team;
-  if (match.wire.mode === "ground" && team === plantingTeam(match)) {
-    if (Math.hypot(r.x - match.wire.x, r.z - match.wire.z) < 1.15) pickupWire(match, r.slotId, team);
-  }
-  if (match.wire.mode === "carried" && match.wire.carrierId === r.slotId && match.phase === "live") {
-    tickPlantHold(
-      match,
-      dt,
-      {
-        id: r.slotId,
-        team,
-        x: r.x,
-        y: r.y,
-        z: r.z,
-        alive: r.alive,
-        holdingUse: !!r.input.use,
-        fired: !!r.input.fire,
-      },
-      (id, x, z, y) => inSite(world, id, x, z, y),
-    );
-  }
-  if (!r.input.use) return;
-  if (match.wire.mode === "planted" && match.phase === "planted" && team === watchingTeam(match)) {
-    const d = Math.hypot(r.x - match.wire.x, r.z - match.wire.z);
-    if (d < 1.35 && Math.abs(r.y - match.wire.y) < 1.6) match.wire.cutHold += dt;
-  }
-}
-
 function remoteFire(r: Remote): boolean {
   const kind: RifleId = r.weapon === "mosin" ? "mosin" : "kar";
   if (time - r.lastFire < RIFLES[kind].cycle) return false;
@@ -4274,6 +4244,7 @@ function frame(now: number) {
   }
 
   if (match.phase === "settle" && seenPhase !== "settle") {
+    if (isClient && match.endText === "The Bomb ran out") playBlast(match.wire.x, match.wire.y, match.wire.z);
     const you = slotById(match, playerId);
     const win = !!you && match.lastWinner === you.team;
     setRoundResult(win ? "Round Victory!" : "Round Loss!", win);
