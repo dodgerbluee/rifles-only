@@ -910,7 +910,7 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
       const h = c.height ?? STOREY;
       return { x: c.x, y: (c.startY ?? 0) + h / 2, z: c.z, sx: 1.2, sy: h, sz: 1.2 };
     }
-    return { x: c.x, y: (c.startY ?? 0) + 0.2, z: c.z, sx: 2.2, sy: 0.4, sz: 7 };
+    return { x: c.x, y: (c.startY ?? 0) + 0.2, z: c.z, sx: 2.2, sy: 0.4, sz: 1.75 };
   }
   if (item.kind === "site") {
     const s = spec.sites[item.i];
@@ -1354,8 +1354,8 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool === "door") return [2.4, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];
   if (tool in COVER_SIZE) return COVER_SIZE[tool as CoverKind];
-  if (tool === "climb") return [2.2, 0.4, 7];
-  if (tool === "ladder") return [1.2, STOREY, 0.2];
+  if (tool === "climb") return [2.2, 0.4, 1.75];
+  if (tool === "ladder") return [1.2, STOREY, 0.4];
   if (tool === "siteA" || tool === "siteB") return [3, 0.12, 3];
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
   if (tool === "lamp") return [0.2, 3.2, 0.2];
@@ -1722,5 +1722,5 @@ export function ladderPose(hit: WallHit) {
   const x = hit.x + (hit.wall === "e" ? out : hit.wall === "w" ? -out : 0);
   const z = hit.z + (hit.wall === "n" ? out : hit.wall === "s" ? -out : 0);
   const along = hit.wall === "n" || hit.wall === "s";
-  return { x, y: hit.y + STOREY / 2, z, sx: along ? 1.2 : 0.2, sy: STOREY, sz: along ? 0.2 : 1.2 };
+  return { x, y: hit.y + STOREY / 2, z, sx: along ? 1.2 : 0.4, sy: STOREY, sz: along ? 0.4 : 1.2 };
 }

@@ -141,7 +141,7 @@ export function makeKit(scene: THREE.Scene): Kit {
 
   const climb: Kit["climb"] = (x, z, dir, height, width = 2.2, startY = 0, tread = "wood") => {
     const rise = 0.28;
-    const run = 0.62;
+    const run = 0.155;
     const treadH = 0.1;
     const nosing = 0.1;
     const gap = 0.038;
@@ -225,7 +225,7 @@ export function makeKit(scene: THREE.Scene): Kit {
 
   const ladder: Kit["ladder"] = (x, z, dir, height, width = 1.1, startY = 0) => {
     const rise = 0.3;
-    const run = 0.075;
+    const run = 0.15;
     const treadH = 0.08;
     const steps = Math.max(2, Math.ceil(height / rise));
     const ax = dir === "+x" ? 1 : dir === "-x" ? -1 : 0;
