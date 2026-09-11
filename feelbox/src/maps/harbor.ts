@@ -7,7 +7,7 @@ export const HARBOR_SPEC: LayoutSpec = {
   "id": "harbor",
   "title": "Harbor",
   "blurb": "Industrial quay. Ember from the west road, Stone from the east lot.",
-  "theme": "harbor",
+  "theme": "dust",
   "bounds": {
     "minX": -34,
     "maxX": 19,

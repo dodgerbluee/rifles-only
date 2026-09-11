@@ -101,6 +101,15 @@ export type ClimbSpec = {
   kind?: ClimbKind;
 };
 
+/** Named XZ region for HUD / death / bot callouts. Smallest containing area wins. */
+export type AreaSpec = {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  name: string;
+};
+
 export type LayoutSpec = {
   id: string;
   title: string;
@@ -113,6 +122,7 @@ export type LayoutSpec = {
   partitions?: PartitionSpec[];
   cover?: CoverSpec[];
   climbs?: ClimbSpec[];
+  areas?: AreaSpec[];
   sites: { id: Site["id"]; call: string; name: string; x: number; z: number; y?: number; r?: number }[];
   plantSpawns: [number, number][];
   watchSpawns: [number, number][];
@@ -412,6 +422,28 @@ function coverAt(kit: Kit, c: CoverSpec) {
   kit.box(c.x, sy / 2, c.z, sx, sy, sz, coverMat(kit, c.kind, sy), true, COVER_WALK[c.kind]);
 }
 
+export function layoutPlaceName(spec: LayoutSpec, x: number, z: number, _y = 0): string {
+  let best: { name: string; area: number } | null = null;
+  for (const a of spec.areas ?? []) {
+    const name = a.name?.trim();
+    if (!name) continue;
+    if (Math.abs(x - a.x) > a.w / 2 || Math.abs(z - a.z) > a.d / 2) continue;
+    const area = a.w * a.d;
+    if (!best || area < best.area) best = { name, area };
+  }
+  if (best) return best.name;
+  let siteName = spec.title;
+  let d = Infinity;
+  for (const s of spec.sites) {
+    const n = Math.hypot(x - s.x, z - s.z);
+    if (n < d) {
+      d = n;
+      siteName = n < 8 ? s.name : spec.title;
+    }
+  }
+  return siteName;
+}
+
 export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { clay?: boolean }): World {
   const kit = makeKit(scene);
   const clay = !!opts?.clay;
@@ -579,18 +611,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
       z: s.z,
       r: s.r ?? 3,
     })),
-    placeName: (x, z) => {
-      let best = spec.title;
-      let d = Infinity;
-      for (const s of spec.sites) {
-        const n = Math.hypot(x - s.x, z - s.z);
-        if (n < d) {
-          d = n;
-          best = n < 8 ? s.name : spec.title;
-        }
-      }
-      return best;
-    },
+    placeName: (x, z, y) => layoutPlaceName(spec, x, z, y),
   });
 }
 

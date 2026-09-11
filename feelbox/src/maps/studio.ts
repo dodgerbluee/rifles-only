@@ -59,7 +59,8 @@ export type ToolId =
   | "climb"
   | "ladder"
   | "lamp"
-  | "tree";
+  | "tree"
+  | "area";
 
 export type OpeningKind = "door" | "window";
 
@@ -94,6 +95,7 @@ export const KIT_TOOLS: ToolDef[] = [
   { id: "ladder", key: "N", label: "Ladder" },
   { id: "lamp", key: "L", label: "Lamp" },
   { id: "tree", key: "T", label: "Tree" },
+  { id: "area", key: "M", label: "Call" },
 ];
 
 export const TOOLS: ToolDef[] = [...HAND_TOOLS, ...BUILD_TOOLS, ...KIT_TOOLS];
@@ -102,7 +104,7 @@ export const HAND_IDS: ToolId[] = HAND_TOOLS.map((t) => t.id);
 export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
 export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
 export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
-export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall"];
+export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall", "area"];
 
 export function paletteOf(tool: ToolId): PaletteId {
   if (tool === "select" || tool === "erase") return "hand";
@@ -149,7 +151,8 @@ export type StudioItem =
   | { kind: "plant"; i: number }
   | { kind: "watch"; i: number }
   | { kind: "lamp"; i: number }
-  | { kind: "tree"; i: number };
+  | { kind: "tree"; i: number }
+  | { kind: "area"; i: number };
 
 export type LotEdge = DoorWall;
 
@@ -198,6 +201,7 @@ export function blankSpec(): LayoutSpec {
     routes: [],
     lamps: [],
     trees: [],
+    areas: [],
   };
 }
 
@@ -208,6 +212,25 @@ export function cloneSpec(spec: LayoutSpec): LayoutSpec {
 export function studioBuildingIndex(sels: StudioItem[]) {
   if (sels.length !== 1 || sels[0]!.kind !== "building") return -1;
   return sels[0]!.i;
+}
+
+export function studioAreaIndex(sels: StudioItem[]) {
+  if (sels.length !== 1 || sels[0]!.kind !== "area") return -1;
+  return sels[0]!.i;
+}
+
+export function callName(raw: string) {
+  return raw.trim().replace(/\s+/g, " ").slice(0, 18) || "Area";
+}
+
+export function setAreaName(spec: LayoutSpec, i: number, name: string): LayoutSpec {
+  const cur = spec.areas?.[i];
+  if (!cur) return spec;
+  const n = callName(name);
+  if (cur.name === n) return spec;
+  const next = cloneSpec(spec);
+  next.areas![i]!.name = n;
+  return next;
 }
 
 export function setBuildingStoreys(spec: LayoutSpec, i: number, floors: number): LayoutSpec {
@@ -293,7 +316,7 @@ export function place(
   tool: ToolId,
   x: number,
   z: number,
-  opts: { yaw?: number; bw?: number; bd?: number; y?: number } = {},
+  opts: { yaw?: number; bw?: number; bd?: number; y?: number; name?: string } = {},
 ): LayoutSpec {
   const next = cloneSpec(spec);
   const cell = cellRect(x, z);
@@ -402,6 +425,17 @@ export function place(
     next.trees.push([px, pz]);
     return next;
   }
+  if (tool === "area") {
+    next.areas = next.areas ?? [];
+    next.areas.push({
+      x: opts.bw != null ? x : cell.x,
+      z: opts.bd != null ? z : cell.z,
+      w: opts.bw ?? cell.w,
+      d: opts.bd ?? cell.d,
+      name: callName(opts.name ?? ""),
+    });
+    return next;
+  }
   return next;
 }
 
@@ -451,6 +485,10 @@ export function deleteItem(spec: LayoutSpec, item: StudioItem): LayoutSpec {
   }
   if (item.kind === "tree") {
     next.trees?.splice(item.i, 1);
+    return next;
+  }
+  if (item.kind === "area") {
+    next.areas?.splice(item.i, 1);
     return next;
   }
   return spec;
@@ -722,6 +760,12 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): Studi
       hits.push({ item: { kind: "partition", i }, y: (p.y ?? 0) + (p.h ?? STOREY), area: p.w * p.d, dist: 0 });
     }
   }
+  for (let i = 0; i < (spec.areas ?? []).length; i++) {
+    const a = spec.areas![i]!;
+    if (inside(a.x, a.z, a.w, a.d, 0)) {
+      hits.push({ item: { kind: "area", i }, y: 0.12, area: a.w * a.d, dist: 0 });
+    }
+  }
   const stamp = (item: StudioItem, ax: number, az: number, y: number, area: number, reach = r) => {
     const dist = Math.hypot(x - ax, z - az);
     if (dist <= reach) hits.push({ item, y, area, dist });
@@ -808,6 +852,10 @@ export function itemPos(spec: LayoutSpec, item: StudioItem): { x: number; z: num
     const p = spec.lamps?.[item.i];
     return p ? { x: p[0], z: p[1] } : null;
   }
+  if (item.kind === "area") {
+    const a = spec.areas?.[item.i];
+    return a ? { x: a.x, z: a.z } : null;
+  }
   const p = spec.trees?.[item.i];
   return p ? { x: p[0], z: p[1] } : null;
 }
@@ -872,6 +920,14 @@ export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: numbe
     next.lamps[item.i] = [x, z];
     return next;
   }
+  if (item.kind === "area") {
+    const a = next.areas?.[item.i];
+    if (!a) return spec;
+    if (a.x === x && a.z === z) return spec;
+    a.x = x;
+    a.z = z;
+    return next;
+  }
   if (!next.trees?.[item.i]) return spec;
   next.trees[item.i] = [x, z];
   return next;
@@ -916,6 +972,11 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
     const s = spec.sites[item.i];
     if (!s) return null;
     return { x: s.x, y: 0.06, z: s.z, sx: 3, sy: 0.12, sz: 3 };
+  }
+  if (item.kind === "area") {
+    const a = spec.areas?.[item.i];
+    if (!a) return null;
+    return { x: a.x, y: 0.06, z: a.z, sx: a.w, sy: 0.12, sz: a.d };
   }
   const pos = itemPos(spec, item);
   if (!pos) return null;
@@ -1107,6 +1168,10 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
     const alongX = p.w >= p.d;
     return { x: p.x, z: p.z, w: p.w, d: p.d, minW: alongX ? GRID : T, minD: alongX ? T : GRID };
   }
+  if (item.kind === "area") {
+    const a = spec.areas?.[item.i];
+    return a ? { x: a.x, z: a.z, w: a.w, d: a.d, minW: GRID, minD: GRID } : null;
+  }
   return null;
 }
 
@@ -1155,6 +1220,15 @@ export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x
     p.d = nextBox.d;
     return next;
   }
+  if (item.kind === "area") {
+    const a = next.areas?.[item.i];
+    if (!a) return spec;
+    a.x = nextBox.x;
+    a.z = nextBox.z;
+    a.w = nextBox.w;
+    a.d = nextBox.d;
+    return next;
+  }
   return spec;
 }
 
@@ -1193,6 +1267,7 @@ export function allItems(spec: LayoutSpec): StudioItem[] {
   push("watch", spec.watchSpawns.length);
   push("lamp", spec.lamps?.length ?? 0);
   push("tree", spec.trees?.length ?? 0);
+  push("area", spec.areas?.length ?? 0);
   return out;
 }
 
@@ -1284,6 +1359,17 @@ function addHandleKnobs(group: THREE.Group, x: number, y: number, z: number, w: 
 export function makeStudioGizmos(spec: LayoutSpec, sels: StudioItem[]) {
   const group = makeLotHandles(spec.bounds);
   group.name = "studio-gizmos";
+  const padMat = new THREE.MeshBasicMaterial({ color: 0xc9a227, transparent: true, opacity: 0.16, depthWrite: false });
+  for (const a of spec.areas ?? []) {
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(a.w, 0.08, a.d), padMat);
+    pad.position.set(a.x, 0.06, a.z);
+    group.add(pad);
+    const label = makeAreaLabel(a.name);
+    if (label) {
+      label.position.set(a.x, 1.15, a.z);
+      group.add(label);
+    }
+  }
   const glow = new THREE.MeshBasicMaterial({ color: 0xe8d9a8, transparent: true, opacity: 0.2, depthWrite: false });
   for (const item of sels) {
     const box = itemBox(spec, item);
@@ -1305,6 +1391,28 @@ export function makeStudioGizmos(spec: LayoutSpec, sels: StudioItem[]) {
     }
   }
   return group;
+}
+
+function makeAreaLabel(name: string) {
+  const text = callName(name);
+  if (typeof document === "undefined") return null;
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext("2d");
+  if (!g) return null;
+  g.fillStyle = "rgba(16,17,12,0.58)";
+  g.fillRect(0, 0, 256, 64);
+  g.fillStyle = "#e8d9a8";
+  g.font = "bold 28px sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(text, 128, 34);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
+  sprite.scale.set(Math.max(2.6, text.length * 0.22), 0.65, 1);
+  return sprite;
 }
 
 export function loadStored(): LayoutSpec | null {
@@ -1357,6 +1465,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool === "climb") return [2.2, 0.4, 1.75];
   if (tool === "ladder") return [1.2, STOREY, 0.4];
   if (tool === "siteA" || tool === "siteB") return [3, 0.12, 3];
+  if (tool === "area") return [bw, 0.12, bd];
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
   if (tool === "lamp") return [0.2, 3.2, 0.2];
   if (tool === "tree") return [1.8, 4, 1.8];
@@ -1509,6 +1618,7 @@ export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId
   if (code === "KeyN") return "ladder";
   if (code === "KeyL") return "lamp";
   if (code === "KeyT") return "tree";
+  if (code === "KeyM") return "area";
   return null;
 }
 
@@ -1576,6 +1686,7 @@ export function placeBuildingRect(
   tool: ToolId,
   yaw: number,
   y = 0,
+  name?: string,
 ): LayoutSpec {
   if (tool === "cut") return cutSlabRect(spec, x0, z0, x1, z1);
   if (tool === "wall") {
@@ -1594,6 +1705,9 @@ export function placeBuildingRect(
     return next;
   }
   const rect = snapRect(x0, z0, x1, z1);
+  if (tool === "area") {
+    return place(spec, "area", rect.x, rect.z, { yaw, bw: rect.w, bd: rect.d, name });
+  }
   if (tool === "floor") {
     const placeY = Math.max(SLAB_Y, y || SLAB_Y);
     const fit = snapFloor(spec, rect.x0, rect.z0, rect.x1, rect.z1, placeY, { w: rect.w, d: rect.d });

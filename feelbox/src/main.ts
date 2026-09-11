@@ -11,6 +11,7 @@ import {
   hideDeath,
   hidePodium,
   holdScoreboard,
+  paintNetMeter,
   placeName,
   renderScoreboard,
   setCook,
@@ -82,6 +83,7 @@ import {
   bumpBuildingStoreys,
   canvasNdc,
   cellKey,
+  callName,
   defaultOrbit,
   cloneSpec,
   deleteItems,
@@ -122,8 +124,10 @@ import {
   saveStored,
   setLotHandle,
   SLAB_Y,
+  setAreaName,
   setBuildingInterior,
   snapFloor,
+  studioAreaIndex,
   studioBuildingIndex,
   surfaceAt,
   interiorYAt,
@@ -257,6 +261,10 @@ let mapId: string = "wharf";
 let customSpec: LayoutSpec | null = null;
 let lobbyStudioMaps: { id: string; title: string }[] = [];
 let world = buildMap(scene, mapId as MapId);
+
+function calloutAt(x: number, z: number, y = 0) {
+  return world.placeName?.(x, z, y) ?? placeName(x, z, y);
+}
 const studioGhost = new THREE.Mesh(
   new THREE.BoxGeometry(1, 1, 1),
   new THREE.MeshBasicMaterial({ color: 0xc8c4bc, transparent: true, opacity: 0.38, depthWrite: false }),
@@ -353,6 +361,8 @@ function idleNet(): NetHandle {
     attempt: 0,
     peerId: null,
     pingMs: 0,
+    inKbps: 0,
+    snapHz: 0,
     sendInput() {},
     sendSnapshot() {},
     sendEvent() {},
@@ -966,6 +976,11 @@ function persistSpec(spec: LayoutSpec, checkpoint = false) {
   saveStored(spec);
 }
 
+function studioCallName() {
+  const el = document.querySelector<HTMLInputElement>("#studio-area-name");
+  return callName(el?.value ?? "");
+}
+
 function studioRecord() {
   studio.undo.push(cloneSpec(studio.spec));
   if (studio.undo.length > 80) studio.undo.shift();
@@ -1149,6 +1164,12 @@ function paintStudio() {
     document.querySelector("#studio-interior-floors")?.classList.toggle("on", interior === "floors");
     document.querySelector("#studio-interior-empty")?.classList.toggle("on", interior === "empty");
   }
+  const areaPanel = document.querySelector<HTMLElement>("#studio-area");
+  const ai = studioAreaIndex(studio.sels);
+  const area = ai >= 0 ? studio.spec.areas?.[ai] : undefined;
+  if (areaPanel) areaPanel.hidden = studio.tool !== "area" && !area;
+  const areaName = document.querySelector<HTMLInputElement>("#studio-area-name");
+  if (areaName && areaName !== document.activeElement && area) areaName.value = area.name;
   const hint = document.querySelector("#studio-hint");
   if (hint) {
     hint.textContent = studio.walk
@@ -1519,9 +1540,9 @@ function finishStudioDrag() {
     const d = Math.abs(drag.z1 - drag.z0);
     let next = studio.spec;
     const dragged = w >= GRID || d >= GRID;
-    if (studio.tool === "wall" || studio.tool === "floor" || studio.tool === "building") {
-      if (dragged) next = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y);
-      else next = place(studio.spec, studio.tool, drag.x0, drag.z0, { yaw: studio.faceYaw, y: drag.y });
+    if (studio.tool === "wall" || studio.tool === "floor" || studio.tool === "building" || studio.tool === "area") {
+      if (dragged) next = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y, studioCallName());
+      else next = place(studio.spec, studio.tool, drag.x0, drag.z0, { yaw: studio.faceYaw, y: drag.y, name: studioCallName() });
     } else {
       next = place(studio.spec, studio.tool, drag.x0, drag.z0, {
         yaw: studio.faceYaw,
@@ -1639,6 +1660,7 @@ function stampWalkAccessory() {
     place(studio.spec, studio.tool, gx, gz, {
       yaw: studio.faceYaw,
       y,
+      name: studioCallName(),
     }),
   );
   if (status) status.textContent = `placed ${studio.tool}`;
@@ -1902,6 +1924,13 @@ bindIdentity({
     e.stopPropagation();
     const i = studioBuildingIndex(studio.sels);
     if (i >= 0) studioApply(setBuildingInterior(studio.spec, i, "empty"));
+  });
+  document.querySelector("#studio-area-name")?.addEventListener("input", (e) => {
+    const el = e.currentTarget as HTMLInputElement;
+    const i = studioAreaIndex(studio.sels);
+    if (i < 0) return;
+    persistSpec(setAreaName(studio.spec, i, el.value));
+    refreshStudioGizmos();
   });
   document.querySelector("#studio-leave")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -3891,7 +3920,7 @@ function hurtPlayer(amount: number, source: string, killerId?: number, force = f
     }
     showDeath({
       killer: source,
-      place: world.placeName?.(px, pz, py) ?? placeName(px, pz, py),
+      place: calloutAt(px, pz, py),
       spawnName: "next round",
       remain: -1,
     });
@@ -3955,7 +3984,7 @@ function roundSpawn() {
   lastRecord = -1;
   ghost.visible = false;
   for (const b of bots) b.root.visible = true;
-  const dock = world.placeName?.(spawn.x, spawn.z, spawn.y) ?? placeName(spawn.x, spawn.z, spawn.y);
+  const dock = calloutAt(spawn.x, spawn.z, spawn.y);
   showSpawn(
     you && you.team === planter
       ? `${dock} · you carry the Bomb`
@@ -3970,7 +3999,7 @@ function botShoot(from: THREE.Vector3, dir: THREE.Vector3, target: { id: number;
   const worldHit = rayShot(from, dir, 80, world.colliders);
   bang(150, 0.06, 0.035);
   const shooter = nearestBot(from);
-  const where = placeName(from.x, from.z);
+  const where = calloutAt(from.x, from.z);
   const name = shooter ? `${slotById(match, shooter.id)?.name ?? "Rifle"} · ${where}` : `Rifle · ${where}`;
   const extra: LiveBody[] = [
     {
@@ -4699,7 +4728,7 @@ function frame(now: number) {
   } else {
     showDeath({
       killer: killedBy || "a rifleman",
-      place: placeName(px, pz, py),
+      place: calloutAt(px, pz, py),
       spawnName: "next round",
       remain: -1,
     });
@@ -5040,6 +5069,11 @@ function frame(now: number) {
 
   const netLine = statusLine(net);
   if (netLine) match.lastJoin = netLine;
+  paintNetMeter(
+    document.body.classList.contains("started") && net.role === "client"
+      ? { ping: net.pingMs, hz: net.snapHz, kbps: net.inKbps }
+      : null,
+  );
 
   if (net.role === "host") {
     const snap = buildSnapshot(
@@ -5292,6 +5326,12 @@ function frame(now: number) {
           studioGhost.visible = true;
           studioGhost.scale.set(foot.w, sy, foot.d);
           studioGhost.position.set(foot.x, y + sy / 2, foot.z);
+        } else if (studio.tool === "area") {
+          const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
+          const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
+          studioGhost.visible = true;
+          studioGhost.scale.set(w, 0.12, d);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, 0.06, (studio.drag.z0 + studio.drag.z1) / 2);
         } else {
           const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
           const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
@@ -5333,6 +5373,9 @@ function frame(now: number) {
             const h = wallHeightAt(studio.spec, foot.x, foot.z, y);
             studioGhost.scale.set(foot.w, h, foot.d);
             studioGhost.position.set(foot.x, y + h / 2, foot.z);
+          } else if (studio.tool === "area") {
+            studioGhost.scale.set(STAMP, 0.12, STAMP);
+            studioGhost.position.set(snapCell(hit.x), 0.06, snapCell(hit.z));
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
             const gx = studio.tool === "crate" ? snapCell(hit.x) : snap(hit.x);

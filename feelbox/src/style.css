@@ -720,6 +720,27 @@ body.started #roster {
   color: #6a6558;
 }
 
+#net-meter {
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a9384;
+  font-variant-numeric: tabular-nums;
+}
+
+#net-meter[data-tone="good"] {
+  color: #b8d4a8;
+}
+
+#net-meter[data-tone="ok"] {
+  color: #e8c56a;
+}
+
+#net-meter[data-tone="bad"] {
+  color: #e09070;
+}
+
 #smoke-veil {
   position: fixed;
   inset: 0;
@@ -2068,6 +2089,18 @@ body.podium #scoreboard {
   margin-top: 2px;
 }
 
+.board-ping.ping-good {
+  color: #b8d4a8;
+}
+
+.board-ping.ping-ok {
+  color: #e8c56a;
+}
+
+.board-ping.ping-bad {
+  color: #e09070;
+}
+
 .board-name {
   display: flex;
   align-items: center;
@@ -2389,7 +2422,8 @@ body.studio.studio-walk.playing #view {
 #studio-bar,
 #studio-palettes,
 #studio-tools,
-#studio-building:not([hidden]) {
+#studio-building:not([hidden]),
+#studio-area:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -2465,6 +2499,15 @@ body.studio.studio-peg #view {
 #studio-building {
   display: none;
   margin-bottom: 8px;
+}
+
+#studio-area {
+  display: none;
+  margin-bottom: 8px;
+}
+
+#studio-area-name {
+  min-width: 8em;
 }
 
 #studio-storeys {

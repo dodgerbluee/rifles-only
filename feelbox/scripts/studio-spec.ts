@@ -2,7 +2,7 @@
  * Studio stamps must round-trip through compileLayout.
  */
 import * as THREE from "three";
-import { compileLayout, COVER_SIZE, DECK_H, punchRects, priorWallGaps, resolveWalkDecks, STOREY } from "../src/maps/layout.ts";
+import { compileLayout, COVER_SIZE, DECK_H, layoutPlaceName, punchRects, priorWallGaps, resolveWalkDecks, STOREY } from "../src/maps/layout.ts";
 import { T } from "../src/maps/kit.ts";
 import {
   blankSpec,
@@ -36,6 +36,9 @@ import {
   panDrag,
   toolFromCode,
   walkKeepsTool,
+  callName,
+  isRectTool,
+  setAreaName,
 } from "../src/maps/studio.ts";
 import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } from "../src/maps/studio-lib.ts";
 import { SIDING_SPEC } from "../src/maps/siding.ts";
@@ -202,6 +205,23 @@ check("wall does not steal W", toolFromCode("KeyW") !== "wall");
 check("door does not steal D", toolFromCode("KeyD") !== "door" && toolFromCode("KeyO") === "door");
 check("ladder lives on kit", paletteOf("ladder") === "kit" && toolFromCode("KeyN") === "ladder");
 check("erase still on X after new tools", toolFromCode("KeyX") === "erase" && paletteOf("erase") === "hand");
+check("call lives on kit", paletteOf("area") === "kit" && toolFromCode("KeyM") === "area");
+check("call is a drag rect", isRectTool("area"));
+check("empty call name becomes Area", callName("  ") === "Area");
+
+let calls = place(blankSpec(), "area", 0, 0, { bw: 20, bd: 16, name: "Mid" });
+calls = place(calls, "area", 0, 0, { bw: 6, bd: 6, name: "Alley" });
+check("smallest area wins the call", layoutPlaceName(calls, 0, 0) === "Alley");
+check("outside named areas is the map title", layoutPlaceName(calls, 40, 0) === "Draft");
+check("site name when not in an area", layoutPlaceName(blankSpec(), -14, 8) === "A");
+check("smaller area is picked", pickItem(calls, 0, 0)?.kind === "area" && pickItem(calls, 0, 0)?.i === 1);
+let nest = place(blankSpec(), "area", 0, 0, { bw: 20, bd: 16, name: "Yard" });
+nest = place(nest, "building", 0, 0, { bw: 4, bd: 4 });
+check("building beats the area under the cursor", pickItem(nest, 0, 0)?.kind === "building");
+check("rename area", setAreaName(calls, 1, "Connector").areas?.[1]?.name === "Connector");
+const draggedCall = placeBuildingRect(blankSpec(), -4, -4, 4, 4, "area", 0, 0, "Banana");
+check("dragged call keeps its name", draggedCall.areas?.[0]?.name === "Banana" && (draggedCall.areas?.[0]?.w ?? 0) >= 8);
+check("harbor theme is dust", HARBOR_SPEC.theme === "dust");
 
 let floored = blankSpec();
 floored = place(floored, "building", 0, 0, { bw: 16, bd: 14 });
