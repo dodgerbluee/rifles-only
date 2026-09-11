@@ -7,7 +7,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
-import { createAccountBook, isPlayerKey, publicAccount } from "./accounts.mjs";
+import { createAccountBook, defaultAccountPath, defaultDataDir, isPlayerKey, publicAccount } from "./accounts.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -18,7 +18,7 @@ const STATIC_DIR = STATIC_ENV === ""
   : path.resolve(ROOT, STATIC_ENV || "dist");
 const GAME_WS = process.env.GAME_WS ?? "ws://127.0.0.1:8081/ws";
 const STALE_MS = 5000;
-const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : ROOT;
+const DATA_DIR = defaultDataDir(ROOT);
 const DRAFT_PATH = path.join(DATA_DIR, "studio-draft.json");
 const MAPS_DIR = path.join(DATA_DIR, "studio-maps");
 
@@ -26,7 +26,7 @@ function mapFileName(id) {
   const slug = String(id || "draft").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "draft";
   return `${slug}.json`;
 }
-const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.join(DATA_DIR, "accounts.json");
+const ACCOUNT_PATH = defaultAccountPath(ROOT);
 const accounts = createAccountBook(ACCOUNT_PATH);
 
 const MIME = {
@@ -454,5 +454,5 @@ process.on("SIGTERM", shutdown);
 
 server.listen(PORT, HOST, () => {
   const mode = STATIC_DIR && existsSync(STATIC_DIR) ? `static ${STATIC_DIR}` : "api only";
-  console.log(`Rifles Only lobby ${mode} on http://${HOST}:${PORT}  (proxy ${GAME_WS})`);
+  console.log(`Rifles Only lobby ${mode} on http://${HOST}:${PORT}  (proxy ${GAME_WS})  accounts ${ACCOUNT_PATH}`);
 });

@@ -9,7 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { SNAP_HZ, TICK_HZ } from "../src/netFeel";
 import { createWireBuf, packSnap } from "../src/netWire";
 import { createSim } from "../src/sim";
-import { admitPlayer, createAccountBook, isPlayerKey } from "./accounts.mjs";
+import { admitPlayer, createAccountBook, defaultAccountPath, isPlayerKey } from "./accounts.mjs";
 import { loadServerConfig } from "./config";
 
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -23,7 +23,7 @@ const DEAD_MS = 45_000;
 const HELLO_MS = 5_000;
 const LOBBY_BEAT_MS = 2000;
 const MAX_NAME = 24;
-const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "accounts.json");
+const ACCOUNT_PATH = defaultAccountPath(path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
 const book = createAccountBook(ACCOUNT_PATH);
 
 /** @typedef {{ id: number, name: string, playerKey: string, ws: import("ws").WebSocket, helloed: boolean, lastSeen: number }} Peer */
@@ -301,5 +301,5 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 server.listen(PORT, HOST, () => {
-  console.log(`Rifles Only game ${GAME_NAME} on http://${HOST}:${PORT}  (/ws)`);
+  console.log(`Rifles Only game ${GAME_NAME} on http://${HOST}:${PORT}  (/ws)  accounts ${ACCOUNT_PATH}`);
 });

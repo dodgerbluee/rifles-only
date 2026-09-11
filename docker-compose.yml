@@ -1,5 +1,8 @@
-# Logins, bans, and studio maps live in ./data on the host (survives image pulls
-# and compose down). Override the folder with FEELBOX_DATA=/path/to/dir.
+# Logins live in ./data on the host. Both lobby and game must mount the SAME
+# folder — split lobby/data vs game/data hides the book. Override with
+# FEELBOX_DATA=/docker/rifles/data
+# Set ACCOUNTS_PATH=/data/accounts.json (required on images that do not
+# auto-detect /data).
 services:
   lobby:
     image: ghcr.io/dodgerbluee/rifles-only:latest

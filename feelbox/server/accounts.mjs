@@ -3,7 +3,7 @@
  * bans and join. Name + opaque look hang off that key.
  */
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const KEY_RE = /^rk_[a-f0-9]{32}$/;
@@ -84,6 +84,23 @@ export function publicAccount(rec) {
     look: cleanLook(rec.look),
     looks: Array.isArray(rec.looks) ? rec.looks.map(cleanLook).filter(Boolean) : [],
   };
+}
+
+/** Docker compose mounts persist here. Honor that even if ACCOUNTS_PATH is unset. */
+const DOCKER_DATA = "/data";
+
+export function defaultDataDir(root) {
+  if (process.env.DATA_DIR) return path.resolve(process.env.DATA_DIR);
+  try {
+    if (existsSync(DOCKER_DATA) && statSync(DOCKER_DATA).isDirectory()) return DOCKER_DATA;
+  } catch {
+    /* local dev has no /data */
+  }
+  return root;
+}
+
+export function defaultAccountPath(root) {
+  return process.env.ACCOUNTS_PATH ?? path.join(defaultDataDir(root), "accounts.json");
 }
 
 function emptyStore() {

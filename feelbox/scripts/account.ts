@@ -15,6 +15,8 @@ import {
 import {
   admitPlayer,
   createAccountBook,
+  defaultAccountPath,
+  defaultDataDir,
   generatePlayerKey,
   publicAccount,
 } from "../server/accounts.mjs";
@@ -131,6 +133,24 @@ try {
   check("name is not enough to join after ban", admitPlayer(later, "Reed").ok === false);
 } finally {
   rmSync(dir, { recursive: true, force: true });
+}
+
+{
+  const prevData = process.env.DATA_DIR;
+  const prevAcc = process.env.ACCOUNTS_PATH;
+  delete process.env.DATA_DIR;
+  delete process.env.ACCOUNTS_PATH;
+  check("without a data dir, the book sits next to the app", defaultAccountPath("/app") === "/app/accounts.json");
+  process.env.ACCOUNTS_PATH = "/docker/rifles/data/accounts.json";
+  check("ACCOUNTS_PATH wins over the app root", defaultAccountPath("/app") === "/docker/rifles/data/accounts.json");
+  delete process.env.ACCOUNTS_PATH;
+  process.env.DATA_DIR = "/docker/rifles/data";
+  check("DATA_DIR owns logins", defaultDataDir("/app") === "/docker/rifles/data");
+  check("DATA_DIR owns the accounts file", defaultAccountPath("/app") === "/docker/rifles/data/accounts.json");
+  if (prevData == null) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = prevData;
+  if (prevAcc == null) delete process.env.ACCOUNTS_PATH;
+  else process.env.ACCOUNTS_PATH = prevAcc;
 }
 
 if (failed) {
