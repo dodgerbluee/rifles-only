@@ -30,7 +30,7 @@ const DEFAULTS: ServerConfig = {
   name: "Last Wire",
   map: "wharf",
   perTeam: 5,
-  rotation: ["wharf", "cove", "parish", "cut"],
+  rotation: ["wharf", "harbor", "cove", "parish", "cut"],
   championsHold: 20,
   firstTo: 6,
   swapAfter: 5,

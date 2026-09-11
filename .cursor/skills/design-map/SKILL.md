@@ -47,7 +47,7 @@ That writes `feelbox/studio-draft.json` (and a download + localStorage). **Play*
 
 - Playable area about 60–80m on the long axis. Bigger is not better.
 - Cover is a handful of `jumpCrate` / `crate` / `fullCrate` / `low` / `high` / `truck` entries, not a crate maze. Jump crate (0.9m, 2×2m) is the standable CS box; crate (1.1m, 0.5×0.5m / one studio cell) is the little stamp; full crate (1.96m, 2×2m) covers a standing head (eye 1.64 cannot peek).
-- Existing hand maps (Wharf, Harbor, Parish, Cut) stay until someone redesigns them through this process. Do not “improve” them by dumping boxes.
+- Existing hand maps (Wharf, Depot, Parish, Cut) stay until someone redesigns them through this process. Do not “improve” them by dumping boxes.
 
 ## LayoutSpec
 

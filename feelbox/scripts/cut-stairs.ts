@@ -51,7 +51,7 @@ check("Cut north wall still blocks", north.z < 32, `z=${north.z.toFixed(2)}`);
 
 const cove = buildMap(new THREE.Scene(), "cove");
 const dock = walk3(cove.colliders, -15.6, -16.2, 0, 0, 1, 30);
-check("Harbor dock climb is walkable", dock.peak >= 2.4, `y=${dock.peak.toFixed(2)}`);
+check("Depot dock climb is walkable", dock.peak >= 2.4, `y=${dock.peak.toFixed(2)}`);
 
 const parish = buildMap(new THREE.Scene(), "parish");
 const chapel = walk3(parish.colliders, -22.4, -1.5, 0, 1, 0, 30);

@@ -39,6 +39,7 @@ import {
 } from "../src/maps/studio.ts";
 import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } from "../src/maps/studio-lib.ts";
 import { SIDING_SPEC } from "../src/maps/siding.ts";
+import { HARBOR_SPEC } from "../src/maps/harbor.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -457,8 +458,9 @@ check("interior wall is not on the roof", (inner?.y ?? 9) < surfaceAt(inside, 0,
 check("interior wall is not snapped to an outer face", Math.abs(inner?.z ?? 9) < 1);
 check("interiorYAt is ground inside a 1F house", interiorYAt(inside, 0, 0) === 0);
 
-const catalog = seedCatalog(emptyLibrary(blankSpec()), [SIDING_SPEC]);
+const catalog = seedCatalog(emptyLibrary(blankSpec()), [HARBOR_SPEC, SIDING_SPEC]);
 check("siding is in the studio catalog", catalog.docs.some((d) => d.id === "siding"));
+check("harbor is in the studio catalog", catalog.docs.some((d) => d.id === "harbor"));
 
 const cam = defaultOrbit(lot.bounds);
 const tx0 = cam.tx;

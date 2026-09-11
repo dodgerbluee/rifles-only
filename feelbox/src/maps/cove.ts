@@ -5,7 +5,7 @@ import type { World } from "../world";
 
 type Kind = "plaster" | "brick" | "wood" | "metal";
 
-/** Industrial quay: planters west (A Yard), watchers east lot. Police + Garage 2F. */
+/** Depot (old Harbor): planters west (A Yard), watchers east lot. Police + Garage 2F. */
 export function buildCove(scene: THREE.Scene): World {
   const kit = makeKit(scene);
   const { box, mat, v, siteMarker, lamp, pad, climb } = kit;
@@ -56,7 +56,7 @@ export function buildCove(scene: THREE.Scene): World {
 
   return finish(kit, {
     id: "cove",
-    title: "Harbor",
+    title: "Depot",
     blurb: "Watchers hold the east lot. Planters walk in from A Yard.",
     plantSpawns: [v(-36, -12), v(-36, -8), v(-34, -10), v(-32, -14), v(-32, -6)],
     watchSpawns: [v(40, 8), v(40, 6), v(38, 6), v(39, 10), v(37, 10)],
@@ -96,7 +96,7 @@ export function buildCove(scene: THREE.Scene): World {
       if (x > 16 && x < 36 && z > 17.5) return "Piers";
       if (x > 22 && x < 34 && z > -2 && z < 12) return "Truck";
       if (x > 25 && x < 40 && z < 5) return "Warehouse";
-      return "Harbor";
+      return "Depot";
     },
   });
 }
