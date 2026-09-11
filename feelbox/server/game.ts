@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { SNAP_HZ, TICK_HZ } from "../src/netFeel";
+import { createWireBuf, packSnap } from "../src/netWire";
 import { createSim } from "../src/sim";
 import { admitPlayer, createAccountBook, isPlayerKey } from "./accounts.mjs";
 import { loadServerConfig } from "./config";
@@ -45,11 +46,17 @@ const sim = createSim({
 /** @type {Map<number, any>} */
 const peers = new Map();
 let nextId = 1;
+const wireBuf = createWireBuf();
+let wireFull = true;
 
 function send(ws, obj) {
+  sendRaw(ws, JSON.stringify(obj));
+}
+
+function sendRaw(ws, raw) {
   if (ws.readyState !== WebSocket.OPEN) return;
   try {
-    ws.send(JSON.stringify(obj));
+    ws.send(raw);
   } catch {
     /* ignore */
   }
@@ -185,6 +192,7 @@ wss.on("connection", (ws) => {
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
       sim.join(id, peer.name, undefined, msg.skin, msg.look);
+      wireFull = true;
       send(ws, { type: "welcome", id, role: "client" });
       const map = sim.mapState();
       send(ws, { type: "map", mapId: map.mapId, spec: map.spec });
@@ -213,6 +221,7 @@ wss.on("connection", (ws) => {
       }
       sim.event(id, event);
       if (event?.kind === "changeMap") {
+        wireFull = true;
         const map = sim.mapState();
         for (const o of living()) send(o.ws, { type: "map", mapId: map.mapId, spec: map.spec });
       }
@@ -239,7 +248,10 @@ setInterval(() => {
 
 setInterval(() => {
   const snap = stampKeys(sim.snapshot());
-  for (const p of living()) send(p.ws, { type: "snapshot", snapshot: snap });
+  const packed = packSnap(snap, wireBuf, wireFull);
+  wireFull = false;
+  const raw = JSON.stringify(packed);
+  for (const p of living()) sendRaw(p.ws, raw);
 }, 1000 / SNAP_HZ).unref?.();
 
 setInterval(() => {

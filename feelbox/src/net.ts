@@ -4,6 +4,7 @@
  */
 import { DEFAULT_LOOK, packLook } from "./look";
 import type { LayoutSpec } from "./maps/layout";
+import { shouldSendInput, unpackSnap, type PackedSnap } from "./netWire";
 
 export type NetRole = "host" | "client" | "offline";
 
@@ -228,6 +229,8 @@ export type NetHandle = {
   attempt: number;
   peerId: number | null;
   pingMs: number;
+  inKbps: number;
+  snapHz: number;
   rejectReason: string;
   sendInput(input: PlayerInput): void;
   sendSnapshot(snap: Snapshot): void;
@@ -311,6 +314,12 @@ export function connectNet(url?: string): NetHandle {
   let tries = 0;
   let reconnectTimer = 0;
   let rttTimer = 0;
+  let lastInput: PlayerInput | null = null;
+  let lastInputAt = 0;
+  let lastUnpacked: Snapshot | null = null;
+  let byteWindow = 0;
+  let snapWindow = 0;
+  let windowT = 0;
 
   const statusCbs: Array<(status: NetHandle["status"], attempt: number) => void> = [];
   const roleCbs: Array<(role: NetRole, peerId: number) => void> = [];
@@ -327,9 +336,15 @@ export function connectNet(url?: string): NetHandle {
     attempt: 1,
     peerId: null,
     pingMs: 0,
+    inKbps: 0,
+    snapHz: 0,
     rejectReason: "",
     sendInput(input) {
       if (handle.role !== "client") return;
+      const now = performance.now();
+      if (!shouldSendInput(lastInput, input, now, lastInputAt)) return;
+      lastInput = input;
+      lastInputAt = now;
       rawSend({ type: "input", input });
     },
     sendSnapshot() {
@@ -424,8 +439,31 @@ export function connectNet(url?: string): NetHandle {
     }
   }
 
+  function noteSnapBytes(n: number) {
+    const now = performance.now();
+    if (!windowT) windowT = now;
+    byteWindow += n;
+    snapWindow += 1;
+    const dt = now - windowT;
+    if (dt >= 500) {
+      handle.inKbps = (byteWindow * 8) / dt;
+      handle.snapHz = (snapWindow * 1000) / dt;
+      byteWindow = 0;
+      snapWindow = 0;
+      windowT = now;
+    }
+  }
+
+  function emitSnap(snap: Snapshot, rawLen: number) {
+    if (!snap || !Array.isArray(snap.pawns)) return;
+    lastUnpacked = snap;
+    noteSnapBytes(rawLen);
+    for (const cb of snapCbs) cb(snap);
+  }
+
   function onMessage(ev: MessageEvent) {
-    const msg = parse(typeof ev.data === "string" ? ev.data : "");
+    const raw = typeof ev.data === "string" ? ev.data : "";
+    const msg = parse(raw);
     if (!msg || typeof msg.type !== "string") return;
 
     if (msg.type === "ping") {
@@ -459,13 +497,16 @@ export function connectNet(url?: string): NetHandle {
       tries = 0;
       handle.attempt = 1;
       handle.rejectReason = "";
+      lastUnpacked = null;
       setRole(role, id);
       return;
     }
+    if (msg.type === "snap") {
+      emitSnap(unpackSnap(msg as unknown as PackedSnap, lastUnpacked), raw.length);
+      return;
+    }
     if (msg.type === "snapshot") {
-      const snap = (msg.snapshot ?? msg) as Snapshot;
-      if (!snap || !Array.isArray(snap.pawns)) return;
-      for (const cb of snapCbs) cb(snap);
+      emitSnap((msg.snapshot ?? msg) as Snapshot, raw.length);
       return;
     }
     if (msg.type === "input") {

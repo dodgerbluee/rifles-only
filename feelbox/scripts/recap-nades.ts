@@ -2,7 +2,6 @@
  * Best-play must hold for the recap, and thrown nades must show up in snapshots.
  */
 import { createSim } from "../src/sim.ts";
-import { SNAP_HZ } from "../src/netFeel.ts";
 import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
 import {
   FAST_RATE,
@@ -141,7 +140,7 @@ function poseAt(id: number, x: number): Pose {
   };
 }
 
-const hz60 = 1 / SNAP_HZ;
+const hz60 = 1 / 60;
 check("tape min gap is under a 60 Hz tick", TAPE_MIN_DT < hz60, `min=${TAPE_MIN_DT} tick=${hz60}`);
 check("FAST_RATE is 10× playback, not a tick rate", FAST_RATE === 10);
 

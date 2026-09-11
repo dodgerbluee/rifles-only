@@ -439,7 +439,8 @@ export function renderScoreboard(
     el.className = `board-row${you ? " you" : ""}${s.alive ? "" : " down"}`;
     const ping = pingOf(s.id);
     const tags = `${you ? '<b class="board-you">YOU</b>' : ""}${s.alive ? "" : '<em class="board-dead">Down</em>'}`;
-    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span>${ping == null ? "—" : Math.round(ping)}</span>`;
+    const pingCls = ping == null ? "" : ping > 110 ? " ping-bad" : ping > 70 ? " ping-ok" : " ping-good";
+    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span class="board-ping${pingCls}">${ping == null ? "—" : Math.round(ping)}</span>`;
     return el;
   };
   for (const s of emberSlots.sort(rank)) ember.append(row(s));
@@ -480,6 +481,22 @@ export function showPodium(
 export function hidePodium() {
   document.body.classList.remove("podium");
   document.querySelector("#podium-first")?.classList.remove("on");
+}
+
+export function paintNetMeter(opts: { ping: number; hz: number; kbps: number } | null) {
+  const el = document.querySelector<HTMLElement>("#net-meter");
+  if (!el) return;
+  if (!opts) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  const ping = Math.max(0, Math.round(opts.ping));
+  const hz = Math.max(0, Math.round(opts.hz));
+  const kbps = Math.max(0, Math.round(opts.kbps));
+  const tone = ping > 110 || (hz > 0 && hz < 18) ? "bad" : ping > 70 || kbps > 900 ? "ok" : "good";
+  el.dataset.tone = tone;
+  el.textContent = `${ping} ms · ${hz} Hz · ${kbps} kb/s`;
 }
 
 export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {

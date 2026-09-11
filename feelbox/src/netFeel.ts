@@ -3,13 +3,14 @@
  * remotes chased the latest pose with exp(-16·dt) (~62 ms extra lag); local
  * reconcile blended 22% toward a snapshot that was a full RTT stale.
  *
- * Now: 60 Hz tick + 60 Hz snapshots, remotes rendered ~2 snapshots behind
+ * Now: 60 Hz tick, 30 Hz packed snapshots. Remotes render ~2 snapshots behind
  * (delay grows a little on underrun), local walk compared to the predicted
  * pose at ack time. Tiny ack errors stay put; 1.6 m is no longer a teleport.
+ * 60 Hz fat JSON to every friend saturated a home upload and lagged the host.
  */
 export const TICK_HZ = 60;
-export const SNAP_HZ = 60;
-/** Render remotes this far behind the newest received snapshot. 2 snaps at 60 Hz. */
+export const SNAP_HZ = 30;
+/** Render remotes this far behind the newest received snapshot. 2 snaps at 30 Hz. */
 export const INTERP_DELAY_MS = Math.round(2000 / SNAP_HZ);
 /** Cap grown delay so a hitch does not add a 200 ms+ rubber band. */
 export const INTERP_DELAY_MAX_MS = Math.round(5000 / SNAP_HZ);

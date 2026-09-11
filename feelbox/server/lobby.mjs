@@ -365,6 +365,17 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
+const SNAP_SOFT = 24 * 1024;
+
+function droppableSnap(data) {
+  const head =
+    typeof data === "string"
+      ? data.slice(0, 40)
+      : Buffer.isBuffer(data)
+        ? data.toString("utf8", 0, 40)
+        : "";
+  return head.includes('"type":"snap"') && head.includes('"u":1');
+}
 
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -390,7 +401,9 @@ wss.on("connection", (client) => {
 
   up.on("open", flush);
   up.on("message", (data, isBinary) => {
-    if (client.readyState === WebSocket.OPEN) client.send(data, { binary: isBinary });
+    if (client.readyState !== WebSocket.OPEN) return;
+    if (droppableSnap(data) && client.bufferedAmount > SNAP_SOFT) return;
+    client.send(data, { binary: isBinary });
   });
   up.on("close", (code, reason) => {
     try {

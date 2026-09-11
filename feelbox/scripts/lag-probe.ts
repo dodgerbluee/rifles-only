@@ -172,4 +172,4 @@ if (failed) {
   console.error(`${failed} lag-probe checks failed`);
   process.exit(10);
 }
-console.log("probe: 60 Hz sim; prediction + 33ms interp hide 50ms RTT");
+console.log("probe: 60 Hz sim; prediction + 2-snap interp hide 50ms RTT");
