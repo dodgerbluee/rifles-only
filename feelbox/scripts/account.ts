@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applySession,
+  cleanName,
   isPlayerKey,
   loadAccount,
   persistAccount,
@@ -82,6 +83,15 @@ try {
   check("signup succeeds", signed.ok === true);
   const key = signed.rec?.playerKey;
   check("signup mints a player key", isPlayerKey(key));
+  check("client strips You", cleanName("You") === "" && cleanName("you") === "");
+  const youNamed = book.signup({
+    email: "mina@example.com",
+    username: "mina",
+    password: "longrifle",
+    name: "You",
+    look,
+  });
+  check("You is replaced with the username", youNamed.ok === true && youNamed.rec?.name === "mina");
   check("signup stores name and look", signed.rec?.name === "Reed" && signed.rec?.look === look);
   check("public account hides the password hash", !("passwordHash" in (publicAccount(signed.rec) ?? {})) && !("email" in (publicAccount(signed.rec) ?? {})));
 

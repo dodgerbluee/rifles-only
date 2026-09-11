@@ -2,7 +2,7 @@
  * Kill labels, team-switch stats, and planted copy without naming the site.
  */
 import * as THREE from "three";
-import { actorTag, createMatch, formatTime, plantedTag, plantWire, slotById } from "../src/match.ts";
+import { actorTag, claimSlot, createMatch, displayName, formatTime, plantedTag, plantWire, slotById } from "../src/match.ts";
 import { killWayIcons, killWayLabel } from "../src/net.ts";
 import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
@@ -16,6 +16,12 @@ function check(name: string, ok: boolean, extra = "") {
 }
 
 check("plain names stay plain", actorTag("Reed") === "Reed");
+check("You is not printed", actorTag("You") === "Rifle");
+check("you is not printed", actorTag("you") === "Rifle");
+check("blank name is Rifle", displayName("") === "Rifle");
+const claimed = createMatch({ claimLocal: false });
+const seat = claimSlot(claimed, "ember", "You");
+check("claiming You stores Rifle", seat?.name === "Rifle");
 check("aimed kill is labeled aimed", killWayLabel("aimed") === "aimed");
 check("hip fire is labeled no scope", killWayLabel("noscope") === "no scope");
 check("frag is labeled nade", killWayLabel("nade") === "nade");

@@ -1007,6 +1007,11 @@ body.started #start {
   display: none;
 }
 
+body:not(.started) #bestplay,
+body:not(.started) #letterbox {
+  display: none !important;
+}
+
 body.started:not(.playing) #view {
   cursor: default;
 }

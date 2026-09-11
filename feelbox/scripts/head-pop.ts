@@ -16,9 +16,10 @@ function check(name: string, ok: boolean, extra = "") {
   console.log(`${ok ? "ok" : "FAIL"}  ${name}${extra ? `  ${extra}` : ""}`);
 }
 
-check("watching yourself is You", watchLabel(3, 3, "Reed") === "You");
+check("watching yourself uses the name", watchLabel(3, 3, "Reed") === "Reed");
 check("watching a named rifleman uses their name", watchLabel(7, 3, "Cal") === "Cal");
 check("missing name falls back to Rifle", watchLabel(7, 3, "  ") === "Rifle");
+check("You is not a watch label", watchLabel(3, 3, "You") === "Rifle");
 
 const scene = new THREE.Scene();
 const root = new THREE.Group();

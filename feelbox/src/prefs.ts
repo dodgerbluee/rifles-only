@@ -25,7 +25,7 @@ export type Prefs = {
 const factoryBank = parseCrosshairBank(FACTORY_CROSSHAIRS, 0);
 
 const defaults: Prefs = {
-  name: "You",
+  name: "",
   playerKey: "",
   sens: 1,
   volume: 0.7,
@@ -53,7 +53,7 @@ function load(): Prefs {
     const look = parseLook(lookId || p.look) ?? parseLook(p.look) ?? parseLook(p.skin) ?? { ...DEFAULT_LOOK };
     const bank = parseCrosshairBank(p.crosshairs, p.crosshairSlot);
     return {
-      name: typeof p.name === "string" && p.name.trim() ? p.name.trim().slice(0, 18) : defaults.name,
+      name: typeof p.name === "string" && p.name.trim() && !/^you$/i.test(p.name.trim()) ? p.name.trim().slice(0, 18) : "",
       playerKey: typeof p.playerKey === "string" && KEY_RE.test(p.playerKey) ? p.playerKey : "",
       sens: clamp(Number(p.sens) || 1, 0.15, 4),
       volume: clamp(Number(p.volume) ?? 0.7, 0, 1),
@@ -75,7 +75,8 @@ function load(): Prefs {
 }
 
 export function savePrefs() {
-  prefs.name = prefs.name.trim().slice(0, 18) || "You";
+  prefs.name = prefs.name.trim().slice(0, 18);
+  if (/^you$/i.test(prefs.name)) prefs.name = "";
   prefs.sens = clamp(prefs.sens, 0.15, 4);
   prefs.volume = clamp(prefs.volume, 0, 1);
   prefs.skin = skinFromLook(prefs.look);

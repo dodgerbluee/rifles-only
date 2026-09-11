@@ -114,7 +114,7 @@ export function createMatch(opts?: {
     championsHold: opts?.championsHold ?? CHAMPIONS_HOLD,
     perTeam: per,
   };
-  if (opts?.claimLocal !== false) claimSlot(m, "ember", "You");
+  if (opts?.claimLocal !== false) claimSlot(m, "ember", "Rifle");
   giveWireToPlanter(m);
   return m;
 }
@@ -210,10 +210,11 @@ export function claimSlot(m: Match, team: Team, name: string): Slot | null {
   const bot = m.slots.find((s) => s.team === team && s.kind === "bot");
   if (!bot) return null;
   const left = bot.name;
+  const who = displayName(name);
   bot.kind = "human";
-  bot.name = name;
+  bot.name = who;
   bot.occupant = undefined;
-  m.lastJoin = `${name} took ${team === "ember" ? "Ember" : "Stone"} · ${left} left`;
+  m.lastJoin = `${who} took ${team === "ember" ? "Ember" : "Stone"} · ${left} left`;
   return bot;
 }
 
@@ -228,10 +229,16 @@ function restBotName(slot: Slot, perTeam = 5) {
   return botName(slot.team, Math.max(0, i));
 }
 
+export function displayName(name?: string | null, fallback = "Rifle") {
+  const n = (name ?? "").trim();
+  if (!n || /^you$/i.test(n)) return fallback;
+  return n;
+}
+
 export function actorTag(name: string | undefined | null, occupant?: string | null) {
-  const n = (name ?? "").trim() || "Rifle";
+  const n = displayName(name);
   const o = occupant?.trim();
-  if (o && o !== n) return `${n} (${o})`;
+  if (o && o !== n && !/^you$/i.test(o)) return `${n} (${o})`;
   return n;
 }
 

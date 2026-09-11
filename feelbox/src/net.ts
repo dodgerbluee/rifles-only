@@ -286,13 +286,13 @@ export async function fetchServers(): Promise<ListedServer[]> {
   }
 }
 
-let helloName = "You";
+let helloName = "Rifle";
 let helloSkin: "rifle" | "field" | "unit" | "frame" = "rifle";
 let helloLook = packLook(DEFAULT_LOOK);
 let helloKey = "";
 
 export function setNetName(name: string) {
-  helloName = name.trim().slice(0, 18) || "You";
+  helloName = name.trim().slice(0, 18) || "Rifle";
 }
 
 export function setNetSkin(skin: "rifle" | "field" | "unit" | "frame") {

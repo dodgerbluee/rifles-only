@@ -35,8 +35,9 @@ export function isPlayerKey(value: unknown): value is string {
 }
 
 export function cleanName(value: unknown): string {
-  if (typeof value !== "string") return "You";
-  return value.trim().slice(0, MAX_NAME) || "You";
+  if (typeof value !== "string") return "";
+  const n = value.trim().slice(0, MAX_NAME);
+  return !n || /^you$/i.test(n) ? "" : n;
 }
 
 export function cleanUsername(value: unknown): string {
@@ -87,7 +88,7 @@ export function persistAccount(
   const prev = store ? loadAccount(store) : null;
   const playerKey = isPlayerKey(patch.playerKey) ? patch.playerKey : prev?.playerKey;
   if (!isPlayerKey(playerKey)) return null;
-  const name = patch.name != null ? cleanName(patch.name) : prev?.name ?? "You";
+  const name = patch.name != null ? cleanName(patch.name) : prev?.name ?? "";
   const username = patch.username != null ? cleanUsername(patch.username) : prev?.username ?? "";
   const look = patch.look != null ? cleanLook(patch.look) : prev?.look ?? "";
   let looks = prev?.looks ? [...prev.looks] : [];
@@ -245,7 +246,7 @@ function fillIdentity(rec: AccountRecord | null) {
     const login = document.querySelector<HTMLElement>("#auth-login");
     showAuth(login && !login.hidden ? "login" : "register");
   }
-  const name = rec?.name ?? prefs.name;
+  const name = rec?.username || rec?.name || "";
   const nameEls = ["#locker-name", "#set-name", "#home-id-name"] as const;
   for (const sel of nameEls) {
     const el = document.querySelector<HTMLInputElement | HTMLElement>(sel);
@@ -269,7 +270,7 @@ function takeSession(data: AuthBody): AccountRecord | null {
   });
   if (!next) return null;
   prefs.playerKey = next.playerKey;
-  prefs.name = next.name;
+  prefs.name = next.username || next.name;
   if (next.look) prefs.lookId = next.look;
   savePrefs();
   return next;
@@ -285,7 +286,7 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
   const rec = loadAccount();
   if (rec) {
     prefs.playerKey = rec.playerKey;
-    prefs.name = rec.name;
+    prefs.name = rec.username || rec.name;
   }
   document.body.classList.toggle("register", !rec);
   fillIdentity(rec);
@@ -335,7 +336,7 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
           email,
           username,
           password,
-          name: username.trim().slice(0, 18) || "You",
+          name: username.trim().slice(0, 18),
           look: currentLook(),
         });
         if (!data.ok) {

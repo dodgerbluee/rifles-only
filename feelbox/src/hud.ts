@@ -1,5 +1,5 @@
 import type { World } from "./world";
-import { actorTag, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
+import { actorTag, displayName, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
 import { holdScoreboard, kd, line, topThree } from "./stats";
@@ -389,7 +389,7 @@ export function updateMatchHud(m: Match, prompt: string, extra?: { nextMap?: str
   for (const s of m.slots) {
     const el = document.createElement("span");
     el.className = `${s.team}${s.kind === "human" ? " you" : ""}${s.alive ? "" : " down"}`;
-    el.textContent = s.kind === "human" ? "YOU" : s.name;
+    el.textContent = displayName(s.name);
     rosterEl.append(el);
   }
   joinNote.textContent =
@@ -438,7 +438,7 @@ export function renderScoreboard(
     const you = s.id === youId;
     el.className = `board-row${you ? " you" : ""}${s.alive ? "" : " down"}`;
     const ping = pingOf(s.id);
-    const tags = `${you ? '<b class="board-you">YOU</b>' : ""}${s.alive ? "" : '<em class="board-dead">Down</em>'}`;
+    const tags = s.alive ? "" : '<em class="board-dead">Down</em>';
     const pingCls = ping == null ? "" : ping > 110 ? " ping-bad" : ping > 70 ? " ping-ok" : " ping-good";
     el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span class="board-ping${pingCls}">${ping == null ? "—" : Math.round(ping)}</span>`;
     return el;
@@ -508,7 +508,7 @@ export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {
     row.className = "kill-row";
     const killer = document.createElement("span");
     killer.className = `who${k.killerTeam ? ` ${k.killerTeam}` : ""}`;
-    killer.textContent = k.killerName;
+    killer.textContent = displayName(k.killerName);
     const way = document.createElement("span");
     const mark = killWayIcons(k.way, k.head, k.rifle);
     way.className = `sep way${k.way ? ` ${k.way}` : ""}${k.head ? " head" : ""}`;
@@ -517,7 +517,7 @@ export function syncKillFeed(items: KillFeedItem[] | undefined, now: number) {
     way.innerHTML = mark.html;
     const victim = document.createElement("span");
     victim.className = `who${k.victimTeam ? ` ${k.victimTeam}` : ""}`;
-    victim.textContent = k.victimName;
+    victim.textContent = displayName(k.victimName);
     row.append(killer, way, victim);
     killFeedEl.append(row);
   }

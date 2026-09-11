@@ -69,7 +69,7 @@ function living() {
 function cleanName(value, id) {
   if (typeof value !== "string") return `Rifle ${id}`;
   const n = value.trim().slice(0, MAX_NAME);
-  return n || `Rifle ${id}`;
+  return !n || /^you$/i.test(n) ? `Rifle ${id}` : n;
 }
 
 function cleanKey(value) {

@@ -1,5 +1,5 @@
 import type { Match } from "./match";
-import { slotById } from "./match";
+import { displayName, slotById } from "./match";
 
 export type Pose = {
   id: number;
@@ -64,10 +64,8 @@ export function pushKill(tape: RoundTape, kill: KillClip) {
   tape.kills.push(kill);
 }
 
-export function watchLabel(viewId: number, youId: number, name?: string | null) {
-  if (viewId === youId) return "You";
-  const n = name?.trim();
-  return n || "Rifle";
+export function watchLabel(_viewId: number, _youId: number, name?: string | null) {
+  return displayName(name);
 }
 
 /** Recap camera already has a first-person viewmodel. Hide the subject's world pawn/rifle. */
@@ -95,7 +93,7 @@ export function pickMvp(tape: RoundTape, match: Match, preferId: number) {
   if (bestN <= 0) return null;
   const clips = tape.kills.filter((k) => k.killerId === bestId).sort((a, b) => a.t - b.t);
   const slot = slotById(match, bestId);
-  const name = bestId === preferId ? "You" : (slot?.name ?? "Rifle");
+  const name = displayName(slot?.name);
   return { id: bestId, name, kills: bestN, clips };
 }
 

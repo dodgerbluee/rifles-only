@@ -28,8 +28,9 @@ export function generatePlayerKey() {
 }
 
 export function cleanName(value) {
-  if (typeof value !== "string") return "You";
-  return value.trim().slice(0, MAX_NAME) || "You";
+  if (typeof value !== "string") return "";
+  const n = value.trim().slice(0, MAX_NAME);
+  return !n || /^you$/i.test(n) ? "" : n;
 }
 
 export function cleanUsername(value) {
@@ -175,7 +176,7 @@ export function createAccountBook(filePath) {
         username,
         email,
         passwordHash: hashPassword(input.password),
-        name: cleanName(input?.name ?? username),
+        name: cleanName(input?.name) || username,
         look,
         looks: look ? [look] : [],
       };
@@ -205,7 +206,7 @@ export function createAccountBook(filePath) {
       const rec = {
         ...prev,
         playerKey: input.playerKey,
-        name: cleanName(input.name ?? prev.name),
+        name: cleanName(input.name ?? prev.name) || prev.username || cleanName(prev.name),
         look: look || cleanLook(prev.look),
         looks,
       };

@@ -51,6 +51,7 @@ import {
   combatBodies,
   countLiving,
   createMatch,
+  displayName,
   interruptPlant,
   isPlanting,
   livingSeatIds,
@@ -336,7 +337,7 @@ const locker = {
 const match = createMatch();
 {
   const you = humanSlot(match);
-  if (you) you.name = prefs.name;
+  if (you) you.name = displayName(prefs.name);
   setNetName(prefs.name);
   setNetSkin(prefs.skin);
   setNetLook(accountLook() || packLook(prefs.look));
@@ -484,7 +485,8 @@ function leaveToLobby() {
   joiningName = "";
   hideJoinTeam();
   studio.playing = false;
-  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "podium", "studio-play");
+  stopReel();
+  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "bestplay", "podium", "studio-play");
   document.exitPointerLock();
   paintJoin();
   void refreshServers();
@@ -783,7 +785,7 @@ function switchLocalTeam(team: Team) {
   const oldName = you.name;
   vacateSlot(match, you);
   bots.push(spawnBot(scene, world, match, you));
-  const seat = claimSlot(match, team, prefs.name.trim() || "You");
+  const seat = claimSlot(match, team, displayName(prefs.name));
   if (!seat) {
     despawnBot(scene, bots, oldId);
     you.kind = "human";
@@ -1867,7 +1869,7 @@ bindIdentity({
     const el = e.currentTarget as HTMLInputElement;
     prefs.name = el.value.slice(0, 18);
     const you = humanSlot(match);
-    if (you) you.name = prefs.name.trim() || "You";
+    if (you) you.name = displayName(prefs.name);
     setNetName(prefs.name);
     savePrefs();
     const setName = document.querySelector<HTMLInputElement>("#set-name");
@@ -2145,6 +2147,10 @@ function overlayOpen() {
   );
 }
 
+function inMatch() {
+  return document.body.classList.contains("started") && !studio.on && !locker.on;
+}
+
 function lock() {
   if (overlayOpen()) return;
   canvas.requestPointerLock();
@@ -2279,7 +2285,7 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   nameEl.addEventListener("input", () => {
     prefs.name = nameEl.value.slice(0, 18);
     const you = humanSlot(match);
-    if (you) you.name = prefs.name.trim() || "You";
+    if (you) you.name = displayName(prefs.name);
     setNetName(prefs.name);
     savePrefs();
     const lockerName = document.querySelector<HTMLInputElement>("#locker-name");
@@ -3234,6 +3240,7 @@ function tryMelee(bash: boolean) {
 }
 
 function slashSound() {
+  if (!inMatch()) return;
   audio ??= new AudioContext();
   const ctx = audio;
   const n = ctx.createBufferSource();
@@ -3257,6 +3264,7 @@ function slashSound() {
 }
 
 function bang(freq: number, dur: number, gain = 0.07, track?: AudioScheduledSourceNode[]) {
+  if (!inMatch()) return;
   audio ??= new AudioContext();
   if (audio.state === "suspended") void audio.resume();
   const ctx = audio;
@@ -3574,6 +3582,7 @@ function reelViewName(id: number) {
 }
 
 function startReel() {
+  if (!inMatch()) return;
   if (studio.on || locker.on) return;
   recordSnap();
   mouseDown = false;
@@ -3909,7 +3918,7 @@ function hurtPlayer(amount: number, source: string, killerId?: number, force = f
       }
       possessId = null;
     }
-    const vName = slotById(match, victim)?.name ?? "You";
+    const vName = displayName(slotById(match, victim)?.name);
     if (killerId != null) frag(killerId, victim, vName, px, py, pz);
     else {
       if (victim === playerId) {
@@ -4415,7 +4424,7 @@ function frame(now: number) {
       alive: r.alive,
     })),
   ];
-  if (!reeling && !isClient) {
+  if (!reeling && !isClient && inMatch()) {
     botCutting = updateBots(
       bots,
       dt,
@@ -4432,7 +4441,7 @@ function frame(now: number) {
     ).cutting;
   }
 
-  if (!isClient && !studio.on && !locker.on) {
+  if (!isClient && !studio.on && !locker.on && inMatch()) {
   const youSeat = slotById(match, playerId);
   markSeatsFromBodies(
     match,
@@ -4494,19 +4503,19 @@ function frame(now: number) {
   });
   }
 
-  if (match.phase === "settle" && seenPhase !== "settle") {
+  if (inMatch() && match.phase === "settle" && seenPhase !== "settle") {
     if (isClient && match.endText === "The Bomb ran out") playBlast(match.wire.x, match.wire.y, match.wire.z);
     const you = slotById(match, playerId);
     const win = !!you && match.lastWinner === you.team;
     setRoundResult(win ? "Round Victory!" : "Round Loss!", win);
     roundSting(win);
   }
-  if (match.phase === "bestplay" && seenPhase !== "bestplay") {
+  if (inMatch() && match.phase === "bestplay" && seenPhase !== "bestplay") {
     recordSnap();
     setRoundResult(null);
     reelPlayed = false;
   }
-  if (match.phase === "planted" && seenPhase !== "planted") {
+  if (inMatch() && match.phase === "planted" && seenPhase !== "planted") {
     playPlanted();
     const you = slotById(match, playerId);
     const win = !!you && you.team === plantingTeam(match);
@@ -4587,7 +4596,7 @@ function frame(now: number) {
   }
   seenPhase = match.phase;
 
-  if (studio.on || locker.on) {
+  if (!inMatch()) {
     if (reel) stopReel();
   } else if (match.phase === "bestplay") {
     if (rules.highlights && !reelPlayed) tickReel(dt);
@@ -4955,7 +4964,7 @@ function frame(now: number) {
     const site = inSite(world, "loft", px, pz, py) ? "ICE" : inSite(world, "well", px, pz, py) ? "SLIP" : "";
     prompt = site
       ? "HOLD F · PLANT"
-      : "You have the Bomb · gold pad at A or B";
+      : `${displayName(slotById(match, viewId)?.name ?? mePawn?.name ?? prefs.name)} has the Bomb · gold pad at A or B`;
   } else if (match.wire.mode === "planted" && youTeam !== planter) {
     if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE BOMB";
   } else if (match.phase === "planted") {
