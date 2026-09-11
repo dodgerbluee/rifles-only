@@ -215,6 +215,17 @@ export function buildingHasDecks(b: BuildingSpec) {
   return buildingFloors(b) > 1 && buildingInterior(b) === "floors";
 }
 
+/** Walkable lid on every building, any storey count. Inset so the walls stay a parapet. */
+export function buildingRoof(b: BuildingSpec, wallH = 6.2): SlabSpec {
+  return {
+    x: b.x,
+    z: b.z,
+    w: Math.max(HOLE_MIN, b.w - T),
+    d: Math.max(HOLE_MIN, b.d - T),
+    y: buildingBase(b) + buildingHeight(b, wallH),
+  };
+}
+
 /** Later / same-Y walk decks lose the overlapping XZ so two slabs cannot glow. */
 export function resolveWalkDecks(decks: SlabSpec[], yEps = WALK_Y_EPS): SlabSpec[] {
   const out: SlabSpec[] = [];
@@ -409,11 +420,11 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     const y0 = buildingBase(b);
     const stairWall = floors > 1 ? b.stairs : undefined;
     if (floors === 1) {
-      buildStorey(kit, b, b.h ?? H - 0.4, mat, y0, 0);
+      buildStorey(kit, b, (b.h ?? H - 0.4) - 0.08, mat, y0, 0);
     } else {
       for (let f = 0; f < floors; f++) {
         const fy = y0 + f * STOREY;
-        buildStorey(kit, b, STOREY - (f < floors - 1 ? 0.08 : 0), mat, fy, f, stairWall);
+        buildStorey(kit, b, STOREY - 0.08, mat, fy, f, stairWall);
         if (f < floors - 1 && buildingHasDecks(b)) {
           walkDecks.push({
             x: b.x,
@@ -437,6 +448,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
         }
       }
     }
+    walkDecks.push(buildingRoof(b, H));
   }
 
   for (const s of spec.slabs ?? []) walkDecks.push(s);

@@ -317,11 +317,13 @@ let empty3 = setBuildingStoreys(place(blankSpec(), "building", 0, 0, { bw: 12, b
 const empty3World = compileLayout(new THREE.Scene(), empty3);
 check("empty 3F has no walkable interior slab", thinWalkAt(empty3World, 0, 0, STOREY).length === 0);
 check("empty 3F invents no stairs", !(empty3.buildings?.[0]?.stairs));
+check("empty 3F still has a roof", thinWalkAt(empty3World, 0, 0, 3 * STOREY).length === 1);
 
 let floors3 = setBuildingInterior(setBuildingStoreys(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), 0, 3), 0, "floors");
 const floors3World = compileLayout(new THREE.Scene(), floors3);
 check("floors 3F has walkable deck at STOREY", thinWalkAt(floors3World, 0, 0, STOREY).length === 1);
 check("floors 3F still has no auto stairs", !(floors3.buildings?.[0]?.stairs));
+check("floors 3F has a roof", thinWalkAt(floors3World, 0, 0, 3 * STOREY).length === 1);
 
 const omitted = { ...blankSpec(), buildings: [{ x: 0, z: 0, w: 12, d: 10, floors: 2 }] };
 check(
@@ -372,6 +374,10 @@ const hutWorld = compileLayout(new THREE.Scene(), hut);
 check(
   "1 block building compiles walls",
   hutWorld.colliders.some((c) => Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5 && c.max.y > 1),
+);
+check(
+  "1F has a walkable roof",
+  thinWalkAt(hutWorld, hut.buildings![0]!.x, hut.buildings![0]!.z, STOREY).length === 1,
 );
 const hutMid = pickStudioHit(hut, hut.buildings![0]!.x, hut.buildings![0]!.z, [{ kind: "building", i: 0 }]);
 check("selected 1-block body is a grab, not a resize", hutMid.type === "item");
