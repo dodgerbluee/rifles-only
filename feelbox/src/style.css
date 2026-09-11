@@ -1549,8 +1549,6 @@ body.register #register {
   display: flex;
 }
 
-body.register #server-list,
-body.register #home-actions,
 body.register #home-id {
   display: none;
 }

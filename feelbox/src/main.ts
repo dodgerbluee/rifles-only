@@ -455,6 +455,7 @@ function awaitingTeamPick() {
 function joinGame(name?: string) {
   if (!isRegistered()) {
     paintIdentity();
+    document.querySelector("#register")?.scrollIntoView({ block: "nearest" });
     return;
   }
   if (net.status === "connecting") {
@@ -1406,7 +1407,6 @@ function paintLocker() {
     b.classList.toggle("on", b.dataset.side === locker.team);
   });
   paintIdentity();
-  if (document.body.classList.contains("register")) return;
   const title = document.querySelector("#start-title");
   const blurb = document.querySelector("#start-blurb");
   if (title) title.textContent = locker.on ? "Player" : "Servers";

@@ -215,17 +215,8 @@ function setErr(sel: string, message: string) {
 }
 
 function authCopy(mode: "register" | "login") {
-  const title = document.querySelector("#start-title");
-  const blurb = document.querySelector("#start-blurb");
   const kicker = document.querySelector("#auth-kicker");
-  if (title) title.textContent = mode === "login" ? "Log in" : "Register";
   if (kicker) kicker.textContent = mode === "login" ? "Log in" : "Register";
-  if (blurb) {
-    blurb.textContent =
-      mode === "login"
-        ? "Username and password bring your player back."
-        : "Make an account, then design your player.";
-  }
 }
 
 function showAuth(mode: "register" | "login") {
