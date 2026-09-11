@@ -11,7 +11,7 @@ export type NetRole = "host" | "client" | "offline";
 export type Team = "ember" | "stone";
 export type Phase = "freeze" | "live" | "planted" | "settle" | "bestplay" | "ending" | "matchover";
 export type SiteId = "ice" | "slip";
-export type Weapon = "kar" | "mosin" | "rifle" | "knife" | "smoke" | "frag" | "stun" | "flash";
+export type Weapon = "kar" | "karscope" | "mosin" | "rifle" | "knife" | "smoke" | "frag" | "stun" | "flash";
 
 export type PlayerInput = {
   keys: string[];
@@ -136,7 +136,7 @@ const HEAD_ICON = svg(
     `<circle cx="12.6" cy="9.2" r="0.7" fill="currentColor"/>`,
 );
 
-export function killWayIcons(way?: KillWay, head = false, _rifle?: "kar" | "mosin") {
+export function killWayIcons(way?: KillWay, head = false, _rifle?: "kar" | "karscope" | "mosin") {
   const parts: string[] = [];
   if (way === "aimed") parts.push(ICONS.aimed);
   else if (way === "noscope" && !head) parts.push(ICONS.noscope);
@@ -156,7 +156,7 @@ export type KillFeedItem = {
   victimTeam?: Team;
   way?: KillWay;
   head?: boolean;
-  rifle?: "kar" | "mosin";
+  rifle?: "kar" | "karscope" | "mosin";
 };
 
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */

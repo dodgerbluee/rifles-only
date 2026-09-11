@@ -10,7 +10,7 @@ export type Pose = {
   pitch: number;
   eye: number;
   alive: boolean;
-  weapon: "kar" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
+  weapon: "kar" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
   ads: boolean;
   bash: number;
   fov: number;

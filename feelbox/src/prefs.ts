@@ -1,4 +1,5 @@
 import { DEFAULT_LOOK, parseLook, packLook, skinFromLook, type Appearance } from "./look";
+import { DEFAULT_LOADOUT, parseLoadout, type Loadout } from "./loadout";
 import {
   FACTORY_CROSSHAIRS,
   parseCrosshairBank,
@@ -18,6 +19,7 @@ export type Prefs = {
   look: Appearance;
   /** Opaque packed look string. Do not parse slots here. */
   lookId: string;
+  loadout: Loadout;
   crosshairSlot: number;
   crosshairs: Crosshair[];
 };
@@ -32,6 +34,7 @@ const defaults: Prefs = {
   skin: "rifle",
   look: { ...DEFAULT_LOOK },
   lookId: packLook(DEFAULT_LOOK),
+  loadout: { ...DEFAULT_LOADOUT },
   crosshairSlot: factoryBank.crosshairSlot,
   crosshairs: factoryBank.crosshairs,
 };
@@ -61,6 +64,7 @@ function load(): Prefs {
       look,
       lookId: lookId || packLook(look),
       skin: skinFromLook(look),
+      loadout: parseLoadout(p.loadout),
       crosshairSlot: bank.crosshairSlot,
       crosshairs: bank.crosshairs,
     };
@@ -69,6 +73,7 @@ function load(): Prefs {
       ...defaults,
       look: { ...DEFAULT_LOOK },
       lookId: packLook(DEFAULT_LOOK),
+      loadout: { ...DEFAULT_LOADOUT },
       crosshairs: parseCrosshairBank(FACTORY_CROSSHAIRS, 0).crosshairs,
     };
   }

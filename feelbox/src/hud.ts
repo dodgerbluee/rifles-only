@@ -155,8 +155,9 @@ export function updateHud(opts: {
   nadeKind?: "smoke" | "frag" | "stun" | "flash";
   clouds: { x: number; z: number; radius: number; opacity: number }[];
   air?: { x: number; z: number }[];
-  weapon?: "rifle" | "kar" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
+  weapon?: "rifle" | "kar" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
   rifleName?: string;
+  loadoutKeys?: string;
   spread?: number;
 }) {
   const { hp, hpMax, alive } = opts;
@@ -196,7 +197,9 @@ export function updateHud(opts: {
       el.classList.toggle("filling", opts.reloading > 0 && i >= opts.mag && i < filling);
     }
   }
-  nadeEl.textContent = `1 KAR · 2 MOSIN · 3 KNIFE · 4 ${nade.toUpperCase()}  S${bag.smoke} F${bag.frag} T${bag.stun} H${bag.flash}`;
+  nadeEl.textContent =
+    opts.loadoutKeys ??
+    `1 KAR · 2 KNIFE · 3 KNIFE · 4 ${nade.toUpperCase()}  S${bag.smoke} F${bag.frag} T${bag.stun} H${bag.flash}`;
   nadeEl.classList.toggle("empty", bag[nade] <= 0);
   scoreEl.textContent = `${opts.kills} / ${opts.deaths}`;
   const ch = document.querySelector<HTMLElement>("#crosshair");

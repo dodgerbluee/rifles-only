@@ -181,6 +181,7 @@ import {
 } from "./replay";
 import {
   makeKar98,
+  makeKar98Scoped,
   makeMosin,
   makeRightArm,
   poseKnifeRest,
@@ -195,8 +196,20 @@ import {
   knifeWrist,
   nadeWrist,
   RIFLES,
+  isRifleId,
+  rifleFromWeapon,
   type RifleId,
 } from "./weapons";
+import {
+  GUN_BLURB,
+  PRIMARY_IDS,
+  bindKeys,
+  gunName,
+  hudWeaponLine,
+  parseLoadout,
+  secondaryChoices,
+  type SecondaryId,
+} from "./loadout";
 import { makeBomb } from "./bomb";
 import {
   clearFire,
@@ -414,19 +427,23 @@ function bindNet(handle: NetHandle) {
 }
 
 let joiningName = "";
+let joinStep: "team" | "guns" = "team";
 
 function joinPanel() {
   return document.querySelector<HTMLElement>("#join-team");
 }
 
 function hideJoinTeam() {
+  joinStep = "team";
   const panel = joinPanel();
   if (panel) {
     panel.hidden = true;
-    panel.classList.remove("pick");
+    panel.classList.remove("pick", "loadout");
   }
   const pick = document.querySelector<HTMLElement>("#join-team-pick");
   if (pick) pick.hidden = true;
+  const guns = document.querySelector<HTMLElement>("#join-loadout");
+  if (guns) guns.hidden = true;
   const list = document.querySelector<HTMLElement>("#server-list");
   if (list) list.hidden = false;
 }
@@ -459,6 +476,8 @@ function joinGame(name?: string) {
 
 function enterPlay() {
   lastBeat = lastBeat || performance.now();
+  rifleKind = prefs.loadout.primary;
+  weapon = "rifle";
   document.body.classList.add("started");
   lock();
 }
@@ -518,12 +537,19 @@ function paintJoin() {
   const connecting = net.status === "connecting";
   const rejected = net.status === "rejected";
   const picking = awaitingTeamPick();
+  const onTeam = picking && joinStep === "team";
+  const onGuns = picking && joinStep === "guns";
   if (list) list.hidden = connecting || picking || rejected;
-  if (pick) pick.hidden = !picking;
+  if (pick) pick.hidden = !onTeam;
+  const guns = document.querySelector<HTMLElement>("#join-loadout");
+  if (guns) guns.hidden = !onGuns;
   if (panel) {
     panel.hidden = !connecting && !picking && !rejected;
-    panel.classList.toggle("pick", picking);
+    panel.classList.toggle("pick", onTeam);
+    panel.classList.toggle("loadout", onGuns);
   }
+  const ask = document.querySelector<HTMLElement>("#join-team .join-ask");
+  if (ask) ask.textContent = onGuns ? "Choose weapons" : "Pick a side";
   if (!list) return;
   for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
     row.classList.toggle("busy", connecting);
@@ -773,6 +799,46 @@ function pickTeam(team: Team) {
     net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin, look: accountLook() || packLook(prefs.look), playerKey: accountKey() || prefs.playerKey });
   }
   paintTeamPick();
+}
+
+function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id: SecondaryId) => void) {
+  const root = document.querySelector(sel);
+  if (!root) return;
+  root.replaceChildren();
+  for (const id of ids) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.classList.toggle("on", id === on);
+    const name = document.createElement("span");
+    name.className = "gun-name";
+    name.textContent = gunName(id);
+    const blurb = document.createElement("span");
+    blurb.className = "gun-blurb";
+    blurb.textContent = GUN_BLURB[id];
+    b.append(name, blurb);
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pick(id);
+    });
+    root.append(b);
+  }
+}
+
+function paintLoadout() {
+  const loadout = parseLoadout(prefs.loadout);
+  prefs.loadout = loadout;
+  fillGunRow("#loadout-primary", PRIMARY_IDS, loadout.primary, (id) => {
+    if (!isRifleId(id)) return;
+    prefs.loadout.primary = id;
+    if (prefs.loadout.secondary === id) prefs.loadout.secondary = "knife";
+    savePrefs();
+    paintLoadout();
+  });
+  fillGunRow("#loadout-secondary", secondaryChoices(loadout.primary), loadout.secondary, (id) => {
+    prefs.loadout.secondary = id;
+    savePrefs();
+    paintLoadout();
+  });
 }
 
 function switchLocalTeam(team: Team) {
@@ -1988,18 +2054,21 @@ const camera = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 8
 camera.rotation.order = "YXZ";
 scene.add(camera);
 
-const kar = makeKar98();
-const mosin = makeMosin();
-camera.add(kar.root, mosin.root);
-mosin.root.visible = false;
+const rifles = {
+  kar: makeKar98(),
+  karscope: makeKar98Scoped(),
+  mosin: makeMosin(),
+} as const;
+camera.add(rifles.kar.root, rifles.karscope.root, rifles.mosin.root);
+rifles.karscope.root.visible = false;
+rifles.mosin.root.visible = false;
 
 function liveRifle() {
-  return rifleKind === "mosin" ? mosin : kar;
+  return rifles[rifleKind];
 }
 
 function showRifle(kind: RifleId, on: boolean) {
-  kar.root.visible = on && kind === "kar";
-  mosin.root.visible = on && kind === "mosin";
+  for (const id of PRIMARY_IDS) rifles[id].root.visible = on && kind === id;
 }
 
 const karGlassEl = document.querySelector<HTMLElement>("#kar-glass");
@@ -2017,6 +2086,26 @@ function setKarGlass(kind: RifleId, aiming: boolean, zoom: number) {
 
 function glassHidesRifle(kind: RifleId, aiming: boolean, zoom: number) {
   return aiming && RIFLES[kind].glass && zoom > 0.7;
+}
+
+function selectLoadoutSlot(slot: 1 | 2 | 3) {
+  const keys = bindKeys(prefs.loadout);
+  const id = slot === 1 ? keys.digit1 : slot === 2 ? keys.digit2 : keys.digit3;
+  if (id === "knife") weapon = "knife";
+  else {
+    weapon = "rifle";
+    rifleKind = id;
+  }
+}
+
+function poseIdleRifles() {
+  for (const id of PRIMARY_IDS) {
+    if (id !== rifleKind) poseAmmo(rifles[id], mag, magCap(), 0);
+  }
+}
+
+function hideRifleFlash() {
+  for (const id of PRIMARY_IDS) rifles[id].flash.visible = false;
 }
 
 let knife = makeMelee(prefs.look.melee);
@@ -2108,7 +2197,7 @@ let nadeKind: NadeKind = "smoke";
 let lastThrow = -10;
 type Weapon = "rifle" | "knife" | NadeKind;
 let weapon: Weapon = "rifle";
-let rifleKind: RifleId = "kar";
+let rifleKind: RifleId = prefs.loadout.primary;
 let bashT = 0;
 let boltT = 0;
 let boltDur = RIFLES.kar.cycle;
@@ -2241,13 +2330,27 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
   };
   fillTeams(document.querySelector("#join-team-pick")!, (team) => {
     pickTeam(team);
-    enterPlay();
-    hideJoinTeam();
+    joinStep = "guns";
+    paintLoadout();
+    paintJoin();
   });
   const setTeam = document.querySelector("#set-team");
   if (setTeam) fillTeams(setTeam);
+  document.querySelector("#join-loadout")?.addEventListener("click", (e) => e.stopPropagation());
+  document.querySelector("#loadout-go")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    prefs.loadout = parseLoadout(prefs.loadout);
+    savePrefs();
+    enterPlay();
+    hideJoinTeam();
+  });
   document.querySelector("#join-cancel")?.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (joinStep === "guns" && awaitingTeamPick()) {
+      joinStep = "team";
+      paintJoin();
+      return;
+    }
     leaveToLobby();
   });
   const adminMap = document.querySelector<HTMLSelectElement>("#admin-map")!;
@@ -2423,15 +2526,9 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyR" && locked) startReload();
   if (e.code === "KeyG" && locked && !e.repeat) tryThrowSmoke();
   if (e.code === "KeyJ" && locked && !e.repeat) tryJoin();
-  if (e.code === "Digit1" || e.code === "Numpad1") {
-    weapon = "rifle";
-    rifleKind = "kar";
-  }
-  if (e.code === "Digit2" || e.code === "Numpad2") {
-    weapon = "rifle";
-    rifleKind = "mosin";
-  }
-  if (e.code === "Digit3" || e.code === "Numpad3") weapon = "knife";
+  if (e.code === "Digit1" || e.code === "Numpad1") selectLoadoutSlot(1);
+  if (e.code === "Digit2" || e.code === "Numpad2") selectLoadoutSlot(2);
+  if (e.code === "Digit3" || e.code === "Numpad3") selectLoadoutSlot(3);
   if (e.code === "Digit4" || e.code === "Numpad4") selectNade();
   if (e.code === "KeyV" && locked && !e.repeat) tryBash();
   if ((e.code === "ControlLeft" || e.code === "ControlRight") && locked && !e.repeat) tryProne();
@@ -3455,7 +3552,7 @@ function flashHit(kill: boolean) {
 }
 
 function pawnPoseWeapon(w: string): Pose["weapon"] {
-  if (w === "mosin") return "mosin";
+  if (isRifleId(w)) return w;
   if (w === "knife" || w === "smoke" || w === "frag" || w === "stun" || w === "flash") return w;
   return "kar";
 }
@@ -3514,7 +3611,7 @@ function collectPoses(): Pose[] {
       pitch: b.lookPitch,
       eye: 1.52,
       alive: b.hp > 0,
-      weapon: b.id % 2 === 0 ? "kar" : "mosin",
+      weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
       ads: b.aim,
       bash: 0,
       fov: b.aim ? 68 : 90,
@@ -3534,7 +3631,7 @@ function collectPoses(): Pose[] {
       pitch: r.pitch,
       eye: r.crouch ? 1.1 : 1.64,
       alive: r.alive,
-      weapon: isNade(r.weapon) ? r.weapon : r.weapon === "mosin" ? "mosin" : r.weapon === "knife" ? r.weapon : "kar",
+      weapon: isNade(r.weapon) ? r.weapon : r.weapon === "knife" ? r.weapon : rifleFromWeapon(r.weapon),
       ads: r.ads,
       bash: 0,
       fov: r.ads ? 64 : 90,
@@ -3790,8 +3887,8 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
 
 function applyReelHands(cam: Pose) {
   const bashing = cam.bash > 0.02;
-  const rifleOn = (cam.weapon === "kar" || cam.weapon === "mosin") && !bashing;
-  const kind: RifleId = cam.weapon === "mosin" ? "mosin" : "kar";
+  const rifleOn = isRifleId(cam.weapon) && !bashing;
+  const kind: RifleId = rifleFromWeapon(cam.weapon);
   const camFov = cam.fov || (cam.ads ? RIFLES[kind].adsFov : 90);
   const zoom = adsZoomK(kind, camFov);
   const aiming = cam.ads && rifleOn;
@@ -3801,24 +3898,21 @@ function applyReelHands(cam: Pose) {
   nadeView.visible = isNade(cam.weapon as Weapon) && !bashing;
   if (bashing) poseKnifeSlash(knife, cam.bash);
   else poseKnifeRest(knife);
-  const rest = cam.ads
-    ? (kind === "mosin" ? mosin.adsPos : kar.adsPos).clone()
-    : (kind === "mosin" ? mosin.hipPos : kar.hipPos).clone();
-  const g = kind === "mosin" ? mosin.root : kar.root;
+  const hold = rifles[kind];
+  const rest = (cam.ads ? hold.adsPos : hold.hipPos).clone();
+  const g = hold.root;
   g.position.copy(rest);
   g.position.z += cam.kick;
   g.rotation.x = (cam.ads ? 0 : 0.1) - cam.punchP * 0.04;
   g.rotation.y = cam.ads ? 0 : 0.22;
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
-  const hold = liveRifleFor(kind);
   poseBolt(hold, 0);
   hold.root.updateMatrixWorld(true);
   if (isNade(cam.weapon as Weapon) && !bashing) {
     nadeView.rotation.set(0, 0, 0);
     nadeView.position.set(0.18, -0.2, -0.2);
   }
-  kar.flash.visible = false;
-  mosin.flash.visible = false;
+  hideRifleFlash();
   if (rifleOn) hold.flash.visible = cam.flash;
   const handsOn = !cam.ads && (rifleOn || knife.visible || nadeView.visible);
   arm.root.visible = handsOn;
@@ -3830,10 +3924,6 @@ function applyReelHands(cam: Pose) {
   camera.fov = camFov;
   camera.updateProjectionMatrix();
   lastReelAds = cam.ads;
-}
-
-function liveRifleFor(kind: RifleId) {
-  return kind === "mosin" ? mosin : kar;
 }
 
 function tracer(from: THREE.Vector3, to: THREE.Vector3) {
@@ -4159,7 +4249,7 @@ function maxLean(desired: number, height: number) {
 }
 
 function remoteFire(r: Remote): boolean {
-  const kind: RifleId = r.weapon === "mosin" ? "mosin" : "kar";
+  const kind: RifleId = rifleFromWeapon(r.weapon);
   if (time - r.lastFire < RIFLES[kind].cycle) return false;
   if (r.weapon === "knife" || r.weapon === "smoke" || r.weapon === "frag" || r.weapon === "stun" || r.weapon === "flash") return false;
   r.lastFire = time;
@@ -4754,14 +4844,13 @@ function frame(now: number) {
   const leanM = maxLean(lean * tuning.leanM, height);
   lastLeanM = leanM;
 
-  const punchSettle = rifleKind === "kar" && ads ? 6.5 : 12;
+  const punchSettle = RIFLES[rifleKind].glass && ads ? 6.5 : 12;
   punchP += (0 - punchP) * Math.min(1, dt * punchSettle);
   punchY += (0 - punchY) * Math.min(1, dt * 10);
   punchR += (0 - punchR) * Math.min(1, dt * 10);
   gunKickZ += (0 - gunKickZ) * Math.min(1, dt * 16);
   if (!watching && time > flashUntil) {
-    kar.flash.visible = false;
-    mosin.flash.visible = false;
+    hideRifleFlash();
   }
   hipSpread = hipCone();
   blastFlash += (0 - blastFlash) * Math.min(1, dt * 1.7);
@@ -4869,12 +4958,12 @@ function frame(now: number) {
           poseBolt(hold, reloadBoltK(reloadK));
         } else poseBolt(hold, weapon === "rifle" ? boltK : 0);
         poseAmmo(hold, mag, magCap(), reloadK);
-        poseAmmo(rifleKind === "kar" ? mosin : kar, mag, magCap(), 0);
+        poseIdleRifles();
         hold.root.updateMatrixWorld(true);
         const handsOn =
           alive &&
           !ads &&
-          (kar.root.visible || mosin.root.visible || knife.visible || nadeView.visible || throwing);
+          (PRIMARY_IDS.some((id) => rifles[id].root.visible) || knife.visible || nadeView.visible || throwing);
         arm.root.visible = handsOn;
         if (handsOn) {
           if (bashing || weapon === "knife") poseArm(arm, knifeWrist(knife), bashing ? (1 - bashT / 0.42) * 0.8 : 0);
@@ -5070,6 +5159,7 @@ function frame(now: number) {
     air: lastSnap?.nades ?? activeNades(),
     weapon: weapon === "rifle" ? rifleKind : weapon,
     rifleName: RIFLES[rifleKind].name,
+    loadoutKeys: hudWeaponLine(prefs.loadout, nadeKind, nadeBag),
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
     youTeam,
     minimapEnemies: rules.minimapEnemies,

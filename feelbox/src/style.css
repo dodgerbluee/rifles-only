@@ -920,6 +920,7 @@ body.dead:not(.bestplay) #hitmark {
 #join-team[hidden],
 #join-status[hidden],
 #join-team-pick[hidden],
+#join-loadout[hidden],
 #register[hidden] {
   display: none !important;
 }
@@ -956,7 +957,8 @@ body.dead:not(.bestplay) #hitmark {
   display: none !important;
 }
 
-#join-team.pick .join-ask {
+#join-team.pick .join-ask,
+#join-team.loadout .join-ask {
   display: block;
   position: absolute;
   top: 28px;
@@ -971,6 +973,87 @@ body.dead:not(.bestplay) #hitmark {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
+#join-team.loadout .join-kicker,
+#join-team.loadout #join-status {
+  display: none !important;
+}
+
+#join-loadout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(720px, 100%);
+  padding-top: 36px;
+}
+
+#join-loadout .loadout-label {
+  margin: 12px 0 0;
+  color: #f4eee2;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.loadout-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.loadout-row button {
+  min-width: 168px;
+  flex: 1 1 160px;
+  max-width: 220px;
+  padding: 14px 16px;
+  text-align: left;
+  background: #1c1e18;
+  color: #e6dfd0;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  cursor: pointer;
+}
+
+.loadout-row button .gun-name {
+  display: block;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.loadout-row button .gun-blurb {
+  display: block;
+  margin-top: 4px;
+  color: #8d8676;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.loadout-row button.on {
+  border-color: #e8d9a8;
+  background: #26281f;
+}
+
+.loadout-row button:hover {
+  border-color: rgba(232, 217, 168, 0.7);
+}
+
+#loadout-go {
+  margin: 18px 0 8px;
+  padding: 12px 28px;
+  background: #e8d9a8;
+  color: #14140f;
+  border: 0;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+#loadout-go:hover {
+  background: #f4eee2;
+}
+
 #join-cancel {
   z-index: 2;
   margin: 8px 0 0;
@@ -982,7 +1065,8 @@ body.dead:not(.bestplay) #hitmark {
   letter-spacing: 0.08em;
 }
 
-#join-team.pick #join-cancel {
+#join-team.pick #join-cancel,
+#join-team.loadout #join-cancel {
   position: absolute;
   bottom: 28px;
   left: 50%;

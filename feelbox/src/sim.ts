@@ -77,7 +77,8 @@ import {
 } from "./smoke";
 import { line, noteHit, noteKill, resetStats } from "./stats";
 import { meleeReach, tuning } from "./tuning";
-import { RIFLES, type RifleId } from "./weapons";
+import { RIFLES, rifleFromWeapon, type RifleId } from "./weapons";
+import { PRIMARY_IDS } from "./loadout";
 
 const FRAG_R = 6.5;
 const HP = 100;
@@ -308,15 +309,16 @@ export function createSim(opts?: {
     return "noscope";
   }
 
-  function rifleOf(id: number): "kar" | "mosin" | undefined {
+  function rifleOf(id: number): RifleId | undefined {
     const r = [...remotes.values()].find((x) => x.slotId === id || x.homeId === id);
     if (r) {
       if (r.weapon === "mosin") return "mosin";
+      if (r.weapon === "karscope") return "karscope";
       if (r.weapon === "kar" || r.weapon === "rifle") return "kar";
       return undefined;
     }
     const bot = bots.find((b) => b.id === id);
-    if (bot) return bot.id % 2 === 0 ? "kar" : "mosin";
+    if (bot) return PRIMARY_IDS[Math.abs(bot.id) % PRIMARY_IDS.length];
     return undefined;
   }
 
@@ -412,7 +414,7 @@ export function createSim(opts?: {
   }
 
   function remoteFireAt(r: Remote, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
-    const kind: RifleId = r.weapon === "mosin" ? "mosin" : "kar";
+    const kind: RifleId = rifleFromWeapon(r.weapon);
     if (time - r.lastFire < RIFLES[kind].cycle) return false;
     if (r.weapon === "knife" || r.weapon === "smoke" || r.weapon === "frag" || r.weapon === "stun" || r.weapon === "flash") {
       return false;
@@ -806,7 +808,7 @@ export function createSim(opts?: {
             pitch: b.lookPitch,
             hp: b.hp,
             alive: b.hp > 0,
-            weapon: "kar",
+            weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
             ads: b.aim && b.stunUntil <= time && !isCowed(b.id),
             crouch: false,
             prone: false,

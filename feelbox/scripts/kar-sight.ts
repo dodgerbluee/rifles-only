@@ -1,7 +1,7 @@
 /**
- * Kar ADS is CoD1 glass: tighter zoom, scope on the receiver, aim line through the tube.
+ * Iron Kar has no glass. Scoped Kar keeps the CoD1 tube and overlay.
  */
-import { makeKar98, RIFLES } from "../src/weapons.ts";
+import { makeKar98, makeKar98Scoped, RIFLES } from "../src/weapons.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -9,22 +9,22 @@ function check(name: string, ok: boolean, extra = "") {
   console.log(`${ok ? "ok" : "FAIL"}  ${name}${extra ? `  ${extra}` : ""}`);
 }
 
-const view = makeKar98();
-const ocular = view.root.children.find((c) => c.userData.karOcular);
-check("scope ocular sits on the gun", !!ocular);
+const iron = makeKar98();
+const scoped = makeKar98Scoped();
+const ironOcular = iron.root.children.find((c) => c.userData.karOcular);
+const scopedOcular = scoped.root.children.find((c) => c.userData.karOcular);
 
-const ads = view.adsPos;
-check("ADS is centered on X", Math.abs(ads.x) < 1e-6);
-check("ADS sits on the scope height", ocular ? Math.abs(ads.y + ocular.position.y) < 1e-6 : false, `y=${ads.y}`);
-check("ADS sits behind the ocular", ads.z < -0.12, `z=${ads.z}`);
-
-check("Kar zooms tighter than the Mosin peep", RIFLES.kar.adsFov < RIFLES.mosin.adsFov, `kar=${RIFLES.kar.adsFov} mosin=${RIFLES.mosin.adsFov}`);
-check("Kar uses CoD1 screen glass", RIFLES.kar.glass === true);
-check("Mosin stays a peep, no glass", RIFLES.mosin.glass === false);
-check("Kar ADS mouse is slower than Mosin", RIFLES.kar.adsSens < RIFLES.mosin.adsSens);
+check("iron Kar has no scope ocular", !ironOcular);
+check("scoped Kar keeps the tube ocular", !!scopedOcular);
+check("iron ADS is centered", Math.abs(iron.adsPos.x) < 1e-6);
+check("iron ADS sits behind the U", iron.adsPos.z < -0.14, `z=${iron.adsPos.z}`);
+check("iron Kar is not glass", RIFLES.kar.glass === false);
+check("Kar98k Scoped is glass", RIFLES.karscope.glass === true);
+check("iron zooms less than scoped", RIFLES.kar.adsFov > RIFLES.karscope.adsFov);
+check("names split", RIFLES.kar.name === "Kar98k" && RIFLES.karscope.name === "Kar98k Scoped");
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\nkar glass is the CoD1 zoom, mosin keeps the peep");
+console.log("\niron Kar is the CoD1 rifle; scoped stays the glass gun");

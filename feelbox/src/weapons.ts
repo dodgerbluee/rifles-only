@@ -2,7 +2,21 @@ import * as THREE from "three";
 import { makeMelee } from "./knife-variants";
 import type { MeleeId } from "./look";
 
-export type RifleId = "kar" | "mosin";
+export type RifleId = "kar" | "karscope" | "mosin";
+
+export function isRifleId(id: string): id is RifleId {
+  return id === "kar" || id === "karscope" || id === "mosin";
+}
+
+export function isMauser(id: RifleId) {
+  return id !== "mosin";
+}
+
+export function rifleFromWeapon(w: string): RifleId {
+  if (w === "mosin") return "mosin";
+  if (w === "karscope") return "karscope";
+  return "kar";
+}
 
 export type RifleSpec = {
   name: string;
@@ -16,7 +30,8 @@ export type RifleSpec = {
 };
 
 export const RIFLES: Record<RifleId, RifleSpec> = {
-  kar: { name: "Kar98k", mag: 5, cycle: 0.8, adsFov: 26, adsSens: 0.26, glass: true },
+  kar: { name: "Kar98k", mag: 5, cycle: 0.74, adsFov: 52, adsSens: 0.38, glass: false },
+  karscope: { name: "Kar98k Scoped", mag: 5, cycle: 0.8, adsFov: 26, adsSens: 0.26, glass: true },
   mosin: { name: "Mosin", mag: 5, cycle: 0.9, adsFov: 40, adsSens: 0.42, glass: false },
 };
 
@@ -152,10 +167,8 @@ function alignY(mesh: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) {
 }
 
 /** Kar98k tangent rear: open-top U (two uprights + floor). No hood. */
-function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
-  const earH = 0.007;
+function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material, earH = 0.009, gap = 0.0052) {
   const thick = 0.0028;
-  const gap = 0.0046;
   place(root, cylY(thick, earH, steel, 6), -gap, floorY + earH * 0.5, z);
   place(root, cylY(thick, earH, steel, 6), gap, floorY + earH * 0.5, z);
   place(root, cylX(thick, gap * 2 + thick, steel, 6), 0, floorY, z);
@@ -195,8 +208,7 @@ function makeBolt(root: THREE.Group, home: THREE.Vector3, knob: THREE.Vector3) {
   return bolt;
 }
 
-/** Karabiner 98k: round barrel, walnut stock, U rear + post front. */
-export function makeKar98(): RifleView {
+function buildKar98(scoped: boolean): RifleView {
   const root = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x1c1e1a, roughness: 0.3, metalness: 0.7 });
   const wood = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.84, metalness: 0.02 });
@@ -215,28 +227,45 @@ export function makeKar98(): RifleView {
   place(bolt, cylX(0.005, 0.048, steel, 6), 0.034, 0.004, 0);
   place(bolt, cylY(0.005, 0.034, steel, 6), 0.056, -0.014, 0);
 
-  // U planted on the receiver. Front blade sits on a ramp so it isn't hovering.
   const recTop = axisY + recR;
   const barTop = axisY + barR;
-  const uH = 0.007;
-  karLeafRear(root, -0.08, recTop, steel);
+  const uH = scoped ? 0.007 : 0.01;
+  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054);
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
   place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
   place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
-  const wingH = postH + 0.004;
-  place(root, cylY(0.0014, wingH, steel, 5), -0.0042, recTop + wingH * 0.35, postZ);
-  place(root, cylY(0.0014, wingH, steel, 5), 0.0042, recTop + wingH * 0.35, postZ);
-  const scope = karScope(root, recTop, steel);
+  const wingH = postH + (scoped ? 0.004 : 0.006);
+  place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
+  place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
+  if (!scoped) {
+    place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ);
+  }
+
+  const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
+  let adsPos = new THREE.Vector3(0, -(recTop + postH), -0.15);
+  if (scoped) {
+    const scope = karScope(root, recTop, steel);
+    adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
+  }
 
   const flash = flashMesh(0, axisY, -0.52);
   root.add(flash);
-  const { rounds, clip } = makeAmmoKit(root, axisY, "kar", steel);
-  const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
-  const adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
+  const id: RifleId = scoped ? "karscope" : "kar";
+  const { rounds, clip } = makeAmmoKit(root, axisY, id, steel);
   root.position.copy(hipPos);
-  return { id: "kar", root, flash, hipPos, adsPos, bolt, rounds, clip };
+  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip };
+}
+
+/** Karabiner 98k: iron U + post, CoD1 rifle picture. */
+export function makeKar98(): RifleView {
+  return buildKar98(false);
+}
+
+/** Same rifle with ZF glass. ADS uses the screen overlay. */
+export function makeKar98Scoped(): RifleView {
+  return buildKar98(true);
 }
 
 /** Mosin-Nagant 91/30: barrel meets receiver, small peep you look through. */
@@ -376,13 +405,13 @@ function makeAmmoKit(root: THREE.Group, axisY: number, id: RifleId, steel: THREE
   }
   const clip = new THREE.Group();
   const strip = new THREE.Mesh(
-    new THREE.BoxGeometry(id === "kar" ? 0.012 : 0.008, 0.004, id === "kar" ? 0.048 : 0.04),
+    new THREE.BoxGeometry(isMauser(id) ? 0.012 : 0.008, 0.004, isMauser(id) ? 0.048 : 0.04),
     steel,
   );
   clip.add(strip);
   for (let i = 0; i < 5; i++) {
     const cr = cylZ(0.0032, 0.028, brass, 6);
-    if (id === "kar") cr.position.set(0, 0.008, 0.016 - i * 0.008);
+    if (isMauser(id)) cr.position.set(0, 0.008, 0.016 - i * 0.008);
     else cr.position.set(0, 0.01, 0.014 - i * 0.007);
     clip.add(cr);
   }
@@ -442,7 +471,7 @@ export function poseAmmo(view: RifleView, mag: number, magMax: number, reloadK =
   }
   clip.visible = true;
   const u = smooth01((k - 0.12) / 0.42);
-  if (view.id === "kar") {
+  if (isMauser(view.id)) {
     clip.position.set(0.09 * (1 - u), 0.055 * (1 - u) + 0.012, 0.01);
     clip.rotation.set(0.35 * (1 - u), 0.15 * (1 - u), 0.55 * (1 - u));
   } else {
@@ -460,7 +489,7 @@ export function reloadBoltK(k: number) {
 
 export function applyReloadPose(root: THREE.Group, id: RifleId, k: number) {
   const t = Math.min(1, Math.max(0, k));
-  if (id === "kar") {
+  if (isMauser(id)) {
     const dip = t < 0.58 ? Math.sin((t / 0.58) * Math.PI) : 0;
     root.position.x += dip * 0.035;
     root.position.y -= dip * 0.045;

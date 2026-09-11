@@ -22,7 +22,7 @@ export const SNAP_BUFFER_SOFT = 24 * 1024;
 export const SNAP_BUFFER_HARD = 96 * 1024;
 const FULL_EVERY = 45;
 
-const WEAPONS: Weapon[] = ["kar", "mosin", "rifle", "knife", "smoke", "frag", "stun", "flash"];
+const WEAPONS: Weapon[] = ["kar", "mosin", "rifle", "knife", "smoke", "frag", "stun", "flash", "karscope"];
 const PHASES = ["freeze", "live", "planted", "settle", "bestplay", "ending", "matchover"] as const;
 const TEAMS = ["ember", "stone"] as const;
 const WIRE_MODES = ["carried", "ground", "planted"] as const;
