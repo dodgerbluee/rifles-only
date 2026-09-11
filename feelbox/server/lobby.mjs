@@ -18,14 +18,15 @@ const STATIC_DIR = STATIC_ENV === ""
   : path.resolve(ROOT, STATIC_ENV || "dist");
 const GAME_WS = process.env.GAME_WS ?? "ws://127.0.0.1:8081/ws";
 const STALE_MS = 5000;
-const DRAFT_PATH = path.join(ROOT, "studio-draft.json");
-const MAPS_DIR = path.join(ROOT, "studio-maps");
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : ROOT;
+const DRAFT_PATH = path.join(DATA_DIR, "studio-draft.json");
+const MAPS_DIR = path.join(DATA_DIR, "studio-maps");
 
 function mapFileName(id) {
   const slug = String(id || "draft").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "") || "draft";
   return `${slug}.json`;
 }
-const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.join(ROOT, "accounts.json");
+const ACCOUNT_PATH = process.env.ACCOUNTS_PATH ?? path.join(DATA_DIR, "accounts.json");
 const accounts = createAccountBook(ACCOUNT_PATH);
 
 const MIME = {

@@ -42,3 +42,6 @@ feelbox/verify-*.png
 feelbox/studio-draft.json
 feelbox/studio-maps/
 feelbox/accounts.json
+
+# Docker host data (logins, bans, studio maps)
+/data/

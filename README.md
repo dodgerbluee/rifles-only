@@ -30,6 +30,7 @@ docker compose up -d
 
 - Lobby: `http://HOST_IP:8080` (static client + `/api/servers` + `/play/ws` proxy)
 - Game: internal `8081` (simulation). Restart this container to reset the match.
+- Logins, bans, and saved studio maps persist in `./data` (`accounts.json`). Override with `FEELBOX_DATA=/path`.
 - Override the published port: `FEELBOX_PORT=9090 docker compose -f feelbox/docker-compose.yml up --build`
 
 Build from source: `docker compose -f feelbox/docker-compose.yml up --build`.

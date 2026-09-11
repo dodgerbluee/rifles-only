@@ -1,3 +1,5 @@
+# Logins, bans, and studio maps live in ./data on the host (survives image pulls
+# and compose down). Override the folder with FEELBOX_DATA=/path/to/dir.
 services:
   lobby:
     image: ghcr.io/dodgerbluee/rifles-only:latest
@@ -9,12 +11,13 @@ services:
       - PORT=8080
       - GAME_STATIC=dist
       - GAME_WS=ws://game:8081/ws
+      - DATA_DIR=/data
       - ACCOUNTS_PATH=/data/accounts.json
     ports:
       - "8080:8080"
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - accounts:/data
+      - ${FEELBOX_DATA:-./data}:/data
 
   game:
     image: ghcr.io/dodgerbluee/rifles-only:latest
@@ -27,6 +30,7 @@ services:
       - LOBBY_URL=http://lobby:8080
       - GAME_NAME=Last Wire
       - GAME_ID=default
+      - DATA_DIR=/data
       - ACCOUNTS_PATH=/data/accounts.json
     expose:
       - "8081"
@@ -34,7 +38,4 @@ services:
       - lobby
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - accounts:/data
-
-volumes:
-  accounts:
+      - ${FEELBOX_DATA:-./data}:/data

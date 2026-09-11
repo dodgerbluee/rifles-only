@@ -2,6 +2,7 @@ name: rifles-feelbox
 
 # Lobby (8080) lists the match. Game is internal and actually simulates it.
 # Restarting `game` starts a fresh match. Browsers never host.
+# Logins live in ../data (repo ./data) so they survive rebuilds.
 #   docker compose up --build
 #   LAN: http://HOST_IP:8080
 services:
@@ -15,9 +16,10 @@ services:
       ROLE: lobby
       GAME_STATIC: dist
       GAME_WS: ws://game:8081/ws
+      DATA_DIR: /data
       ACCOUNTS_PATH: /data/accounts.json
     volumes:
-      - accounts:/data
+      - ${FEELBOX_DATA:-../data}:/data
     restart: unless-stopped
 
   game:
@@ -32,14 +34,12 @@ services:
       # Optional: SERVER_CONFIG=/app/server.json
       GAME_MAP: wharf
       GAME_PER_TEAM: "5"
+      DATA_DIR: /data
       ACCOUNTS_PATH: /data/accounts.json
     volumes:
-      - accounts:/data
+      - ${FEELBOX_DATA:-../data}:/data
     expose:
       - "8081"
     depends_on:
       - lobby
     restart: unless-stopped
-
-volumes:
-  accounts:
