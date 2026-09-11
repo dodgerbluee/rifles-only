@@ -200,8 +200,24 @@ export const STOREY_MIN = 1;
 export const STOREY_MAX = 10;
 /** Same-Y walk decks within this are treated as one surface. */
 export const WALK_Y_EPS = 0.08;
+/** Walk-deck thickness. Top is `y`, mesh sits `DECK_H` below. */
+export const DECK_H = 0.16;
 const WIN_SILL = 1.05;
 const WIN_HEAD = 2.35;
+
+export type WalkDeck = SlabSpec & { /** Building index that emitted this deck; skipped as an occluder. */ owner?: number };
+
+/** Outer AABB including the wall thickness that sits on the footprint edge. */
+export function buildingShell(b: BuildingSpec): XzRect {
+  return { x: b.x, z: b.z, w: b.w + T, d: b.d + T };
+}
+
+/** True when `y` is inside the shell (not the floor the volume sits on). */
+export function buildingOccupiesWalkY(b: BuildingSpec, y: number, wallH = 6.2) {
+  const base = buildingBase(b);
+  const roof = base + buildingHeight(b, wallH);
+  return y > base + WALK_Y_EPS && y <= roof + WALK_Y_EPS;
+}
 
 export function buildingFloors(b: BuildingSpec) {
   return Math.max(STOREY_MIN, Math.min(STOREY_MAX, Math.round(b.floors ?? 1)));
@@ -226,14 +242,25 @@ export function buildingRoof(b: BuildingSpec, wallH = 6.2): SlabSpec {
   };
 }
 
-/** Later / same-Y walk decks lose the overlapping XZ so two slabs cannot glow. */
-export function resolveWalkDecks(decks: SlabSpec[], yEps = WALK_Y_EPS): SlabSpec[] {
+/** Later same-Y decks lose overlapping XZ. User floors (and later buildings) also lose earlier shells so they cannot glow against walls. */
+export function resolveWalkDecks(
+  decks: WalkDeck[],
+  buildings: BuildingSpec[] = [],
+  wallH = 6.2,
+  yEps = WALK_Y_EPS,
+): SlabSpec[] {
   const out: SlabSpec[] = [];
   for (const deck of decks) {
     let pieces = punchRects({ x: deck.x, z: deck.z, w: deck.w, d: deck.d }, deck.holes);
     for (const prior of out) {
       if (Math.abs(prior.y - deck.y) > yEps) continue;
       pieces = pieces.flatMap((p) => subtractRect(p, prior));
+    }
+    const last = deck.owner === undefined ? buildings.length : deck.owner;
+    for (let i = 0; i < last; i++) {
+      const b = buildings[i]!;
+      if (!buildingOccupiesWalkY(b, deck.y, wallH)) continue;
+      pieces = pieces.flatMap((p) => subtractRect(p, buildingShell(b)));
     }
     for (const p of pieces) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, y: deck.y });
   }
@@ -314,14 +341,44 @@ function wallBands(
   if (topH > 0.2) along(y0 + head, topH, doors);
 }
 
-function buildStorey(kit: Kit, b: BuildingSpec, h: number, mat: THREE.Material, y0: number, floor: number, stairWall?: DoorWall) {
+/** Skip wall runs that sit on or cut through an earlier building so those faces cannot flash. */
+export function priorWallGaps(b: BuildingSpec, wall: DoorWall, priors: BuildingSpec[], y0: number, h: number, wallH = 6.2) {
+  const alongX = wall === "n" || wall === "s";
+  const face = alongX ? (wall === "n" ? b.z + b.d / 2 : b.z - b.d / 2) : wall === "e" ? b.x + b.w / 2 : b.x - b.w / 2;
+  const gaps: { c: number; w: number }[] = [];
+  for (const p of priors) {
+    const pb = buildingBase(p);
+    const pr = pb + buildingHeight(p, wallH);
+    if (y0 + h <= pb + 0.02 || y0 >= pr - 0.02) continue;
+    const p0 = alongX ? p.z - p.d / 2 : p.x - p.w / 2;
+    const p1 = alongX ? p.z + p.d / 2 : p.x + p.w / 2;
+    const inside = face > p0 + T * 0.25 && face < p1 - T * 0.25;
+    const onFace = Math.abs(face - p0) <= T * 0.6 || Math.abs(face - p1) <= T * 0.6;
+    if (!inside && !onFace) continue;
+    const a0 = alongX ? Math.max(b.x - b.w / 2, p.x - p.w / 2) : Math.max(b.z - b.d / 2, p.z - p.d / 2);
+    const a1 = alongX ? Math.min(b.x + b.w / 2, p.x + p.w / 2) : Math.min(b.z + b.d / 2, p.z + p.d / 2);
+    if (a1 - a0 > 0.12) gaps.push({ c: (a0 + a1) / 2, w: a1 - a0 });
+  }
+  return gaps;
+}
+
+function buildStorey(
+  kit: Kit,
+  b: BuildingSpec,
+  h: number,
+  mat: THREE.Material,
+  y0: number,
+  floor: number,
+  stairWall?: DoorWall,
+  priors: BuildingSpec[] = [],
+) {
   const x0 = b.x - b.w / 2;
   const x1 = b.x + b.w / 2;
   const z0 = b.z - b.d / 2;
   const z1 = b.z + b.d / 2;
   const walls: DoorWall[] = ["n", "s", "e", "w"];
   for (const wall of walls) {
-    const doors = doorGaps(b, wall, floor);
+    const doors = [...doorGaps(b, wall, floor), ...priorWallGaps(b, wall, priors, y0, h)];
     if (floor > 0 && wall === stairWall) {
       const mid = midOf(b, wall);
       if (!doors.some((g) => Math.abs(g.c - mid) < 1.2)) doors.push({ c: mid, w: 2.4 });
@@ -406,25 +463,36 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   sun.shadow.bias = -0.0006;
   scene.add(sun);
 
-  kit.box(cx, -0.06, cz, gw + 6, 0.12, gd + 6, kit.mat(theme.ground, gw / 2, gd / 2), true, true);
+  const lot: XzRect = { x: cx, z: cz, w: gw + 6, d: gd + 6 };
+  const groundHoles = (spec.slabs ?? []).filter((s) => s.y <= DECK_H + WALK_Y_EPS);
+  for (const p of punchRects(lot, groundHoles)) {
+    const gmat = kit.mat(theme.ground, p.w / 2, p.d / 2);
+    gmat.polygonOffset = true;
+    gmat.polygonOffsetFactor = 1;
+    gmat.polygonOffsetUnits = 1;
+    kit.box(p.x, -0.06, p.z, p.w, 0.12, p.d, gmat, true, true);
+  }
   const rim = kit.mat(theme.wall, 20, 6);
   wallAlongX(kit, maxZ, minX, maxX, 0, H, rim, []);
   wallAlongX(kit, minZ, minX, maxX, 0, H, rim, []);
   wallAlongZ(kit, maxX, minZ, maxZ, 0, H, rim, []);
   wallAlongZ(kit, minX, minZ, maxZ, 0, H, rim, []);
 
-  const walkDecks: SlabSpec[] = [];
-  for (const b of spec.buildings ?? []) {
+  const buildings = spec.buildings ?? [];
+  const walkDecks: WalkDeck[] = [];
+  for (let i = 0; i < buildings.length; i++) {
+    const b = buildings[i]!;
+    const priors = buildings.slice(0, i);
     const mat = kit.mat(b.mat ?? theme.wall, b.w / 2, H / 2);
     const floors = buildingFloors(b);
     const y0 = buildingBase(b);
     const stairWall = floors > 1 ? b.stairs : undefined;
     if (floors === 1) {
-      buildStorey(kit, b, (b.h ?? H - 0.4) - 0.08, mat, y0, 0);
+      buildStorey(kit, b, (b.h ?? H - 0.4) - 0.08, mat, y0, 0, undefined, priors);
     } else {
       for (let f = 0; f < floors; f++) {
         const fy = y0 + f * STOREY;
-        buildStorey(kit, b, STOREY - 0.08, mat, fy, f, stairWall);
+        buildStorey(kit, b, STOREY - 0.08, mat, fy, f, stairWall, priors);
         if (f < floors - 1 && buildingHasDecks(b)) {
           walkDecks.push({
             x: b.x,
@@ -432,6 +500,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
             w: Math.max(HOLE_MIN, b.w - T),
             d: Math.max(HOLE_MIN, b.d - T),
             y: fy + STOREY,
+            owner: i,
           });
         }
       }
@@ -448,12 +517,12 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
         }
       }
     }
-    walkDecks.push(buildingRoof(b, H));
+    walkDecks.push({ ...buildingRoof(b, H), owner: i });
   }
 
   for (const s of spec.slabs ?? []) walkDecks.push(s);
-  for (const p of resolveWalkDecks(walkDecks)) {
-    kit.box(p.x, p.y - 0.08, p.z, p.w, 0.16, p.d, kit.mat("wood", p.w / 2, p.d / 2), true, true);
+  for (const p of resolveWalkDecks(walkDecks, buildings, H)) {
+    kit.box(p.x, p.y - DECK_H / 2, p.z, p.w, DECK_H, p.d, kit.mat("wood", p.w / 2, p.d / 2), true, true);
   }
 
   for (const p of spec.partitions ?? []) {

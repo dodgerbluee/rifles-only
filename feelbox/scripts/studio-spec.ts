@@ -2,7 +2,7 @@
  * Studio stamps must round-trip through compileLayout.
  */
 import * as THREE from "three";
-import { compileLayout, COVER_SIZE, punchRects, STOREY } from "../src/maps/layout.ts";
+import { compileLayout, COVER_SIZE, DECK_H, punchRects, priorWallGaps, resolveWalkDecks, STOREY } from "../src/maps/layout.ts";
 import { T } from "../src/maps/kit.ts";
 import {
   blankSpec,
@@ -45,6 +45,25 @@ function check(name: string, ok: boolean, extra = "") {
   if (!ok) failed += 1;
   console.log(`${ok ? "ok" : "FAIL"}  ${name}${extra ? `  ${extra}` : ""}`);
 }
+
+function deckCovers(pieces: { x: number; z: number; w: number; d: number }[], x: number, z: number) {
+  return pieces.some((p) => p.x - p.w / 2 < x && p.x + p.w / 2 > x && p.z - p.d / 2 < z && p.z + p.d / 2 > z);
+}
+
+const house12 = { x: 0, z: 0, w: 12, d: 10, h: STOREY };
+const roofDeck = { x: 0, z: 0, w: 12 - T, d: 10 - T, y: STOREY, owner: 0 };
+const overFloor = resolveWalkDecks(
+  [roofDeck, { x: 0, z: 0, w: 16, d: 14, y: STOREY }],
+  [house12],
+);
+check("overlapping floor keeps the roof", deckCovers(overFloor, 0, 0));
+check("overlapping floor leftover stays outside", deckCovers(overFloor, 7, 0));
+check("overlapping floor is punched off the wall band", !deckCovers(overFloor, 6, 0));
+const throughFloor = resolveWalkDecks([{ x: 0, z: 0, w: 8, d: 8, y: DECK_H }], [house12]);
+check("ground floor does not run through a house", throughFloor.length === 0);
+const abut = { x: 4, z: 0, w: 4, d: 4 };
+const shared = priorWallGaps({ x: 0, z: 0, w: 4, d: 4, h: STOREY }, "e", [abut], 0, STOREY);
+check("shared building face is a wall gap", shared.some((g) => g.w > 3.5));
 
 let spec = blankSpec();
 const cell = cellRect(1.2, -0.4);
@@ -351,6 +370,7 @@ const housePlusFloor = {
 const hpf = compileLayout(new THREE.Scene(), housePlusFloor);
 check("house + overlapping floor is one walk at center", thinWalkAt(hpf, 0, 0, STOREY).length === 1);
 check("floor leftover outside the house is still walkable", thinWalkAt(hpf, 7, 0, STOREY).length === 1);
+check("floor leftover is not on the wall", thinWalkAt(hpf, 6, 0, STOREY).length === 0);
 
 const walkway = {
   ...blankSpec(),
