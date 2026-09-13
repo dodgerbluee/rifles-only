@@ -1365,6 +1365,7 @@ body.settings #settings {
 
 #home-studio,
 #home-locker,
+#home-login,
 #locker-back {
   margin: 8px 0 0;
   background: #1c1e18;
@@ -1386,8 +1387,13 @@ body.settings #settings {
   width: min(760px, 100%);
 }
 
+body:not(.register) #home-login {
+  display: none;
+}
+
 #home-studio:hover,
 #home-locker:hover,
+#home-login:hover,
 #locker-back:hover,
 #reg-go:hover,
 #login-go:hover,

@@ -16,6 +16,9 @@ const hideLoggedOutList = /body\.register\s+#server-list[\s\S]*?display:\s*none/
 check("logged-out home does not hide the server list", !hideLoggedOutList.test(css));
 check("locker still hides the server list", /body\.locker\s+#server-list/.test(css));
 
+const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
+check("home has a Log in button", html.includes('id="home-login"') && html.includes(">Log in<"));
+
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);

@@ -111,12 +111,13 @@
         <button type="button" id="home-logout">Log out</button>
       </div>
       <div id="home-actions">
+        <button type="button" id="home-login">Log in</button>
         <button type="button" id="home-studio">Map studio</button>
         <button type="button" id="home-locker">Player</button>
       </div>
       <div id="register" hidden>
-        <p class="locker-kicker" id="auth-kicker">Register</p>
-        <form id="auth-register">
+        <p class="locker-kicker" id="auth-kicker">Log in</p>
+        <form id="auth-register" hidden>
           <label class="locker-stack"><span>Email</span><input id="reg-email" type="email" autocomplete="email" maxlength="120" required /></label>
           <label class="locker-stack"><span>Username</span><input id="reg-user" type="text" autocomplete="username" maxlength="18" spellcheck="false" required /></label>
           <label class="locker-stack"><span>Password</span><input id="reg-pass" type="password" autocomplete="new-password" maxlength="200" required /></label>
@@ -125,7 +126,7 @@
           <button type="submit" id="reg-go">Create account</button>
           <button type="button" id="auth-to-login" class="locker-text">Already have an account? Log in</button>
         </form>
-        <form id="auth-login" hidden>
+        <form id="auth-login">
           <label class="locker-stack"><span>Username or email</span><input id="login-user" type="text" autocomplete="username" maxlength="120" spellcheck="false" required /></label>
           <label class="locker-stack"><span>Password</span><input id="login-pass" type="password" autocomplete="current-password" maxlength="200" required /></label>
           <p id="login-err" class="locker-err" hidden></p>

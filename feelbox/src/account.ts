@@ -227,12 +227,29 @@ function showAuth(mode: "register" | "login") {
   authCopy(mode);
 }
 
+let authOpen = false;
+
+export function openLogin() {
+  authOpen = true;
+  document.body.classList.add("register");
+  const panel = document.querySelector<HTMLElement>("#register");
+  if (panel) panel.hidden = false;
+  showAuth("login");
+  panel?.scrollIntoView({ block: "nearest" });
+  document.querySelector<HTMLInputElement>("#login-user")?.focus();
+}
+
 function fillIdentity(rec: AccountRecord | null) {
   const panel = document.querySelector<HTMLElement>("#register");
-  if (panel) panel.hidden = !!rec;
   document.body.classList.toggle("register", !rec);
   const home = document.querySelector<HTMLElement>("#home-id");
   if (home) home.classList.toggle("on", !!rec);
+  if (rec) {
+    if (panel) panel.hidden = true;
+    authOpen = false;
+  } else if (panel) {
+    panel.hidden = !authOpen;
+  }
   if (!rec) {
     const login = document.querySelector<HTMLElement>("#auth-login");
     showAuth(login && !login.hidden ? "login" : "register");
@@ -292,13 +309,17 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     prefs.playerKey = "";
     clearAccount();
     savePrefs();
-    showAuth("login");
     notify();
+    openLogin();
   };
 
   document.querySelector("#home-logout")?.addEventListener("click", (e) => {
     e.stopPropagation();
     logout();
+  });
+  document.querySelector("#home-login")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openLogin();
   });
 
   document.querySelector("#auth-to-login")?.addEventListener("click", (e) => {

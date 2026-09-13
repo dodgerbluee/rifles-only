@@ -219,7 +219,7 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { accountKey, accountLook, bindIdentity, isRegistered, paintIdentity } from "./account";
+import { accountKey, accountLook, bindIdentity, isRegistered, openLogin, paintIdentity } from "./account";
 import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
@@ -454,8 +454,7 @@ function awaitingTeamPick() {
 
 function joinGame(name?: string) {
   if (!isRegistered()) {
-    paintIdentity();
-    document.querySelector("#register")?.scrollIntoView({ block: "nearest" });
+    openLogin();
     return;
   }
   if (net.status === "connecting") {
