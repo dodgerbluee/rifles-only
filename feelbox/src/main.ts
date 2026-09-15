@@ -56,7 +56,8 @@ import {
   createMatch,
   displayName,
   interruptPlant,
-  isPlanting,
+  isWireRooted,
+  filterDeathSpec,
   livingSeatIds,
   markSeatsFromBodies,
   dropWire,
@@ -3901,7 +3902,9 @@ function specRoster(): SpecT[] {
         pitch: p.pitch,
       });
     }
-    return out;
+    return filterDeathSpec(out, { id: me.id, team: me.team }).sort(
+      (a, b) => Number(b.bot) - Number(a.bot) || a.id - b.id,
+    );
   }
   const self = slotById(match, playerId);
   if (!self) return [];
@@ -3934,7 +3937,9 @@ function specRoster(): SpecT[] {
       pitch: r.pitch,
     });
   }
-  return out;
+  return filterDeathSpec(out, { id: self.id, team: self.team }).sort(
+    (a, b) => Number(b.bot) - Number(a.bot) || a.id - b.id,
+  );
 }
 
 function specTarget(): SpecT | undefined {
@@ -5292,9 +5297,10 @@ function frame(now: number) {
   if (locked && alive && wantShot && !combatLock && bashT <= 0) tryFire();
   if (!keys.has("KeyF")) plantBroke = false;
   const wantUse = locked && alive && keys.has("KeyF") && !isCow(playerId) && !plantBroke;
-  const planting = isPlanting(
+  const youTeamNow = slotById(match, actorId())?.team ?? "ember";
+  const rooted = isWireRooted(
     match,
-    { id: actorId(), x: px, y: py, z: pz, holdingUse: wantUse },
+    { id: actorId(), team: youTeamNow, x: px, y: py, z: pz, alive, holdingUse: wantUse },
     (site, x, z, y) => inSite(world, site, x, z, y),
   );
 
@@ -5338,7 +5344,7 @@ function frame(now: number) {
     const rightZ = -Math.sin(yaw);
     let wx = 0;
     let wz = 0;
-    if (locked && !planting) {
+    if (locked && !rooted) {
       if (keys.has("KeyW")) {
         wx += forwardX;
         wz += forwardZ;
@@ -5385,7 +5391,7 @@ function frame(now: number) {
       diveVx += (0 - diveVx) * Math.min(1, dt * damp);
       diveVz += (0 - diveVz) * Math.min(1, dt * damp);
     }
-    if (locked && alive && grounded && keys.has("Space") && !jumpHeld && !planting) {
+    if (locked && alive && grounded && keys.has("Space") && !jumpHeld && !rooted) {
       if (prone) {
         prone = false;
         vy = jumpSpeed() * 0.82;
@@ -5653,13 +5659,15 @@ function frame(now: number) {
   if (net.role === "host" && !reeling) {
     for (const r of remotes.values()) {
       const cowPawn = isCow(r.slotId);
-      const rooted = isPlanting(
+      const rooted = isWireRooted(
         match,
         {
           id: r.slotId,
+          team: r.team,
           x: r.x,
           y: r.y,
           z: r.z,
+          alive: r.alive,
           holdingUse: !!r.input.use && !r.input.fire,
         },
         (site, x, z, y) => inSite(world, site, x, z, y),

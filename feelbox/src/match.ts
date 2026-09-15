@@ -1,3 +1,4 @@
+import { isActivelyCutting } from "./holdSound";
 import { tuning } from "./tuning";
 
 export type Team = "ember" | "stone";
@@ -348,6 +349,46 @@ export function isPlanting(
   return inSite("loft", actor.x, actor.z, actor.y) || inSite("well", actor.x, actor.z, actor.y);
 }
 
+/** Planting or cutting locks WASD / jump so the hold cannot be walked. */
+export function isWireRooted(
+  m: Match,
+  actor: { id: number; team: Team; x: number; y: number; z: number; alive: boolean; holdingUse: boolean },
+  inSite: (site: SiteId, x: number, z: number, y: number) => boolean,
+) {
+  if (isPlanting(m, actor, inSite)) return true;
+  return isActivelyCutting({
+    phase: m.phase,
+    wireMode: m.wire.mode,
+    holdingUse: actor.holdingUse,
+    alive: actor.alive,
+    cutterTeam: actor.team,
+    watchTeam: watchingTeam(m),
+    x: actor.x,
+    y: actor.y,
+    z: actor.z,
+    wx: m.wire.x,
+    wy: m.wire.y,
+    wz: m.wire.z,
+  });
+}
+
+/** Dead players only camera-lock teammates (bots and humans). */
+export function filterDeathSpec<T extends { id: number; team: Team }>(
+  roster: T[],
+  observer: { id: number; team?: Team },
+): T[] {
+  if (!observer.team) return [];
+  return roster.filter((s) => s.team === observer.team && s.id !== observer.id);
+}
+
+/** Generous walk-over reach so a dropped Wire is not missed to lag or a tight corner. */
+export const WIRE_PICK_XZ = 2.05;
+export const WIRE_PICK_Y = 1.95;
+
+export function inWirePickupReach(ax: number, ay: number, az: number, wx: number, wy: number, wz: number) {
+  return Math.hypot(ax - wx, az - wz) < WIRE_PICK_XZ && Math.abs(ay - wy) < WIRE_PICK_Y;
+}
+
 export function tickPlantHold(
   m: Match,
   dt: number,
@@ -412,11 +453,33 @@ export function dropWire(m: Match, x: number, y: number, z: number) {
 export function pickupWire(m: Match, id: number, team: Team) {
   if (m.wire.mode !== "ground") return false;
   if (team !== plantingTeam(m)) return false;
-  if (!slotById(m, id)?.alive) return false;
   m.wire.mode = "carried";
   m.wire.carrierId = id;
   m.plantBreak = false;
   return true;
+}
+
+function wirePeople(ctx: {
+  holdingUse: boolean;
+  actor: { id: number; team: Team; x: number; y: number; z: number; alive: boolean; fired?: boolean };
+  actors?: WireActor[];
+}): WireActor[] {
+  return (
+    ctx.actors ??
+    (ctx.actor
+      ? [{ ...ctx.actor, holdingUse: ctx.holdingUse }]
+      : [])
+  );
+}
+
+function tryPickupGroundWire(m: Match, people: WireActor[]) {
+  if (m.wire.mode !== "ground") return;
+  for (const a of people) {
+    if (!a.alive || a.team !== plantingTeam(m)) continue;
+    if (!inWirePickupReach(a.x, a.y, a.z, m.wire.x, m.wire.y, m.wire.z)) continue;
+    pickupWire(m, a.id, a.team);
+    return;
+  }
 }
 
 function holdEmptyServer(m: Match, spawn: { x: number; y: number; z: number }) {
@@ -504,6 +567,7 @@ export function tickMatch(
       m.phase = "live";
       m.timeLeft = tuning.round;
     }
+    tryPickupGroundWire(m, wirePeople(ctx));
     return;
   }
 
@@ -527,19 +591,8 @@ export function tickMatch(
       return finish(m, watchingTeam(m), "The Bomb was cut");
   }
 
-  const people =
-    ctx.actors ??
-    (ctx.actor
-      ? [{ ...ctx.actor, holdingUse: ctx.holdingUse }]
-      : []);
-
-  for (const a of people) {
-    if (!a.alive) continue;
-    if (m.wire.mode === "ground") {
-      const d = Math.hypot(a.x - m.wire.x, a.z - m.wire.z);
-      if (d < 1.15 && a.team === plantingTeam(m)) pickupWire(m, a.id, a.team);
-    }
-  }
+  const people = wirePeople(ctx);
+  tryPickupGroundWire(m, people);
 
   const carrier = people.find((a) => a.id === m.wire.carrierId);
   if (tickPlantHold(m, dt, carrier, ctx.inSite)) {

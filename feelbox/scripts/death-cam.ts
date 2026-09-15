@@ -2,6 +2,7 @@
  * Death sequence: killcam window, skip-then-takeover, and overlay only during killcam.
  */
 import { killcamWindow, lastKillOf, createTape, pushFrame, pushKill, type Pose } from "../src/replay.ts";
+import { filterDeathSpec } from "../src/match.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -64,6 +65,19 @@ check("second E takes the spectated mate bot", onUse(false, true, true) === "tak
 takeover = false;
 check("E on an enemy bot does not take over", onUse(false, true, false) === "noop" && !takeover);
 check("E on a human does not take over", onUse(false, false, true) === "noop");
+
+const specList = [
+  { id: 1, team: "ember" as const, bot: true },
+  { id: 2, team: "stone" as const, bot: true },
+  { id: 3, team: "ember" as const, bot: false },
+  { id: 4, team: "stone" as const, bot: false },
+];
+const mates = filterDeathSpec(specList, { id: 0, team: "ember" });
+check("dead spec only lists own team", mates.every((s) => s.team === "ember") && mates.length === 2);
+check("dead spec includes the mate bot", mates.some((s) => s.id === 1 && s.bot));
+check("dead spec includes the mate human", mates.some((s) => s.id === 3 && !s.bot));
+check("dead spec excludes enemy bots", mates.every((s) => s.id !== 2));
+check("dead spec excludes self", filterDeathSpec(specList, { id: 1, team: "ember" }).every((s) => s.id !== 1));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

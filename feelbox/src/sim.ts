@@ -12,7 +12,7 @@ import {
   giveWireToPlanter,
   humanCount,
   interruptPlant,
-  isPlanting,
+  isWireRooted,
   livingSeatIds,
   markDead,
   markSeatsFromBodies,
@@ -807,9 +807,17 @@ export function createSim(opts?: {
           time,
           world,
           froze,
-          isPlanting(
+          isWireRooted(
             match,
-            { id: r.slotId, x: r.x, y: r.y, z: r.z, holdingUse: !!r.input.use && !r.input.fire },
+            {
+              id: r.slotId,
+              team: r.team,
+              x: r.x,
+              y: r.y,
+              z: r.z,
+              alive: r.alive,
+              holdingUse: !!r.input.use && !r.input.fire,
+            },
             (site, x, z, y) => inSite(world, site, x, z, y),
           ),
         );
@@ -1022,7 +1030,7 @@ export function createSim(opts?: {
       }
       if (!r) return;
       if (event.kind === "dropWire" && match.wire.carrierId === r.slotId) dropWire(match, r.x, r.y, r.z);
-      if (event.kind === "pickupWire") pickupWire(match, r.slotId, r.team);
+      if (event.kind === "pickupWire" && r.alive) pickupWire(match, r.slotId, r.team);
       if (event.kind === "plant" && match.wire.carrierId === r.slotId) {
         const site = inSite(world, "loft", r.x, r.z, r.y) ? "loft" : inSite(world, "well", r.x, r.z, r.y) ? "well" : null;
         if (site) plantWire(match, site, r.x, r.y, r.z);
