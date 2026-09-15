@@ -1,5 +1,5 @@
-import { IRON_OPTION_META, makeIronPreview, type IronOptionId } from "../src/iron-sight-options.ts";
 import { makeKar98 } from "../src/weapons.ts";
+import * as THREE from "three";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -7,27 +7,36 @@ function check(name: string, ok: boolean, extra = "") {
   console.log(`${ok ? "ok" : "FAIL"}  ${name}${extra ? `  ${extra}` : ""}`);
 }
 
-const stock = makeKar98();
-const current = makeIronPreview("current");
+function findFlag(root: THREE.Object3D, key: string) {
+  let found: THREE.Object3D | undefined;
+  root.traverse((c) => {
+    if (!found && c.userData[key]) found = c;
+  });
+  return found;
+}
 
-check("ten options listed", IRON_OPTION_META.length === 10);
-check("ids 1-10", IRON_OPTION_META.every((m, i) => m.id === i + 1));
-check("current matches live iron ADS x", Math.abs(current.adsPos.x - stock.adsPos.x) < 1e-9);
-check("current matches live iron ADS y", Math.abs(current.adsPos.y - stock.adsPos.y) < 1e-9);
-check("current matches live iron ADS z", Math.abs(current.adsPos.z - stock.adsPos.z) < 1e-9);
-check("current has no extra pitch", current.adsPitch === 0);
+const iron = makeKar98();
+const rear = findFlag(iron.root, "karIronRear");
+const bar = findFlag(iron.root, "karPoiBar");
+const stockY = -0.052;
+const stockZ = -0.15;
 
-for (const m of IRON_OPTION_META) {
-  const p = makeIronPreview(m.id as IronOptionId);
-  check(`option ${m.id} builds`, p.root.children.length > 0, `parts=${p.root.children.length}`);
-  check(`option ${m.id} keeps ADS x`, Math.abs(p.adsPos.x - stock.adsPos.x) < 1e-9);
-  check(`option ${m.id} keeps ADS y`, Math.abs(p.adsPos.y - stock.adsPos.y) < 1e-9, `y=${p.adsPos.y}`);
-  check(`option ${m.id} keeps ADS z`, Math.abs(p.adsPos.z - stock.adsPos.z) < 1e-9, `z=${p.adsPos.z}`);
-  check(`option ${m.id} has no extra pitch`, p.adsPitch === 0);
+check("ADS x unchanged", Math.abs(iron.adsPos.x) < 1e-9);
+check("ADS y unchanged", Math.abs(iron.adsPos.y - stockY) < 1e-9, `y=${iron.adsPos.y}`);
+check("ADS z unchanged", Math.abs(iron.adsPos.z - stockZ) < 1e-9, `z=${iron.adsPos.z}`);
+check("no extra pitch", iron.adsPitch == null || iron.adsPitch === 0);
+check("no wrap grips", !iron.adsGrip);
+check("has sunk rear leaf", !!rear);
+check("has option-3 aiming bar", !!bar);
+if (rear && rear instanceof THREE.Mesh) {
+  rear.geometry.computeBoundingBox();
+  const box = rear.geometry.boundingBox!;
+  check("rear is smaller than the old plate", box.max.x - box.min.x < 0.04, `w=${box.max.x - box.min.x}`);
+  check("rear sinks below the receiver top", box.min.y < -0.004, `minY=${box.min.y}`);
 }
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\n10 sight-only options keep the live iron ADS pose");
+console.log("\niron Kar keeps the live ADS pose; U is smaller and sunk into the receiver");

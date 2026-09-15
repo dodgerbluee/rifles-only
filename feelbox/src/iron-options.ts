@@ -1,6 +1,5 @@
 import * as THREE from "three";
-import { RIFLES } from "./weapons";
-import { IRON_OPTION_META, makeIronPreview, type IronOptionId } from "./iron-sight-options";
+import { RIFLES, makeKar98 } from "./weapons";
 
 const IRON_FOV = RIFLES.kar.adsFov;
 
@@ -32,31 +31,7 @@ function worldBackdrop() {
   return g;
 }
 
-function posePreview(
-  scene: THREE.Scene,
-  camera: THREE.PerspectiveCamera,
-  previewRoot: THREE.Group,
-  adsPos: THREE.Vector3,
-  adsPitch: number,
-) {
-  previewRoot.position.copy(adsPos);
-  previewRoot.rotation.set(adsPitch, 0, 0);
-  scene.add(previewRoot);
-  camera.position.set(0, 0, 0);
-  camera.rotation.set(0, 0, 0);
-  camera.rotation.order = "YXZ";
-  camera.fov = IRON_FOV;
-  camera.near = 0.02;
-  camera.far = 24;
-  camera.updateProjectionMatrix();
-}
-
-function renderOne(
-  dest: HTMLCanvasElement,
-  id: IronOptionId | "current",
-  width: number,
-  height: number,
-) {
+function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number, height: number) {
   const renderer = new THREE.WebGLRenderer({
     canvas: dest,
     antialias: true,
@@ -68,59 +43,76 @@ function renderOne(
   renderer.setClearColor(0x000000, 1);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
-  renderer.toneMappingExposure = 1;
 
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xd8d4c8, 0x2a2c26, 0.95));
-  const key = new THREE.DirectionalLight(0xf0ece0, 0.85);
+  const key = new THREE.DirectionalLight(0xf0ece0, 0.9);
   key.position.set(-0.55, 0.7, 0.35);
   scene.add(key);
-  scene.add(new THREE.AmbientLight(0x5a5850, 0.35));
-  scene.add(worldBackdrop());
+  scene.add(new THREE.AmbientLight(0x5a5850, 0.4));
 
-  const preview = makeIronPreview(id);
+  const view = makeKar98();
+  view.flash.visible = false;
+  const root = view.root;
   const camera = new THREE.PerspectiveCamera(IRON_FOV, width / height, 0.02, 24);
-  posePreview(scene, camera, preview.root, preview.adsPos, preview.adsPitch);
+
+  if (kind === "ads") {
+    scene.add(worldBackdrop());
+    root.position.copy(view.adsPos);
+    root.rotation.set(0, 0, 0);
+    scene.add(root);
+    camera.position.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);
+    camera.rotation.order = "YXZ";
+    camera.fov = IRON_FOV;
+    camera.near = 0.02;
+    camera.far = 24;
+  } else {
+    renderer.setClearColor(0x1a1c18, 1);
+    root.position.set(0, 0, 0);
+    root.rotation.set(0, 0, 0);
+    scene.add(root);
+    camera.fov = 26;
+    camera.near = 0.02;
+    camera.far = 8;
+    camera.position.set(0.1, 0.062, 0.05);
+    camera.lookAt(0, 0.044, -0.08);
+  }
+  camera.updateProjectionMatrix();
   renderer.render(scene, camera);
-  return preview;
 }
 
-function card(id: IronOptionId | "current", name: string, blurb: string) {
+function card(kind: "ads" | "side", title: string, blurb: string) {
   const el = document.createElement("article");
   el.className = "card";
-  el.dataset.opt = String(id);
-  el.innerHTML = `<h2>${id === "current" ? "Current" : `Option ${id}`} — ${name}</h2><p>${blurb}</p>`;
+  el.innerHTML = `<h2>${title}</h2><p>${blurb}</p>`;
   const canvas = document.createElement("canvas");
   el.appendChild(canvas);
-  renderOne(canvas, id, 960, 540);
+  renderView(canvas, kind, 960, 540);
   return el;
 }
 
 const params = new URLSearchParams(location.search);
 const only = params.get("only");
 
-if (only != null) {
+if (only === "ads" || only === "side" || only === "current") {
+  const kind = only === "side" ? "side" : "ads";
   document.body.classList.add("solo");
   const wrap = document.querySelector("#solo") as HTMLElement;
   wrap.hidden = false;
-  const id = only === "current" ? "current" : (Number(only) as IronOptionId);
-  const meta =
-    id === "current"
-      ? { name: "Current (main)", blurb: "Broad rounded U-leaf on the slim rifle." }
-      : IRON_OPTION_META.find((m) => m.id === id)!;
   const label = document.createElement("div");
   label.className = "solo-label";
-  label.textContent = id === "current" ? `Current — ${meta.name}` : `Option ${id} — ${meta.name}`;
+  label.textContent = kind === "ads" ? "Iron ADS" : "Rear sight on the receiver";
   wrap.appendChild(label);
   const canvas = document.createElement("canvas");
   wrap.appendChild(canvas);
-  renderOne(canvas, id, 1280, 720);
+  renderView(canvas, kind, 1280, 720);
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("current", "Current (main)", "Broad rounded U-leaf on the slim rifle. Unchanged until you pick."),
+    card("ads", "ADS", "Same zoom and eye pose as main. Smaller U, option-3 bar, sunk into the receiver."),
   );
-  for (const m of IRON_OPTION_META) {
-    grid.appendChild(card(m.id, m.name, m.blurb));
-  }
+  grid.appendChild(
+    card("side", "On the rifle", "The U is a sight block in the receiver, not a plate sitting on top."),
+  );
 }
