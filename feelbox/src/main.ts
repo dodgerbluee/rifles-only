@@ -2183,7 +2183,7 @@ camera.rotation.order = "YXZ";
 scene.add(camera);
 
 const VM_LAYER = 1;
-const VM_FOV = 72;
+const VM_FOV = 80;
 camera.layers.enable(VM_LAYER);
 
 function markViewmodel(obj: THREE.Object3D) {
@@ -2307,6 +2307,8 @@ camera.add(vmKey);
 function hideArms() {
   arm.root.visible = false;
   leftArm.root.visible = false;
+  arm.root.scale.setScalar(1);
+  leftArm.root.scale.setScalar(1);
 }
 
 function poseHeldHands(
@@ -2324,6 +2326,9 @@ function poseHeldHands(
   const handsOn = (opts.rifleOn || opts.knifeOn || opts.nadeOn) && (!opts.aiming || wrap);
   arm.root.visible = handsOn;
   leftArm.root.visible = wrap;
+  arm.root.scale.setScalar(wrap ? 0.62 : 1);
+  leftArm.root.scale.setScalar(wrap ? 0.62 : 1);
+  if (wrap) for (const r of hold.rounds) r.visible = false;
   if (!handsOn) return;
   if (opts.knifeOn) {
     poseArm(arm, knifeWrist(knife), opts.bash * 0.8);
@@ -2332,8 +2337,8 @@ function poseHeldHands(
     poseArm(arm, nadeWrist(nadeView));
     leftArm.root.visible = false;
   } else if (wrap) {
-    poseArm(arm, scopeWrist(hold, 1), 0.62);
-    poseArm(leftArm, scopeWrist(hold, -1), -0.62);
+    poseArm(arm, scopeWrist(hold, 1), 0.85);
+    poseArm(leftArm, scopeWrist(hold, -1), -0.85);
   } else poseArm(arm, rifleWrist(hold, opts.boltK));
 }
 
@@ -2362,6 +2367,7 @@ let diveT = 0;
 let diveVx = 0;
 let diveVz = 0;
 let ads = false;
+let adsMouse = false;
 let leanInput = 0;
 let lean = 0;
 let mag = 5;
@@ -2603,6 +2609,7 @@ document.addEventListener("pointerlockchange", () => {
   if (locked) document.body.classList.add("started");
   if (!locked) {
     ads = false;
+    adsMouse = false;
     leanInput = 0;
     mouseDown = false;
     clearFire(fireQ);
@@ -2876,7 +2883,7 @@ addEventListener("mousedown", (e) => {
   }
   if (e.button === 2) {
     if (isNade(weapon)) tryDropSmoke();
-    else ads = true;
+    else adsMouse = true;
   }
 });
 addEventListener("mouseup", (e) => {
@@ -2899,7 +2906,7 @@ addEventListener("mouseup", (e) => {
     if (isNade(weapon) && smokeHeld) releaseSmoke();
     smokeHeld = false;
   }
-  if (e.button === 2) ads = false;
+  if (e.button === 2) adsMouse = false;
 });
 addEventListener("wheel", (e) => {
   if (locker.on) {
@@ -4742,7 +4749,8 @@ function frame(now: number) {
   leanInput = 0;
   if (locked && alive && keys.has("KeyQ")) leanInput -= 1;
   if (locked && alive && keys.has("KeyE")) leanInput += 1;
-  ads = ads && locked && alive && weapon === "rifle";
+  const shiftAds = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  ads = locked && alive && weapon === "rifle" && (adsMouse || shiftAds);
   document.body.classList.toggle("ads", ads);
   if (diveT > 0) diveT = Math.max(0, diveT - dt);
   if (bashT > 0) bashT = Math.max(0, bashT - dt);

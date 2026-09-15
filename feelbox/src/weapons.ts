@@ -193,7 +193,7 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
  */
 function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
   const segs = 8;
-  const bore = 0.011;
+  const bore = 0.015;
   const axisY = recTop + 0.02;
   const midZ = -0.04;
   const g = new THREE.Group();
@@ -213,18 +213,18 @@ function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
   }
 
   // Rear cup (closest to the eye) → body → objective.
-  sleeve(0.07, 0.02, 0.024, blued);
-  sleeve(0.054, 0.014, 0.02, worn);
-  sleeve(0.036, 0.016, 0.017, blued);
+  sleeve(0.07, 0.02, 0.028, blued);
+  sleeve(0.054, 0.014, 0.023, worn);
+  sleeve(0.036, 0.016, 0.019, blued);
   sleeve(0.004, 0.05, 0.0145, steel);
   sleeve(-0.04, 0.028, 0.016, worn);
   sleeve(-0.068, 0.018, 0.018, blued);
 
-  const lip = ringZ(bore, 0.024, blued, segs);
+  const lip = ringZ(bore, 0.028, blued, segs);
   lip.userData.karOcular = true;
   place(g, lip, 0, 0, 0.08);
-  place(g, ringZ(bore, 0.02, worn, segs), 0, 0, 0.061);
-  place(g, ringZ(bore, 0.017, blued, segs), 0, 0, 0.044);
+  place(g, ringZ(bore, 0.023, worn, segs), 0, 0, 0.061);
+  place(g, ringZ(bore, 0.019, blued, segs), 0, 0, 0.044);
   place(g, ringZ(bore, 0.016, worn, segs), 0, 0, -0.054);
   place(g, ringZ(bore, 0.018, blued, segs), 0, 0, -0.077);
 
@@ -257,8 +257,8 @@ function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
     axisY,
     ocularZ,
     grip: {
-      left: new THREE.Vector3(-0.03, axisY - 0.006, ocularZ - 0.012),
-      right: new THREE.Vector3(0.03, axisY - 0.006, ocularZ - 0.012),
+      left: new THREE.Vector3(-0.036, axisY - 0.01, ocularZ - 0.048),
+      right: new THREE.Vector3(0.036, axisY - 0.01, ocularZ - 0.048),
     },
   };
 }
@@ -315,7 +315,7 @@ function buildKar98(scoped: boolean): RifleView {
   let scopeGrip: RifleView["scopeGrip"];
   if (scoped) {
     const scope = karScope(root, recTop, steel);
-    adsPos = new THREE.Vector3(0, -scope.axisY, -(scope.ocularZ + 0.064));
+    adsPos = new THREE.Vector3(0, -scope.axisY, -(scope.ocularZ + 0.11));
     scopeGrip = scope.grip;
     place(root, capZ(0.022, 0.08, wood), -0.01, 0.004, 0.06);
   }

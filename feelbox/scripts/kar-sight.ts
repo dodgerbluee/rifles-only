@@ -35,9 +35,9 @@ check("names split", RIFLES.kar.name === "Kar98k" && RIFLES.karscope.name === "K
 const params = scopedOcular?.geometry as THREE.RingGeometry | undefined;
 const outer = params?.parameters?.outerRadius ?? 0;
 check("ocular is a faceted eyepiece ring", !!params && params.type === "RingGeometry", `type=${params?.type}`);
-check("ocular is chunky, not a hairline tube", outer >= 0.02, `outer=${outer}`);
+check("ocular is chunky, not a hairline tube", outer >= 0.024, `outer=${outer}`);
 check("ADS sits on the tube height", scopedOcular ? Math.abs(scoped.adsPos.y + scopedOcular.parent!.position.y) < 1e-6 : false, `y=${scoped.adsPos.y}`);
-check("ADS sits behind the ocular", scoped.adsPos.z < -0.1, `z=${scoped.adsPos.z}`);
+check("ADS sits behind the ocular", scoped.adsPos.z < -0.12, `z=${scoped.adsPos.z}`);
 check("scoped ADS is centered on X", Math.abs(scoped.adsPos.x) < 1e-6);
 check("scoped ADS has wrap grips", !!scoped.scopeGrip);
 
