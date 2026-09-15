@@ -214,78 +214,52 @@ function setErr(sel: string, message: string) {
   el.hidden = !message;
 }
 
-function authCopy(mode: "register" | "login") {
-  const kicker = document.querySelector("#auth-kicker");
-  if (kicker) kicker.textContent = mode === "login" ? "Log in" : "Register";
-  const steps = document.querySelector<HTMLElement>("#auth-steps");
-  if (steps) steps.hidden = mode !== "register";
-  const lead = document.querySelector("#home-account-lead");
-  if (lead) {
-    lead.textContent =
-      mode === "login"
-        ? "Log in to keep your name and look across devices."
-        : "Create an account, then set your name and look.";
-  }
+export function closeLogin() {
+  const modal = document.querySelector<HTMLElement>("#login-modal");
+  if (modal) modal.hidden = true;
+  document.body.classList.remove("login-open");
+  setErr("#login-err", "");
 }
 
-function showAuth(mode: "register" | "login") {
-  const reg = document.querySelector<HTMLElement>("#auth-register");
-  const login = document.querySelector<HTMLElement>("#auth-login");
-  if (reg) reg.hidden = mode !== "register";
-  if (login) login.hidden = mode !== "login";
-  authCopy(mode);
+export function closeRegister() {
+  const page = document.querySelector<HTMLElement>("#register-page");
+  if (page) page.hidden = true;
+  document.body.classList.remove("register-page");
+  setErr("#reg-err", "");
 }
-
-let authOpen = false;
 
 export function openLogin() {
-  authOpen = true;
-  document.body.classList.add("register");
-  const panel = document.querySelector<HTMLElement>("#register");
-  if (panel) panel.hidden = false;
-  showAuth("login");
-  panel?.scrollIntoView({ block: "nearest" });
+  closeRegister();
+  const modal = document.querySelector<HTMLElement>("#login-modal");
+  if (modal) modal.hidden = false;
+  document.body.classList.add("login-open");
   document.querySelector<HTMLInputElement>("#login-user")?.focus();
 }
 
 export function openRegister() {
-  authOpen = true;
-  document.body.classList.add("register");
-  const panel = document.querySelector<HTMLElement>("#register");
-  if (panel) panel.hidden = false;
-  showAuth("register");
-  panel?.scrollIntoView({ block: "nearest" });
+  closeLogin();
+  const page = document.querySelector<HTMLElement>("#register-page");
+  if (page) page.hidden = false;
+  document.body.classList.add("register-page");
   document.querySelector<HTMLInputElement>("#reg-email")?.focus();
 }
 
+function paintChrome(rec: AccountRecord | null) {
+  const login = document.querySelector<HTMLButtonElement>("#home-login");
+  const logout = document.querySelector<HTMLButtonElement>("#home-logout");
+  if (login) login.hidden = !!rec;
+  if (logout) logout.hidden = !rec;
+}
+
 function fillIdentity(rec: AccountRecord | null) {
-  const panel = document.querySelector<HTMLElement>("#register");
-  document.body.classList.toggle("register", !rec);
-  const home = document.querySelector<HTMLElement>("#home-id");
-  if (home) home.classList.toggle("on", !!rec);
+  paintChrome(rec);
   if (rec) {
-    if (panel) panel.hidden = true;
-    authOpen = false;
-  } else if (panel) {
-    panel.hidden = !authOpen;
-  }
-  if (!rec) {
-    const login = document.querySelector<HTMLElement>("#auth-login");
-    showAuth(login && !login.hidden ? "login" : "register");
+    closeLogin();
+    closeRegister();
   }
   const name = rec?.username || rec?.name || "";
-  const nameEls = ["#locker-name", "#home-id-name"] as const;
-  for (const sel of nameEls) {
-    const el = document.querySelector<HTMLInputElement | HTMLElement>(sel);
-    if (!el) continue;
-    if (el instanceof HTMLInputElement) {
-      if (el !== document.activeElement) el.value = name;
-    } else {
-      el.textContent = name;
-    }
-  }
-  const accountH = document.querySelector("#home-account-h");
-  if (accountH) accountH.textContent = "Account";
+  const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
+  if (nameEl && nameEl !== document.activeElement) nameEl.value = name;
 }
 
 function takeSession(data: AuthBody): AccountRecord | null {
@@ -306,9 +280,7 @@ function takeSession(data: AuthBody): AccountRecord | null {
 }
 
 export function paintIdentity() {
-  const rec = loadAccount();
-  document.body.classList.toggle("register", !rec);
-  fillIdentity(rec);
+  fillIdentity(loadAccount());
 }
 
 export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () => void }) {
@@ -317,7 +289,6 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     prefs.playerKey = rec.playerKey;
     prefs.name = rec.username || rec.name;
   }
-  document.body.classList.toggle("register", !rec);
   fillIdentity(rec);
 
   const notify = () => {
@@ -331,7 +302,6 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     clearAccount();
     savePrefs();
     notify();
-    openLogin();
   };
 
   document.querySelector("#home-logout")?.addEventListener("click", (e) => {
@@ -342,16 +312,23 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     e.stopPropagation();
     openLogin();
   });
-
+  document.querySelector("#login-scrim")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeLogin();
+  });
+  document.querySelector("#register-back")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeRegister();
+  });
   document.querySelector("#auth-to-login")?.addEventListener("click", (e) => {
     e.stopPropagation();
     setErr("#reg-err", "");
-    showAuth("login");
+    openLogin();
   });
   document.querySelector("#auth-to-register")?.addEventListener("click", (e) => {
     e.stopPropagation();
     setErr("#login-err", "");
-    showAuth("register");
+    openRegister();
   });
 
   document.querySelector("#auth-register")?.addEventListener("submit", (e) => {
@@ -395,7 +372,7 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
           setErr("#reg-err", "Could not create the account.");
           return;
         }
-        document.body.classList.remove("register");
+        closeRegister();
         notify();
         opts?.onRegistered?.();
       } catch {
@@ -426,7 +403,7 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
           setErr("#login-err", "Wrong username or password.");
           return;
         }
-        document.body.classList.remove("register");
+        closeLogin();
         notify();
       } catch {
         setErr("#login-err", "Could not reach the server.");
@@ -441,7 +418,6 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     const look = packLook(prefs.look);
     const next = saveCharacter(look);
     if (!next) {
-      // Guest / local prefs still persist the look.
       prefs.lookId = look;
       savePrefs();
       notify();

@@ -219,7 +219,7 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { accountKey, accountLook, bindIdentity, isRegistered, openLogin, paintIdentity } from "./account";
+import { accountKey, accountLook, bindIdentity, closeLogin, closeRegister, isRegistered, openLogin, paintIdentity } from "./account";
 import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
@@ -1349,11 +1349,11 @@ function commitLook() {
 }
 
 function paintLocker() {
-  const panel = document.querySelector<HTMLElement>("#locker");
+  const panel = document.querySelector<HTMLElement>("#settings");
   if (panel) panel.hidden = !locker.on;
   const pip = document.querySelector<HTMLElement>("#locker-pip");
   if (pip) pip.hidden = !locker.on;
-  document.body.classList.toggle("onboarding", locker.on && locker.onboarding);
+  document.body.classList.toggle("onboarding", false);
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
   const secs = document.querySelector("#locker-secs");
@@ -1428,20 +1428,8 @@ function paintLocker() {
   paintIdentity();
   const title = document.querySelector("#start-title");
   const blurb = document.querySelector("#start-blurb");
-  const kicker = document.querySelector("#locker-kicker");
-  const lead = document.querySelector("#locker-lead");
-  const steps = document.querySelector<HTMLElement>("#locker-steps");
   const saveBtn = document.querySelector<HTMLButtonElement>("#locker-save-look");
-  const backBtn = document.querySelector<HTMLButtonElement>("#locker-back");
-  if (steps) steps.hidden = !locker.onboarding;
-  if (kicker) kicker.textContent = locker.onboarding ? "Set up your player" : "Preferences";
-  if (lead) {
-    lead.textContent = locker.onboarding
-      ? "Pick a display name and look. Finish returns you to Servers."
-      : "Name, look, and preview colors. Settings (sens, crosshair) stay in the gear.";
-  }
-  if (saveBtn) saveBtn.textContent = locker.onboarding ? "Finish" : "Save";
-  if (backBtn) backBtn.textContent = "Back";
+  if (saveBtn) saveBtn.textContent = "Save character";
   if (title) title.textContent = locker.on ? "Preferences" : "Home";
   if (blurb) {
     blurb.textContent = locker.on
@@ -1557,9 +1545,10 @@ function enterLocker(opts?: { onboarding?: boolean }) {
   locker.dragging = false;
   locker.team = prefs.team ?? "ember";
   hideJoinTeam();
-  document.body.classList.add("locker");
-  document.body.classList.toggle("onboarding", locker.onboarding);
-  document.body.classList.remove("settings");
+  document.body.classList.add("locker", "settings");
+  document.body.classList.remove("onboarding");
+  const settings = document.querySelector<HTMLElement>("#settings");
+  if (settings) settings.hidden = false;
   rebuildLocker();
   paintLocker();
   document.exitPointerLock();
@@ -1570,7 +1559,9 @@ function leaveLocker(reload = true) {
   locker.onboarding = false;
   locker.dragging = false;
   lockerPawn.visible = false;
-  document.body.classList.remove("locker", "locker-drag", "onboarding");
+  document.body.classList.remove("locker", "locker-drag", "onboarding", "settings");
+  const settings = document.querySelector<HTMLElement>("#settings");
+  if (settings) settings.hidden = true;
   const pip = document.querySelector<HTMLElement>("#locker-pip");
   if (pip) pip.hidden = true;
   paintLocker();
@@ -1953,7 +1944,7 @@ bindIdentity({
     paintLocker();
   },
   onRegistered() {
-    enterLocker({ onboarding: true });
+    enterLocker();
   },
 });
 
@@ -1995,20 +1986,12 @@ bindIdentity({
     e.stopPropagation();
     enterStudio();
   });
-  document.querySelector("#home-locker")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    enterLocker();
-  });
-  document.querySelector("#locker-back")?.addEventListener("click", (e) => {
+  document.querySelector("#settings-back")?.addEventListener("click", (e) => {
     e.stopPropagation();
     leaveLocker();
   });
   document.querySelector("#locker-save-look")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (locker.onboarding) {
-      // account.ts also listens and persists the look; then leave to home.
-      queueMicrotask(() => leaveLocker());
-    }
   });
   document.querySelector("#locker-name")?.addEventListener("input", (e) => {
     const el = e.currentTarget as HTMLInputElement;
@@ -2027,7 +2010,7 @@ bindIdentity({
     dressLockerPawn();
     paintLocker();
   });
-  document.querySelector("#locker")?.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.querySelector("#settings")?.addEventListener("mousedown", (e) => e.stopPropagation());
   document.querySelector("#studio-turn")?.addEventListener("click", (e) => {
     e.stopPropagation();
     studio.faceYaw = turnYaw(studio.faceYaw);
@@ -2444,8 +2427,8 @@ canvas.addEventListener("click", () => {
 });
 document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   e.stopPropagation();
-  document.body.classList.add("settings");
-  document.exitPointerLock();
+  if (locker.on) leaveLocker();
+  else enterLocker();
 });
 {
   const panel = document.querySelector<HTMLElement>("#settings")!;
@@ -2516,6 +2499,16 @@ addEventListener("keydown", (e) => {
     return;
   }
   keys.add(e.code);
+  if (e.code === "Escape") {
+    if (document.body.classList.contains("login-open")) {
+      closeLogin();
+      return;
+    }
+    if (document.body.classList.contains("register-page")) {
+      closeRegister();
+      return;
+    }
+  }
   if (locker.on) {
     if (e.code === "Escape") leaveLocker();
     const slot = LOOK_SLOTS.find((s) => s.key === locker.slot) ?? LOOK_SLOTS[0]!;

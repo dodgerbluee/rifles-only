@@ -860,7 +860,7 @@ body.dead:not(.bestplay) #hitmark {
   overflow: auto;
 }
 
-#start > *:not(#open-settings):not(#locker-pip) {
+#start > *:not(#home-chrome):not(#locker-pip) {
   width: min(760px, 100%);
   margin-left: 0;
   margin-right: auto;
@@ -892,6 +892,145 @@ body.dead:not(.bestplay) #hitmark {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+
+#home-chrome {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  margin: 0;
+}
+
+#home-chrome #home-studio,
+#home-chrome #home-login,
+#home-chrome #home-logout {
+  margin: 0;
+  width: auto;
+  padding: 10px 12px;
+  background: #1c1e18;
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  font: inherit;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+#home-chrome #open-settings {
+  position: static;
+  top: auto;
+  right: auto;
+}
+
+#home-chrome #home-studio:hover,
+#home-chrome #home-login:hover,
+#home-chrome #home-logout:hover {
+  border-color: #e8d9a8;
+}
+
+#home-login[hidden],
+#home-logout[hidden] {
+  display: none !important;
+}
+
+#login-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+#login-modal[hidden] {
+  display: none !important;
+}
+
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: rgba(8, 9, 7, 0.72);
+  cursor: pointer;
+}
+
+.modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: #161712;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+}
+
+#register-page {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 28px 28px 28px 32px;
+  background: #121410;
+  overflow: auto;
+}
+
+#register-page[hidden] {
+  display: none !important;
+}
+
+.register-panel {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.register-panel .title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+#register-back {
+  margin-top: 8px;
+  background: #1c1e18;
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 12px 14px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  font: inherit;
+  font-weight: 650;
+  width: 100%;
+  text-align: left;
+}
+
+#register-back:hover {
+  border-color: #e8d9a8;
+}
+
+body.register-page #start,
+body.login-open #home-chrome {
+  /* keep chrome clickable under modal except when register page */
+}
+
+body.register-page #start {
+  display: none;
 }
 
 .home-section {
@@ -1040,10 +1179,7 @@ body.locker #locker-pip[hidden] {
 }
 
 #open-settings {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  z-index: 23;
+  position: static;
   width: 40px;
   height: 40px;
   margin: 0;
@@ -1474,20 +1610,89 @@ body.admin #admin {
 #settings {
   display: none;
   position: fixed;
-  top: 68px;
-  right: 16px;
-  left: auto;
-  width: 300px;
-  max-height: calc(100vh - 88px);
-  overflow: auto;
-  padding: 14px;
-  background: rgba(16, 17, 12, 0.94);
-  border: 1px solid rgba(232, 217, 168, 0.35);
+  inset: 0;
   z-index: 22;
+  pointer-events: none;
 }
 
 body.settings #settings {
   display: block;
+}
+
+body.settings #settings[hidden] {
+  display: none !important;
+}
+
+.settings-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(480px, 100%);
+  max-width: 100%;
+  overflow: auto;
+  padding: 28px 28px 40px 32px;
+  background: linear-gradient(90deg, #121410 0 72%, rgba(18, 20, 16, 0.55) 88%, transparent 100%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.settings-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.settings-top .title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(232, 217, 168, 0.16);
+}
+
+#settings-back {
+  margin: 0;
+  background: #1c1e18;
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 10px 14px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  font: inherit;
+  font-weight: 650;
+}
+
+#settings-back:hover {
+  border-color: #e8d9a8;
+}
+
+body.settings #start {
+  display: none;
+}
+
+body.settings #view {
+  cursor: grab;
+}
+
+body.settings.locker-drag #view {
+  cursor: grabbing;
 }
 
 #map-pick {
@@ -1536,17 +1741,7 @@ body.settings #settings {
   width: 100%;
 }
 
-body:not(.register) #home-login {
-  display: none;
-}
-
-#home-account:has(#register:not([hidden])) #home-login {
-  display: none;
-}
-
-#home-account:has(#register:not([hidden])) #home-account-lead {
-  display: none;
-}
+/* Log in / Log out visibility is toggled via the hidden attribute in account.ts */
 
 #home-studio:hover,
 #home-locker:hover,
@@ -1879,6 +2074,7 @@ body.locker.onboarding #locker-back {
 
 
 body.locker #match-bar,
+body.settings #match-bar,
 body.locker #round-tag,
 body.locker #killfeed,
 body.locker #hud-left,
@@ -2845,4 +3041,37 @@ body.studio.studio-pan #view {
 
 #studio-status {
   color: #e8d9a8;
+}
+
+
+/* Settings page reuses the character preview (locker cam) on the right. */
+body.settings #locker-pip {
+  display: block;
+}
+
+body.settings #locker-pip[hidden] {
+  display: none !important;
+}
+
+body.settings #match-bar,
+body.settings #round-tag,
+body.settings #killfeed,
+body.settings #hud-left,
+body.settings #hud-right,
+body.settings #crosshair,
+body.settings #death,
+body.settings #prompt,
+body.settings #use-bar,
+body.settings #cook-bar,
+body.settings #spec,
+body.settings #round-result,
+body.settings #join-team,
+body.settings #roster,
+body.settings #join-note,
+body.settings #vitals {
+  display: none !important;
+}
+
+body.studio #home-chrome {
+  display: none;
 }

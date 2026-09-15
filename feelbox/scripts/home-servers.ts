@@ -1,5 +1,5 @@
 /**
- * The start screen lists matches even before login. Join still requires an account.
+ * Home is servers-only. Auth is modal/page. Settings is a full page with preferences.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,20 +14,24 @@ function check(name: string, ok: boolean, extra = "") {
 const root = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(root, "../src/style.css"), "utf8");
 const html = readFileSync(join(root, "../index.html"), "utf8");
-const hideLoggedOutList = /body\.register\s+#server-list[\s\S]*?display:\s*none/;
-check("logged-out home does not hide the server list", !hideLoggedOutList.test(css));
-check("locker still hides the server list", /body\.locker\s+#server-list/.test(css) || /body\.locker\s+#home-servers/.test(css));
 
-check("home has a Log in button", html.includes('id="home-login"') && html.includes(">Log in<"));
-check("home has Preferences entry", html.includes('id="home-locker"') && html.includes(">Preferences<"));
-check("home Account section exists", html.includes('id="home-account"') && html.includes(">Account<"));
-check("home Servers section exists", html.includes('id="home-servers"') && html.includes(">Servers<"));
-check("settings has no display-name field", !html.includes('id="set-name"'));
-check("locker has full-body pip", html.includes('id="locker-pip"'));
-check("register continues into preferences", html.includes(">Continue<") && html.includes('id="auth-steps"'));
+check("logged-out home does not hide the server list", !/body\.register\s+#server-list[\s\S]*?display:\s*none/.test(css));
+check("settings page hides the home start shell", /body\.settings\s+#start/.test(css));
+
+check("home chrome has Map studio before settings", html.indexOf('id="home-studio"') < html.indexOf('id="open-settings"'));
+check("home chrome has Log in after settings", html.indexOf('id="open-settings"') < html.indexOf('id="home-login"'));
+check("home chrome has Log out after settings", html.indexOf('id="open-settings"') < html.indexOf('id="home-logout"'));
+check("home body is servers only (no Account section)", !html.includes('id="home-account"'));
+check("home body has no Preferences entry", !html.includes('id="home-locker"'));
+check("login is a modal", html.includes('id="login-modal"'));
+check("register is its own page", html.includes('id="register-page"'));
+check("settings is a full page with Back", html.includes('id="settings"') && html.includes('id="settings-back"'));
+check("preferences live under settings", html.includes('id="settings-prefs"') && html.includes('id="locker-name"'));
+check("settings has no separate display-name field outside prefs", !html.includes('id="set-name"'));
+check("locker pip still exists for full-body preview", html.includes('id="locker-pip"'));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\nhome server list stays visible before login");
+console.log("\nhome is servers-only; auth modal/page; settings full page with prefs");
