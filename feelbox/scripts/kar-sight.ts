@@ -74,7 +74,7 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   const roundFront = ironRear.position.z - roundDepth / 2;
   const roundBack = ironRear.position.z + roundDepth / 2;
   check("boxy U starts inside the rounded U", boxyBack > roundFront && boxyBack < roundBack, `boxyBack=${boxyBack} roundFront=${roundFront} roundBack=${roundBack}`);
-  check("boxy U finishes ~½ inch outside the rounded U", roundFront - boxyFront >= 0.012, `stickOut=${roundFront - boxyFront}`);
+  check("boxy U finishes outside the rounded U", roundFront - boxyFront >= 0.024, `stickOut=${roundFront - boxyFront}`);
   const rearBox = (ironRear as THREE.Mesh).geometry.boundingBox!;
   check("boxy U is taller than the rounded U", foreBox.max.y > rearBox.max.y, `boxyH=${foreBox.max.y} roundH=${rearBox.max.y}`);
 }

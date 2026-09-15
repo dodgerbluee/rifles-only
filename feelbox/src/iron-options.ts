@@ -72,11 +72,14 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
     root.position.set(0, 0, 0);
     root.rotation.set(0, 0, 0);
     scene.add(root);
-    camera.fov = 26;
+    camera.fov = 22;
     camera.near = 0.02;
     camera.far = 8;
-    camera.position.set(0.1, 0.062, 0.05);
-    camera.lookAt(0, 0.044, -0.09);
+    const rim = new THREE.DirectionalLight(0xf2eee4, 0.85);
+    rim.position.set(0.4, 0.35, -0.55);
+    scene.add(rim);
+    camera.position.set(0.16, 0.05, -0.086);
+    camera.lookAt(0, 0.046, -0.094);
   }
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -110,9 +113,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose. Taller boxy U starts in the rounded cutout and finishes outside it."),
+    card("ads", "ADS", "Same zoom and eye pose. Taller boxy U starts in the rounded cutout and finishes past it."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "Boxy hood starts inside the rounded U and sticks ~½ inch past the front."),
+    card("side", "On the rifle", "Boxy hood starts inside the rounded U and ends clearly outside it, toward the muzzle."),
   );
 }

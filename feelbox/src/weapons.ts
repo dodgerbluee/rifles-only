@@ -240,7 +240,7 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 
 /**
  * Square hood that starts inside the rounded cutout (so the full
- * opening stays visible) and finishes ~½ inch past the rounded front.
+ * opening stays visible) and finishes clearly past the rounded front.
  * Taller than the rounded leaf. adsPos is unchanged.
  */
 function karIronForeU(
@@ -282,7 +282,7 @@ function karIronForeU(
 
   const barW = 0.003;
   const barH = roundEarH * 0.7;
-  const barD = depth * 0.7;
+  const barD = 0.01;
   const aimY = floorY + 0.005;
   const barY = Math.min(aimY, floorY + earH - barH * 0.5);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
@@ -464,8 +464,8 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   else {
     const roundZ = -0.08;
     const roundDepth = 0.009 * 1.5;
-    const nest = roundDepth - 0.001;
-    const outside = 0.013;
+    const nest = roundDepth * 0.55;
+    const outside = 0.028;
     const boxyDepth = nest + outside;
     karIronRear(root, roundZ, recTop, steel);
     karIronForeU(root, roundZ - roundDepth / 2 + nest - boxyDepth / 2, recTop, steel, boxyDepth);
