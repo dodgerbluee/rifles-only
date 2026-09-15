@@ -73,6 +73,21 @@ const pub = publicCareer(data.players[a], { [b]: "osa" });
 check("public ratios include K/D", !!pub && pub.kd > 0);
 check("board omits vs", !("vs" in (boardSnippet(data.players[a]) ?? { vs: 1 })));
 
+{
+  const empty = { players: {}, seen: [] as string[] };
+  const blank = {
+    gameId: "wharf-1",
+    matchId: "m-empty",
+    round: 9,
+    kind: "round" as const,
+    lines: [{ playerKey: "not-a-key", kills: 1 }],
+  };
+  const miss = ingestCareer(empty, blank);
+  check("empty/invalid lines do not burn seen", miss.ok === false && miss.reason === "lines" && empty.seen.length === 0);
+  blank.lines = [{ playerKey: a, kills: 1, won: true }];
+  check("retry after empty lines still applies", ingestCareer(empty, blank).ok === true && empty.players[a]?.kills === 1);
+}
+
 const many = emptyCareer(a);
 for (let i = 0; i < 40; i++) {
   ingestCareer(
