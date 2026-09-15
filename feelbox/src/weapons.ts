@@ -193,35 +193,40 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Iron rear: option-3 rounded U, 50% smaller, built as a sight block
- * that hugs the receiver instead of a plate sitting on top.
- * Thick center bar is the point of aim. adsPos is unchanged.
+ * Iron rear: option-3 U, 50% smaller, built as a sight block that hugs
+ * the receiver. Thick center bar is the point of aim. adsPos is unchanged.
+ * Inner cutout is 2× the aiming rectangle on each side of the bar so the
+ * empty U is open sky, not a black slot.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5;
-  const notchW = 0.016 * 1.85 * 0.6 * 0.5;
   const recW = 0.026;
   const sink = 0.011;
   const bw = recW * 0.5 + 0.0012;
-  const nw = notchW * 0.5;
+  const barW = 0.003;
+  const barH = earH * 0.7;
+  const barD = 0.008;
+  // 2× the aiming rectangle cut out of each side of the U, plus the bar.
+  const cutW = barW + 2 * (2 * barW);
+  const nw = cutW * 0.5;
   const notchFloor = 0.001;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH);
   leaf.lineTo(-nw, earH);
-  leaf.lineTo(-nw, notchFloor + (earH - notchFloor) * 0.32);
-  leaf.quadraticCurveTo(-nw, notchFloor, 0, notchFloor);
-  leaf.quadraticCurveTo(nw, notchFloor, nw, notchFloor + (earH - notchFloor) * 0.32);
+  leaf.lineTo(-nw, notchFloor);
+  leaf.lineTo(nw, notchFloor);
   leaf.lineTo(nw, earH);
   leaf.lineTo(bw, earH);
   leaf.lineTo(bw, -sink);
   leaf.closePath();
-  const rear = extrude(leaf, 0.018, steel, 8);
+  const rear = extrude(leaf, 0.018, steel, 1);
   rear.userData.karIronRear = true;
+  rear.userData.karIronNotchW = cutW;
   place(root, rear, 0, floorY, z);
 
   const aimY = floorY + 0.005;
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.003, earH * 0.7, 0.008), steel);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
   bar.position.set(0, aimY, z + 0.001);
   bar.userData.karPoiBar = true;
   root.add(bar);
