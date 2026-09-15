@@ -43,6 +43,8 @@ import {
 import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } from "../src/maps/studio-lib.ts";
 import { SIDING_SPEC } from "../src/maps/siding.ts";
 import { HARBOR_SPEC } from "../src/maps/harbor.ts";
+import { LAYOUT_SPECS } from "../src/maps/index.ts";
+import { groundHeight } from "../src/world.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -65,6 +67,12 @@ check("overlapping floor leftover stays outside", deckCovers(overFloor, 7, 0));
 check("overlapping floor is punched off the wall band", !deckCovers(overFloor, 6, 0));
 const throughFloor = resolveWalkDecks([{ x: 0, z: 0, w: 8, d: 8, y: DECK_H }], [house12]);
 check("ground floor does not run through a house", throughFloor.length === 0);
+const emptyPolice = { x: 0, z: 0, w: 8, d: 10, floors: 2, interior: "empty" as const };
+const painted2F = resolveWalkDecks([{ x: 0, z: 0, w: 8 + T, d: 10 + T, y: STOREY }], [emptyPolice]);
+check("hollow house keeps a painted 2F floor", deckCovers(painted2F, 0, 0));
+check("hollow house 2F is inset off the walls", !deckCovers(painted2F, 4.1, 0));
+const paintedGround = resolveWalkDecks([{ x: 0, z: 0, w: 8 + T, d: 10 + T, y: DECK_H }], [emptyPolice]);
+check("hollow house keeps a painted ground floor", deckCovers(paintedGround, 0, 0));
 const abut = { x: 4, z: 0, w: 4, d: 4 };
 const shared = priorWallGaps({ x: 0, z: 0, w: 4, d: 4, h: STOREY }, "e", [abut], 0, STOREY);
 check("shared building face is a wall gap", shared.some((g) => g.w > 3.5));
@@ -478,9 +486,19 @@ check("interior wall is not on the roof", (inner?.y ?? 9) < surfaceAt(inside, 0,
 check("interior wall is not snapped to an outer face", Math.abs(inner?.z ?? 9) < 1);
 check("interiorYAt is ground inside a 1F house", interiorYAt(inside, 0, 0) === 0);
 
-const catalog = seedCatalog(emptyLibrary(blankSpec()), [HARBOR_SPEC, SIDING_SPEC]);
-check("siding is in the studio catalog", catalog.docs.some((d) => d.id === "siding"));
-check("harbor is in the studio catalog", catalog.docs.some((d) => d.id === "harbor"));
+const catalog = seedCatalog(emptyLibrary(blankSpec()), LAYOUT_SPECS);
+for (const id of ["wharf", "harbor", "cove", "parish", "cut", "siding"] as const) {
+  check(`${id} is in the studio catalog`, catalog.docs.some((d) => d.id === id));
+}
+for (const spec of LAYOUT_SPECS) {
+  const world = compileLayout(new THREE.Scene(), spec);
+  check(`${spec.id} studio spec compiles`, (world.colliders?.length ?? 0) > 8);
+}
+
+const harborWorld = compileLayout(new THREE.Scene(), HARBOR_SPEC);
+check("harbor police ground is walkable", groundHeight(harborWorld.colliders, 2.75, -15.25, 0.32, 0) >= 0.12);
+check("harbor police 2F is walkable", groundHeight(harborWorld.colliders, 2.75, -15.25, 0.32, 2.4) >= 2.7);
+check("harbor police call is Police", layoutPlaceName(HARBOR_SPEC, 2.75, -15.25) === "Police");
 
 const cam = defaultOrbit(lot.bounds);
 const tx0 = cam.tx;

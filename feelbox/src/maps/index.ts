@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { buildWorld, type World } from "../world";
-import { buildCove } from "./cove";
+import { buildCove, COVE_SPEC } from "./cove";
 import { buildHarbor, HARBOR_SPEC } from "./harbor";
-import { buildParish } from "./parish";
-import { buildCut } from "./cut";
+import { buildParish, PARISH_SPEC } from "./parish";
+import { buildCut, CUT_SPEC } from "./cut";
 import { buildSiding, SIDING_SPEC } from "./siding";
+import { WHARF_SPEC } from "./wharf";
 import type { MapId } from "./kit";
 import type { LayoutSpec } from "./layout";
 
@@ -19,8 +20,8 @@ export const MAPS: { id: MapId; title: string; blurb: string }[] = [
   { id: "siding", title: "Siding", blurb: "Winter warehouse row. Plant the Wire at A or B." },
 ];
 
-/** Rotation maps that already have a LayoutSpec and can open in studio. */
-export const LAYOUT_SPECS: LayoutSpec[] = [HARBOR_SPEC, SIDING_SPEC];
+/** Rotation maps that can open in studio. Hand-built matches still use their builders. */
+export const LAYOUT_SPECS: LayoutSpec[] = [WHARF_SPEC, HARBOR_SPEC, COVE_SPEC, PARISH_SPEC, CUT_SPEC, SIDING_SPEC];
 
 export function specForMap(id: string): LayoutSpec | undefined {
   return LAYOUT_SPECS.find((s) => s.id === id);
@@ -35,11 +36,12 @@ export function buildMap(scene: THREE.Scene, id: MapId): World {
   return buildWorld(scene);
 }
 
-export { buildCove } from "./cove";
+export { buildCove, COVE_SPEC } from "./cove";
 export { buildHarbor, HARBOR_SPEC } from "./harbor";
-export { buildParish } from "./parish";
-export { buildCut } from "./cut";
+export { buildParish, PARISH_SPEC } from "./parish";
+export { buildCut, CUT_SPEC } from "./cut";
 export { buildSiding } from "./siding";
 export { compileLayout, YARD_SPEC, asLayoutSpec, type LayoutSpec, type ClimbSpec } from "./layout";
 export { SIDING_SPEC } from "./siding";
+export { WHARF_SPEC } from "./wharf";
 export { blankSpec, type ToolId } from "./studio";

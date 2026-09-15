@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { makeKit, sky, finish, T } from "./kit";
 import type { BoxFn, MatFn, Kit } from "./kit";
 import type { World } from "../world";
+import type { LayoutSpec } from "./layout";
 
 type Kind = "plaster" | "brick" | "wood" | "metal";
 
@@ -188,6 +189,8 @@ function police(box: BoxFn, mat: MatFn, climb: Kit["climb"]) {
   box(-4.45, 2.72, -4.8, 4.7, 0.16, 3.2, fl, true, true);
   box(-15.2, 2.72, -8.55, 3.6, 0.16, 2.3, fl, true, true);
   box(-0.4, 2.72, -8.55, 4.4, 0.16, 2.3, fl, true, true);
+  box(-15.6, 2.72, -11.8, 3.8, 0.16, 4.4, fl, true, true);
+  box(-0.4, 2.72, -11.8, 4.6, 0.16, 4.4, fl, true, true);
 
   climb(-15.6, -15.5, "+z", 2.8, 2.4, 0);
   climb(-0.4, -15.5, "+z", 2.8, 2.4, 0);
@@ -229,6 +232,7 @@ function garage(box: BoxFn, mat: MatFn, climb: Kit["climb"]) {
   box(10.1, 2.72, -10.5, 4.6, 0.16, 3.4, fl, true, true);
   box(17.4, 2.72, -10.5, 3.6, 0.16, 3.4, fl, true, true);
   box(6.3, 2.72, -9.8, 3.4, 0.16, 2.4, fl, true, true);
+  box(6.3, 2.72, -13.0, 4.0, 0.16, 4.2, fl, true, true);
 
   climb(5.8, -16.6, "+z", 2.8, 2.4, 0);
 
@@ -433,3 +437,111 @@ function subtract1d(a: number, b: number, holes: [number, number][]) {
   }
   return spans;
 }
+
+/** Studio copy of Depot so the quay can be edited and finalized. */
+export const COVE_SPEC: LayoutSpec = {
+  id: "cove",
+  title: "Depot",
+  blurb: "Watchers hold the east lot. Planters walk in from A Yard.",
+  theme: "harbor",
+  bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
+  buildings: [
+    {
+      x: -8,
+      z: -8,
+      w: 12.4,
+      d: 16.4,
+      floors: 2,
+      doors: [
+        { wall: "w", at: 4.4 },
+        { wall: "e", at: 4.4 },
+        { wall: "n" },
+      ],
+      windows: [
+        { wall: "w", at: -3.8, floor: 1 },
+        { wall: "e", at: -3.8, floor: 1 },
+        { wall: "s", at: -2, floor: 0 },
+      ],
+      mat: "plaster",
+    },
+    {
+      x: 13.5,
+      z: -10.4,
+      w: 12,
+      d: 14.8,
+      floors: 2,
+      doors: [{ wall: "w", at: 4.8 }, { wall: "n" }],
+      mat: "brick",
+    },
+    { x: 4, z: 11, w: 7.6, d: 7.2, floors: 1, doors: [{ wall: "w" }, { wall: "e" }, { wall: "s" }], mat: "wood" },
+    { x: -23.15, z: 21.125, w: 33.3, d: 8.55, floors: 1, interior: "empty", doors: [{ wall: "s" }, { wall: "n" }] },
+    { x: -30, z: -21.4, w: 24, d: 4.4, floors: 1, interior: "empty" },
+    { x: 32.5, z: -12, w: 13, d: 16, floors: 1, interior: "empty" },
+    { x: 36, z: 0, w: 6, d: 8, floors: 1, interior: "empty" },
+    { x: 11.6, z: 6.7, w: 3.5, d: 19.4, floors: 1, interior: "empty", doors: [{ wall: "w" }, { wall: "e" }] },
+  ],
+  slabs: [
+    { x: 22, z: 24.2, w: 4.2, d: 12.4, y: 0.12 },
+    { x: 30, z: 24.2, w: 4.2, d: 12.4, y: 0.12 },
+  ],
+  cover: [
+    { x: -28.2, z: 4.6, kind: "crate" },
+    { x: -18.2, z: 11.4, kind: "crate" },
+    { x: -2.2, z: 18, kind: "fullCrate" },
+    { x: 8.2, z: 18.2, kind: "fullCrate" },
+    { x: 2, z: 18.2, kind: "jumpCrate" },
+    { x: 27, z: 4.2, kind: "truck" },
+    { x: -32.2, z: 1.4, kind: "crate" },
+    { x: 20.4, z: -2.2, kind: "crate" },
+    { x: 11.2, z: 20.4, kind: "crate" },
+  ],
+  climbs: [
+    { x: -15.6, z: -15.5, dir: "+z", height: 2.8, width: 2.4 },
+    { x: -0.4, z: -15.5, dir: "+z", height: 2.8, width: 2.4 },
+    { x: 5.8, z: -16.6, dir: "+z", height: 2.8, width: 2.4 },
+  ],
+  areas: [
+    { x: -8, z: -8, w: 13, d: 17, name: "Police" },
+    { x: 13.5, z: -10.4, w: 13, d: 16, name: "Garage" },
+    { x: -23, z: 8, w: 18, d: 14, name: "Yard" },
+    { x: 4, z: 22, w: 14, d: 12, name: "Crates" },
+    { x: -23, z: 21, w: 34, d: 10, name: "Cannery" },
+    { x: 4, z: 11, w: 8, d: 8, name: "Shed" },
+    { x: 32, z: -8, w: 16, d: 22, name: "Warehouse" },
+  ],
+  sites: [
+    { id: "loft", call: "A", name: "Yard", x: -23, z: 8 },
+    { id: "well", call: "B", name: "Crates", x: 4, z: 22 },
+  ],
+  plantSpawns: [
+    [-36, -12],
+    [-36, -8],
+    [-34, -10],
+    [-32, -14],
+    [-32, -6],
+  ],
+  watchSpawns: [
+    [40, 8],
+    [40, 6],
+    [38, 6],
+    [39, 10],
+    [37, 10],
+  ],
+  routes: [
+    [[-34, -10], [-28, -2], [-23, 8]],
+    [[-34, -10], [-20, -18], [-8, -18], [4, -18], [6, -10]],
+    [[-34, -8], [-23, 8], [-23, 20], [-10, 21], [4, 22]],
+    [[40, 6], [32, 10], [22, 10], [11.7, 12], [4, 22]],
+    [[40, 6], [32, -6], [20, -8], [12, -8]],
+  ],
+  lamps: [
+    [-32, -10],
+    [-23, 8],
+    [-8, -8],
+    [4, 22],
+    [11.6, 6],
+    [12, -10],
+    [27, 6],
+  ],
+};
+
