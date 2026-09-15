@@ -1527,6 +1527,7 @@ body.settings #locker-pip[hidden] {
 }
 
 #server-list[hidden],
+.server-table[hidden],
 #join-team[hidden],
 #join-status[hidden],
 #join-team-pick[hidden],
@@ -2785,19 +2786,50 @@ body.locker #vitals {
   display: none !important;
 }
 
+.server-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.server-cols,
 #server-list .server-row {
   display: grid;
   grid-template-columns: 1.4fr 1fr 70px 80px auto;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.server-cols {
+  margin: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border: 1px solid transparent;
+  border-bottom: 1px solid rgba(232, 217, 168, 0.22);
+  color: #8d8676;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
+.server-cols .s-join {
+  justify-self: end;
+}
+
+#server-list .server-row {
   background: #1c1e18;
   color: #e6dfd0;
   border: 1px solid rgba(232, 217, 168, 0.22);
-  padding: 12px 14px;
   cursor: pointer;
-  letter-spacing: 0.04em;
-  text-align: left;
-  width: 100%;
 }
 
 #server-list .server-row .s-name {
@@ -2809,6 +2841,14 @@ body.locker #vitals {
 #server-list .server-row .s-phase {
   color: #b8b09a;
   font-size: 13px;
+}
+
+#server-list .server-row .s-join {
+  justify-self: end;
+  color: #e8d9a8;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 #server-list .server-row:disabled {

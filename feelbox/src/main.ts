@@ -502,7 +502,10 @@ function hideJoinTeam() {
   document.body.classList.remove("choosing");
   setGunPreviewVisible(false);
   const list = document.querySelector<HTMLElement>("#server-list");
-  if (list && !document.body.classList.contains("joined")) list.hidden = false;
+  const showList = !document.body.classList.contains("joined");
+  if (list && showList) list.hidden = false;
+  const table = document.querySelector<HTMLElement>(".server-table");
+  if (table && showList) table.hidden = false;
 }
 
 function awaitingTeamPick() {
@@ -713,7 +716,10 @@ function paintJoin() {
     !menuUp && (document.body.classList.contains("choosing") || awaitingTeamPick());
   if (picking) document.body.classList.add("choosing", "joined");
   const ready = net.role === "client" && !connecting;
-  if (list) list.hidden = connecting || picking || rejected || document.body.classList.contains("joined");
+  const hideList = connecting || picking || rejected || document.body.classList.contains("joined");
+  if (list) list.hidden = hideList;
+  const table = document.querySelector<HTMLElement>(".server-table");
+  if (table) table.hidden = hideList;
   if (pick) pick.hidden = !picking;
   const guns = document.querySelector<HTMLElement>("#join-loadout");
   if (guns) guns.hidden = !picking;
