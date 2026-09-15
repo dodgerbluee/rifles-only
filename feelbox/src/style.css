@@ -1387,7 +1387,7 @@ body.settings #settings {
   width: min(760px, 100%);
 }
 
-body:not(.register) #home-login {
+#home-id.on ~ #home-actions #home-login {
   display: none;
 }
 
@@ -1765,6 +1765,10 @@ body.locker #vitals {
   margin: 0;
   color: #b8b09a;
   font-size: 13px;
+}
+
+#server-list .boot-error {
+  color: #e8d9a8;
 }
 
 #join-status {

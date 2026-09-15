@@ -18,6 +18,8 @@ check("locker still hides the server list", /body\.locker\s+#server-list/.test(c
 
 const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../index.html"), "utf8");
 check("home has a Log in button", html.includes('id="home-login"') && html.includes(">Log in<"));
+check("html starts the lobby before the game module", html.includes('src="/src/boot.ts"'));
+check("logged-out Log in is visible without body.register", !/body:not\(\.register\)\s+#home-login/.test(css));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

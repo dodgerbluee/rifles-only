@@ -219,8 +219,10 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { accountKey, accountLook, bindIdentity, isRegistered, openLogin, paintIdentity } from "./account";
-import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
+import { accountKey, accountLook, isRegistered, openLogin, paintIdentity } from "./account";
+import { createGameRenderer } from "./gl";
+import { refreshLobby, setIdentityHandlers, setJoinHandler, startLobby } from "./lobby";
+import { COW_SECS, connectNet, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -252,7 +254,7 @@ const MOUSE = 0.0036;
 const HP_MAX = 100;
 const FRAG_R = 6.5;
 
-const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
+let canvas = document.querySelector<HTMLCanvasElement>("#view")!;
 const startEl = document.querySelector<HTMLElement>("#start")!;
 const hitmark = document.querySelector<HTMLElement>("#hitmark")!;
 const hurtEl = document.querySelector<HTMLElement>("#hurt")!;
@@ -261,7 +263,10 @@ const veilEl = document.querySelector<HTMLElement>("#smoke-veil")!;
 const flashVeil = document.querySelector<HTMLElement>("#flash-veil");
 const stunVeil = document.querySelector<HTMLElement>("#stun-veil");
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+startLobby();
+const gl = createGameRenderer(canvas);
+canvas = gl.canvas;
+const renderer = gl.renderer;
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -402,7 +407,7 @@ let appliedSeq = -1;
 const predHist: PredSample[] = [];
 
 let lastBeat = 0;
-let refreshServers: () => Promise<void> = async () => {};
+let refreshServers: () => Promise<void> = refreshLobby;
 
 function bindNet(handle: NetHandle) {
   handle.onSnapshot((snap) => {
@@ -1871,7 +1876,7 @@ bindAdmin({
   },
 });
 
-bindIdentity({
+setIdentityHandlers({
   onChange() {
     setNetName(prefs.name);
     setNetSkin(prefs.skin);
@@ -2247,59 +2252,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
   if (net.status === "connecting") e.stopPropagation();
 });
 {
-  const list = document.querySelector("#server-list")!;
-  list.addEventListener("click", (e) => e.stopPropagation());
-  const paintServers = async () => {
-    if (net.status === "connecting") {
-      paintJoin();
-      return;
-    }
-    const servers = await fetchServers();
-    list.replaceChildren();
-    if (!servers.length) {
-      const p = document.createElement("p");
-      p.className = "server-empty";
-      p.textContent = "No servers · start the game process";
-      list.append(p);
-      return;
-    }
-    for (const s of servers) {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "server-row";
-      if (!s.online) {
-        row.disabled = true;
-        row.dataset.offline = "1";
-      }
-      const name = document.createElement("span");
-      name.className = "s-name";
-      name.textContent = s.name;
-      const map = document.createElement("span");
-      map.className = "s-map";
-      map.textContent = s.mapTitle;
-      const pop = document.createElement("span");
-      pop.className = "s-pop";
-      pop.textContent = `${s.players}/${s.max}`;
-      const phase = document.createElement("span");
-      phase.className = "s-phase";
-      phase.textContent = s.online ? s.phase : "offline";
-      const join = document.createElement("span");
-      join.className = "s-join";
-      join.textContent = s.online ? "Join" : "Offline";
-      row.append(name, map, pop, phase, join);
-      row.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        joinGame(s.name);
-      });
-      list.append(row);
-    }
-    paintJoin();
-  };
-  void paintServers();
-  refreshServers = paintServers;
-  window.setInterval(() => {
-    void paintServers();
-  }, 2000);
+  setJoinHandler(joinGame);
 
   const fillTeams = (root: Element, onPick?: (team: Team) => void) => {
     root.addEventListener("click", (e) => e.stopPropagation());

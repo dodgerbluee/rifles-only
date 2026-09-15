@@ -23,4 +23,18 @@ export default defineConfig({
   preview: {
     host: true,
   },
+  build: {
+    modulePreload: {
+      resolveDependencies(filename, deps) {
+        return deps.filter((dep) => !dep.includes("three") && !dep.includes("main"));
+      },
+    },
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/three")) return "three";
+        },
+      },
+    },
+  },
 });
