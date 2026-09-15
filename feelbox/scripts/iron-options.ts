@@ -51,16 +51,17 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   fore.geometry.computeBoundingBox();
   rear.geometry.computeBoundingBox();
   const foreW = fore.geometry.boundingBox!.max.x - fore.geometry.boundingBox!.min.x;
-  check("boxy U sits inside the rounded cutout", foreW < Number(rear.userData.karIronTopW), `foreW=${foreW} cutW=${rear.userData.karIronTopW}`);
-  check("boxy U sits in front of the rounded U", fore.position.z < rear.position.z, `roundZ=${rear.position.z} boxyZ=${fore.position.z}`);
+  const rearW = rear.geometry.boundingBox!.max.x - rear.geometry.boundingBox!.min.x;
+  check("boxy U black is outside the rounded U", foreW > rearW, `foreW=${foreW} rearW=${rearW}`);
+  check("boxy U is closer to the eye than the rounded U", fore.position.z > rear.position.z, `roundZ=${rear.position.z} boxyZ=${fore.position.z}`);
   const roundDepth = Number(rear.userData.karIronDepth);
   const boxyDepth = Number(fore.userData.karIronDepth);
-  const boxyBack = fore.position.z + boxyDepth / 2;
-  const boxyFront = fore.position.z - boxyDepth / 2;
+  const boxyEye = fore.position.z + boxyDepth / 2;
+  const boxyMuzzle = fore.position.z - boxyDepth / 2;
   const roundFront = rear.position.z - roundDepth / 2;
   const roundBack = rear.position.z + roundDepth / 2;
-  check("boxy U starts inside the rounded U", boxyBack > roundFront && boxyBack < roundBack, `boxyBack=${boxyBack} roundFront=${roundFront} roundBack=${roundBack}`);
-  check("boxy U finishes outside the rounded U", roundFront - boxyFront >= 0.024, `stickOut=${roundFront - boxyFront}`);
+  check("boxy U starts inside the rounded U", boxyMuzzle > roundFront && boxyMuzzle < roundBack, `boxyMuzzle=${boxyMuzzle} roundFront=${roundFront} roundBack=${roundBack}`);
+  check("boxy U finishes outside the rounded U", boxyEye - roundBack >= 0.018, `stickOut=${boxyEye - roundBack}`);
   check("boxy U is taller than the rounded U", fore.geometry.boundingBox!.max.y > rear.geometry.boundingBox!.max.y, `boxyH=${fore.geometry.boundingBox!.max.y} roundH=${rear.geometry.boundingBox!.max.y}`);
 }
 

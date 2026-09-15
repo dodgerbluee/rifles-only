@@ -65,17 +65,19 @@ check("scoped has no iron fore U", !findFlag(scoped.root, "karIronForeU"));
 if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   ironFore.geometry.computeBoundingBox();
   const foreBox = ironFore.geometry.boundingBox!;
-  check("boxy U sits inside the rounded cutout", foreBox.max.x - foreBox.min.x < Number((ironRear as THREE.Mesh).userData.karIronTopW), `foreW=${foreBox.max.x - foreBox.min.x}`);
-  check("boxy U sits in front of the rounded U", ironFore.position.z < ironRear.position.z, `roundZ=${ironRear.position.z} boxyZ=${ironFore.position.z}`);
-  const roundDepth = Number((ironRear as THREE.Mesh).userData.karIronDepth);
+  const rearMesh = ironRear as THREE.Mesh;
+  rearMesh.geometry.computeBoundingBox();
+  const rearBox = rearMesh.geometry.boundingBox!;
+  check("boxy U black is outside the rounded U", foreBox.max.x - foreBox.min.x > rearBox.max.x - rearBox.min.x, `foreW=${foreBox.max.x - foreBox.min.x} rearW=${rearBox.max.x - rearBox.min.x}`);
+  check("boxy U is closer to the eye than the rounded U", ironFore.position.z > ironRear.position.z, `roundZ=${ironRear.position.z} boxyZ=${ironFore.position.z}`);
+  const roundDepth = Number(rearMesh.userData.karIronDepth);
   const boxyDepth = Number(ironFore.userData.karIronDepth);
-  const boxyBack = ironFore.position.z + boxyDepth / 2;
-  const boxyFront = ironFore.position.z - boxyDepth / 2;
+  const boxyEye = ironFore.position.z + boxyDepth / 2;
+  const boxyMuzzle = ironFore.position.z - boxyDepth / 2;
   const roundFront = ironRear.position.z - roundDepth / 2;
   const roundBack = ironRear.position.z + roundDepth / 2;
-  check("boxy U starts inside the rounded U", boxyBack > roundFront && boxyBack < roundBack, `boxyBack=${boxyBack} roundFront=${roundFront} roundBack=${roundBack}`);
-  check("boxy U finishes outside the rounded U", roundFront - boxyFront >= 0.024, `stickOut=${roundFront - boxyFront}`);
-  const rearBox = (ironRear as THREE.Mesh).geometry.boundingBox!;
+  check("boxy U starts inside the rounded U", boxyMuzzle > roundFront && boxyMuzzle < roundBack, `boxyMuzzle=${boxyMuzzle} roundFront=${roundFront} roundBack=${roundBack}`);
+  check("boxy U finishes outside the rounded U", boxyEye - roundBack >= 0.018, `stickOut=${boxyEye - roundBack}`);
   check("boxy U is taller than the rounded U", foreBox.max.y > rearBox.max.y, `boxyH=${foreBox.max.y} roundH=${rearBox.max.y}`);
 }
 

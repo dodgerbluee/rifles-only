@@ -78,8 +78,8 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
     const rim = new THREE.DirectionalLight(0xf2eee4, 0.85);
     rim.position.set(0.4, 0.35, -0.55);
     scene.add(rim);
-    camera.position.set(0.16, 0.05, -0.086);
-    camera.lookAt(0, 0.046, -0.094);
+    camera.position.set(0.16, 0.05, -0.068);
+    camera.lookAt(0, 0.046, -0.072);
   }
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -113,9 +113,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose. Taller boxy U starts in the rounded cutout and finishes past it."),
+    card("ads", "ADS", "Same zoom and eye pose. Boxy U black sits outside the rounded U."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "Boxy hood starts inside the rounded U and ends clearly outside it, toward the muzzle."),
+    card("side", "On the rifle", "Boxy hood starts in the rounded leaf and comes toward the eye, black outside the round U."),
   );
 }
