@@ -1,0 +1,127 @@
+import * as THREE from "three";
+import { RIFLES } from "./weapons";
+import { IRON_OPTION_META, makeIronPreview, type IronOptionId } from "./iron-sight-options";
+
+const IRON_FOV = RIFLES.kar.adsFov;
+
+function worldBackdrop() {
+  const g = new THREE.Group();
+  g.add(
+    new THREE.Mesh(
+      new THREE.SphereGeometry(10, 18, 12),
+      new THREE.MeshBasicMaterial({ color: 0xc5c8c0, side: THREE.BackSide }),
+    ),
+  );
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(30, 30),
+    new THREE.MeshLambertMaterial({ color: 0x8e8a80 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.7;
+  g.add(ground);
+  const plaster = new THREE.MeshLambertMaterial({ color: 0x8a8478 });
+  const brick = new THREE.MeshLambertMaterial({ color: 0x7a5a48 });
+  const hut = (x: number, z: number, w: number, h: number, d: number, mat: THREE.Material) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, h * 0.5 - 0.7, z);
+    g.add(m);
+  };
+  hut(-1.5, -5.2, 1.6, 1.2, 1.4, plaster);
+  hut(1.8, -6.1, 2.0, 1.8, 1.5, brick);
+  hut(0.2, -8.0, 2.8, 0.8, 2.0, plaster);
+  return g;
+}
+
+function posePreview(
+  scene: THREE.Scene,
+  camera: THREE.PerspectiveCamera,
+  previewRoot: THREE.Group,
+  adsPos: THREE.Vector3,
+  adsPitch: number,
+) {
+  previewRoot.position.copy(adsPos);
+  previewRoot.rotation.set(adsPitch, 0, 0);
+  scene.add(previewRoot);
+  camera.position.set(0, 0, 0);
+  camera.rotation.set(0, 0, 0);
+  camera.rotation.order = "YXZ";
+  camera.fov = IRON_FOV;
+  camera.near = 0.02;
+  camera.far = 24;
+  camera.updateProjectionMatrix();
+}
+
+function renderOne(
+  dest: HTMLCanvasElement,
+  id: IronOptionId | "current",
+  width: number,
+  height: number,
+) {
+  const renderer = new THREE.WebGLRenderer({
+    canvas: dest,
+    antialias: true,
+    alpha: false,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setPixelRatio(1);
+  renderer.setSize(width, height, false);
+  renderer.setClearColor(0x000000, 1);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.toneMappingExposure = 1;
+
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xd8d4c8, 0x2a2c26, 0.95));
+  const key = new THREE.DirectionalLight(0xf0ece0, 0.85);
+  key.position.set(-0.55, 0.7, 0.35);
+  scene.add(key);
+  scene.add(new THREE.AmbientLight(0x5a5850, 0.35));
+  const openWorld = id === "current" || id === 2 || id === 3 || id === 4 || id === 5 || id === 7 || id === 9;
+  if (openWorld) scene.add(worldBackdrop());
+
+  const preview = makeIronPreview(id);
+  const camera = new THREE.PerspectiveCamera(IRON_FOV, width / height, 0.02, 24);
+  posePreview(scene, camera, preview.root, preview.adsPos, preview.adsPitch);
+  renderer.render(scene, camera);
+  return preview;
+}
+
+function card(id: IronOptionId | "current", name: string, blurb: string) {
+  const el = document.createElement("article");
+  el.className = "card";
+  el.dataset.opt = String(id);
+  el.innerHTML = `<h2>${id === "current" ? "Current" : `Option ${id}`} — ${name}</h2><p>${blurb}</p>`;
+  const canvas = document.createElement("canvas");
+  el.appendChild(canvas);
+  renderOne(canvas, id, 960, 540);
+  return el;
+}
+
+const params = new URLSearchParams(location.search);
+const only = params.get("only");
+
+if (only != null) {
+  document.body.classList.add("solo");
+  const wrap = document.querySelector("#solo") as HTMLElement;
+  wrap.hidden = false;
+  const id = only === "current" ? "current" : (Number(only) as IronOptionId);
+  const meta =
+    id === "current"
+      ? { name: "Current (main)", blurb: "Broad rounded U-leaf on the slim rifle." }
+      : IRON_OPTION_META.find((m) => m.id === id)!;
+  const label = document.createElement("div");
+  label.className = "solo-label";
+  label.textContent = id === "current" ? `Current — ${meta.name}` : `Option ${id} — ${meta.name}`;
+  wrap.appendChild(label);
+  const canvas = document.createElement("canvas");
+  wrap.appendChild(canvas);
+  renderOne(canvas, id, 1280, 720);
+} else {
+  const grid = document.querySelector("#grid")!;
+  grid.appendChild(
+    card("current", "Current (main)", "Broad rounded U-leaf on the slim rifle. Unchanged until you pick."),
+  );
+  for (const m of IRON_OPTION_META) {
+    grid.appendChild(card(m.id, m.name, m.blurb));
+  }
+}
