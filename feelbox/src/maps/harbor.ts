@@ -1651,14 +1651,18 @@ export const HARBOR_SPEC: LayoutSpec = {
       "call": "A",
       "name": "Slip",
       "x": 5.5,
-      "z": -5
+      "z": -5,
+      "w": 6,
+      "d": 6
     },
     {
       "id": "well",
       "call": "B",
       "name": "Shed",
       "x": -7,
-      "z": 12
+      "z": 12,
+      "w": 6,
+      "d": 6
     }
   ],
   "plantSpawns": [

@@ -296,12 +296,12 @@ export function bindCrosshairSettings(bank: Bank, save: () => void) {
     gV.textContent = String(ch.g);
     bV.textContent = String(ch.b);
     aV.textContent = String(ch.a);
-    paintCrosshair(preview, ch, 0);
+    paintCrosshair(preview, ch, 0, Math.max(1.6, viewScale() * 1.15));
     if (hud) paintCrosshair(hud, ch, 0);
     slotsEl.querySelectorAll<HTMLElement>(".ch-slot").forEach((btn, i) => {
       btn.classList.toggle("on", i === bank.crosshairSlot);
       const draw = btn.querySelector<HTMLElement>(".ch-draw");
-      if (draw && bank.crosshairs[i]) paintCrosshair(draw, bank.crosshairs[i]!, 0, 1.35);
+      if (draw && bank.crosshairs[i]) paintCrosshair(draw, bank.crosshairs[i]!, 0, 1.5);
     });
     colorsEl.querySelectorAll<HTMLElement>(".ch-swatch").forEach((btn, i) => {
       const c = CROSSHAIR_COLORS[i]!;

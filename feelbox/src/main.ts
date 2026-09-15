@@ -37,6 +37,8 @@ import {
   nadeColor,
   NADE_MAX,
   NADE_ORDER,
+  nextHeldNade,
+  throwProgress,
   smokeBlocksLos,
   smokeCoverage,
   stunDuration,
@@ -67,6 +69,7 @@ import {
   roundFrozen,
   slotById,
   tickMatch,
+  recapHoldFromReel,
   trySkipBestPlay,
   vacateSlot,
   waitingForPlayers,
@@ -141,6 +144,7 @@ import {
   walkKeepsTool,
   zoomOrbit,
   type Handle,
+  type OrbitCam,
   type PaletteId,
   type StudioItem,
   type ToolId,
@@ -212,6 +216,7 @@ import {
   GUN_BLURB,
   PRIMARY_IDS,
   bindKeys,
+  botRifle,
   gunName,
   hudWeaponLine,
   parseLoadout,
@@ -227,8 +232,11 @@ import {
   pressFire,
   releaseFire,
 } from "./fireQueue";
-import { accountKey, accountLook, bindIdentity, closeLogin, closeRegister, isRegistered, openLogin, paintIdentity } from "./account";
-import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
+import { accountKey, accountLook, closeLogin, closeRegister, isRegistered, openLogin, paintIdentity } from "./account";
+import { careerBoard, closeStatsPage, loadBoard, loadCareer, openStatsPage, paintStatsChrome, paintStatsPage, statsPageOpen, vsRecord } from "./career";
+import { createGameRenderer } from "./gl";
+import { refreshLobby, setIdentityHandlers, setJoinHandler, startLobby } from "./lobby";
+import { COW_SECS, connectNet, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
   buildSnapshot,
@@ -248,11 +256,19 @@ import {
 import { prefs, savePrefs } from "./prefs";
 import { bindCrosshairSettings } from "./crosshair";
 import { LOOK_GROUPS, LOOK_SLOTS, applyLookChoice, lookBodyCam, lookDetailCam, lookView, type LookSlot } from "./look";
+import { clearLookThumbs, lookOptionThumb } from "./look-thumbs";
 import { setStepVolume, tickSteps } from "./steps";
 import { createHoldSound, isActivelyCutting, tickHoldSound } from "./holdSound";
 import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
 import { jumpSpeed, meleeReach, tuning } from "./tuning";
 import { makeMelee } from "./knife-variants";
+import {
+  bindGunPreview,
+  renderGunPreview,
+  setGunPreviewVisible,
+  setPreviewGun,
+  tickGunPreview,
+} from "./gunPreview";
 
 const RADIUS = 0.32;
 const RELOAD = 1.45;
@@ -260,7 +276,7 @@ const MOUSE = 0.0036;
 const HP_MAX = 100;
 const FRAG_R = 6.5;
 
-const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
+let canvas = document.querySelector<HTMLCanvasElement>("#view")!;
 const startEl = document.querySelector<HTMLElement>("#start")!;
 const hitmark = document.querySelector<HTMLElement>("#hitmark")!;
 const hurtEl = document.querySelector<HTMLElement>("#hurt")!;
@@ -269,7 +285,10 @@ const veilEl = document.querySelector<HTMLElement>("#smoke-veil")!;
 const flashVeil = document.querySelector<HTMLElement>("#flash-veil");
 const stunVeil = document.querySelector<HTMLElement>("#stun-veil");
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+startLobby();
+const gl = createGameRenderer(canvas);
+canvas = gl.canvas;
+const renderer = gl.renderer;
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -283,6 +302,23 @@ let mapId: string = "wharf";
 let customSpec: LayoutSpec | null = null;
 let lobbyStudioMaps: { id: string; title: string }[] = [];
 let world = buildMap(scene, mapId as MapId);
+
+function skyOrbit(bounds: { minX: number; maxX: number; minZ: number; maxZ: number }): OrbitCam {
+  const cam = defaultOrbit(bounds);
+  cam.theta = 0.36;
+  cam.dist = Math.max(52, cam.dist * 1.05);
+  return cam;
+}
+
+let joinCam = skyOrbit(world.bounds);
+let joinOrbiting = false;
+let joinReturn: "lobby" | "play" | "spec" = "lobby";
+let pauseOpenedAt = 0;
+
+function resetJoinCam() {
+  joinCam = skyOrbit(world.bounds);
+  joinOrbiting = false;
+}
 
 function calloutAt(x: number, z: number, y = 0) {
   return world.placeName?.(x, z, y) ?? placeName(x, z, y);
@@ -412,7 +448,7 @@ let appliedSeq = -1;
 const predHist: PredSample[] = [];
 
 let lastBeat = 0;
-let refreshServers: () => Promise<void> = async () => {};
+let refreshServers: () => Promise<void> = refreshLobby;
 
 function bindNet(handle: NetHandle) {
   handle.onSnapshot((snap) => {
@@ -437,14 +473,25 @@ function bindNet(handle: NetHandle) {
 }
 
 let joiningName = "";
-let joinStep: "team" | "guns" = "team";
 
 function joinPanel() {
   return document.querySelector<HTMLElement>("#join-team");
 }
 
+function inServerSession() {
+  return document.body.classList.contains("joined") || net.status !== "offline";
+}
+
+function onJoinScreen() {
+  return (
+    document.body.classList.contains("choosing") ||
+    (document.body.classList.contains("joined") &&
+      !document.body.classList.contains("started") &&
+      !document.body.classList.contains("spectating"))
+  );
+}
+
 function hideJoinTeam() {
-  joinStep = "team";
   const panel = joinPanel();
   if (panel) {
     panel.hidden = true;
@@ -454,12 +501,43 @@ function hideJoinTeam() {
   if (pick) pick.hidden = true;
   const guns = document.querySelector<HTMLElement>("#join-loadout");
   if (guns) guns.hidden = true;
+  const specBtn = document.querySelector<HTMLButtonElement>("#join-spec");
+  if (specBtn) specBtn.hidden = true;
+  document.body.classList.remove("choosing");
+  setGunPreviewVisible(false);
   const list = document.querySelector<HTMLElement>("#server-list");
-  if (list) list.hidden = false;
+  const showList = !document.body.classList.contains("joined");
+  if (list && showList) list.hidden = false;
+  const table = document.querySelector<HTMLElement>(".server-table");
+  if (table && showList) table.hidden = false;
 }
 
 function awaitingTeamPick() {
-  return net.role === "client" && !document.body.classList.contains("started");
+  return (
+    net.role === "client" &&
+    !document.body.classList.contains("started") &&
+    !document.body.classList.contains("spectating")
+  );
+}
+
+function joinLook() {
+  return accountLook() || packLook(prefs.look);
+}
+
+function sendJoinTeam(team: Team) {
+  prefs.team = team;
+  savePrefs();
+  if (net.role === "client") {
+    net.sendEvent({
+      kind: "joinTeam",
+      team,
+      name: prefs.name,
+      skin: prefs.skin,
+      look: joinLook(),
+      playerKey: accountKey() || prefs.playerKey,
+    });
+  }
+  paintTeamPick();
 }
 
 function joinGame(name?: string) {
@@ -473,14 +551,18 @@ function joinGame(name?: string) {
   }
   if (net.role === "client") {
     if (document.body.classList.contains("started")) enterPlay();
-    else paintJoin();
+    else openChooseTeam("lobby");
     return;
   }
   if (name) joiningName = name;
   lastBeat = performance.now();
+  joinReturn = "lobby";
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
+  document.body.classList.add("joined", "choosing");
+  resetJoinCam();
+  paintLoadout();
   paintJoin();
 }
 
@@ -488,8 +570,70 @@ function enterPlay() {
   lastBeat = lastBeat || performance.now();
   rifleKind = prefs.loadout.primary;
   weapon = "rifle";
-  document.body.classList.add("started");
+  joinReturn = "play";
+  document.body.classList.add("started", "joined");
+  document.body.classList.remove("choosing", "spectating", "paused");
+  hideJoinTeam();
+  closePause();
+  camera.near = 0.05;
+  camera.far = 85;
+  camera.fov = 90;
+  camera.updateProjectionMatrix();
   lock();
+}
+
+function enterSpectate() {
+  lastBeat = lastBeat || performance.now();
+  joinReturn = "spec";
+  if (net.role === "client") net.sendEvent({ kind: "spectate" });
+  document.body.classList.add("joined", "spectating");
+  document.body.classList.remove("choosing", "started", "paused", "playing");
+  hideJoinTeam();
+  closePause();
+  specFly.x = camera.position.x;
+  specFly.y = camera.position.y;
+  specFly.z = camera.position.z;
+  yaw = camera.rotation.y;
+  pitch = Math.max(-1.4, Math.min(1.4, camera.rotation.x || -0.72));
+  camera.near = 0.05;
+  camera.far = 400;
+  lock();
+}
+
+function closePause() {
+  document.body.classList.remove("paused");
+  const el = document.querySelector<HTMLElement>("#pause");
+  if (el) el.hidden = true;
+}
+
+function openPause() {
+  if (studio.on || locker.on || studio.playing) return;
+  if (!document.body.classList.contains("joined") && net.status === "offline") return;
+  document.body.classList.add("paused", "joined");
+  document.body.classList.remove("choosing", "playing");
+  hideJoinTeam();
+  const el = document.querySelector<HTMLElement>("#pause");
+  if (el) el.hidden = false;
+  pauseOpenedAt = performance.now();
+  document.exitPointerLock();
+}
+
+function openChooseTeam(from: "lobby" | "play" | "spec" = "lobby") {
+  joinReturn = from;
+  document.body.classList.add("joined", "choosing");
+  document.body.classList.remove("paused", "started", "spectating", "playing");
+  closePause();
+  resetJoinCam();
+  paintLoadout();
+  paintJoin();
+  document.exitPointerLock();
+}
+
+function leavePauseToGame() {
+  closePause();
+  if (joinReturn === "spec" || document.body.classList.contains("spectating")) enterSpectate();
+  else if (joinReturn === "play" || document.body.classList.contains("started")) enterPlay();
+  else openChooseTeam(joinReturn);
 }
 
 function leaveToLobby() {
@@ -518,7 +662,27 @@ function leaveToLobby() {
   stopReel();
   if (killCam) stopKillCam();
   freeLook = false;
-  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "bestplay", "podium", "studio-play", "killcam");
+  joinReturn = "lobby";
+  joinOrbiting = false;
+  closePause();
+  setGunPreviewVisible(false);
+  document.body.classList.remove(
+    "started",
+    "playing",
+    "admin",
+    "settings",
+    "dead",
+    "ads",
+    "bestplay",
+    "podium",
+    "studio-play",
+    "killcam",
+    "joined",
+    "choosing",
+    "spectating",
+    "paused",
+    "orbiting",
+  );
   document.exitPointerLock();
   paintJoin();
   void refreshServers();
@@ -529,6 +693,7 @@ function paintJoin() {
   const list = document.querySelector<HTMLElement>("#server-list");
   const pick = document.querySelector<HTMLElement>("#join-team-pick");
   const panel = joinPanel();
+  const specBtn = document.querySelector<HTMLButtonElement>("#join-spec");
   const who = joiningName || "the game";
   const whoEl = document.querySelector("#join-who");
   if (whoEl) whoEl.textContent = who;
@@ -549,20 +714,36 @@ function paintJoin() {
   }
   const connecting = net.status === "connecting";
   const rejected = net.status === "rejected";
-  const picking = awaitingTeamPick();
-  const onTeam = picking && joinStep === "team";
-  const onGuns = picking && joinStep === "guns";
-  if (list) list.hidden = connecting || picking || rejected;
-  if (pick) pick.hidden = !onTeam;
+  const menuUp =
+    document.body.classList.contains("paused") || document.body.classList.contains("settings");
+  const picking =
+    !menuUp && (document.body.classList.contains("choosing") || awaitingTeamPick());
+  if (picking) document.body.classList.add("choosing", "joined");
+  const ready = net.role === "client" && !connecting;
+  const hideList = connecting || picking || rejected || document.body.classList.contains("joined");
+  if (list) list.hidden = hideList;
+  const table = document.querySelector<HTMLElement>(".server-table");
+  if (table) table.hidden = hideList;
+  if (pick) pick.hidden = !picking;
   const guns = document.querySelector<HTMLElement>("#join-loadout");
-  if (guns) guns.hidden = !onGuns;
-  if (panel) {
-    panel.hidden = !connecting && !picking && !rejected;
-    panel.classList.toggle("pick", onTeam);
-    panel.classList.toggle("loadout", onGuns);
+  if (guns) guns.hidden = !picking;
+  if (specBtn) {
+    specBtn.hidden = !picking;
+    specBtn.disabled = !ready;
   }
+  if (pick) {
+    pick.querySelectorAll("button").forEach((b) => {
+      (b as HTMLButtonElement).disabled = !ready;
+    });
+  }
+  if (panel) {
+    panel.hidden = menuUp || (!picking && !connecting && !rejected);
+    panel.classList.toggle("pick", picking);
+    panel.classList.toggle("loadout", picking);
+  }
+  setGunPreviewVisible(!!(picking && panel && !panel.hidden));
   const ask = document.querySelector<HTMLElement>("#join-team .join-ask");
-  if (ask) ask.textContent = onGuns ? "Choose weapons" : "Pick a side";
+  if (ask) ask.textContent = ready ? "Pick a side · choose a rifle" : "Connecting";
   if (!list) return;
   for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
     row.classList.toggle("busy", connecting);
@@ -814,12 +995,10 @@ function paintTeamPick() {
 }
 
 function pickTeam(team: Team) {
-  prefs.team = team;
-  savePrefs();
-  if (net.role === "client") {
-    net.sendEvent({ kind: "joinTeam", team, name: prefs.name, skin: prefs.skin, look: accountLook() || packLook(prefs.look), playerKey: accountKey() || prefs.playerKey });
+  sendJoinTeam(team);
+  if (document.body.classList.contains("joined") && !document.body.classList.contains("started")) {
+    enterPlay();
   }
-  paintTeamPick();
 }
 
 function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id: SecondaryId) => void) {
@@ -840,6 +1019,7 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       pick(id);
+      setPreviewGun(id);
     });
     root.append(b);
   }
@@ -860,6 +1040,7 @@ function paintLoadout() {
     savePrefs();
     paintLoadout();
   });
+  setPreviewGun(loadout.primary);
 }
 
 function switchLocalTeam(team: Team) {
@@ -984,6 +1165,7 @@ function afterMapLoad() {
     g.visible = true;
   }
   lightViewmodels();
+  resetJoinCam();
 }
 
 function specForStudioId(id: string): LayoutSpec | null {
@@ -1264,7 +1446,9 @@ function paintStudio() {
   if (hint) {
     hint.textContent = studio.walk
       ? "WASD move · click to place any tool except Building · U cuts one square · Esc orbit"
-      : "Drag the yellow peg to walk there · Middle-drag pans · Shift-click or drag-box to multi-select · Knobs resize · Ctrl+Z undo";
+      : studio.tool === "siteA" || studio.tool === "siteB"
+        ? "Paint any shape · click adds a cell · drag adds a rect · erase punches · gold outline in play"
+        : "Drag the yellow peg to walk there · Middle-drag pans · Shift-click or drag-box to multi-select · Knobs resize · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
   const lot = studio.spec.bounds;
@@ -1369,20 +1553,22 @@ function commitLook() {
 
 function paintLocker() {
   const pip = document.querySelector<HTMLElement>("#locker-pip");
-  if (pip) pip.hidden = !(locker.on && settingsSection === "model");
+  if (pip) {
+    const show = locker.on && settingsSection === "model";
+    pip.hidden = !show;
+    pip.setAttribute("aria-hidden", show ? "false" : "true");
+  }
   document.body.classList.toggle("onboarding", false);
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
   const secs = document.querySelector("#locker-secs");
   if (secs && !secs.childElementCount) {
+    // One continuous list with light category labels — not three chunky sections.
     for (const group of LOOK_GROUPS) {
-      const wrap = document.createElement("div");
-      wrap.className = "locker-secs-group";
-      const title = document.createElement("p");
-      title.className = "locker-secs-title";
-      title.textContent = group.title;
-      const row = document.createElement("div");
-      row.className = "locker-secs-row";
+      const div = document.createElement("p");
+      div.className = "locker-secs-div";
+      div.textContent = group.title;
+      secs.append(div);
       for (const key of group.keys) {
         const slot = LOOK_SLOTS.find((s) => s.key === key);
         if (!slot) continue;
@@ -1395,10 +1581,8 @@ function paintLocker() {
           locker.slot = slot.key;
           paintLocker();
         });
-        row.append(b);
+        secs.append(b);
       }
-      wrap.append(title, row);
-      secs.append(wrap);
     }
   }
   secs?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
@@ -1423,10 +1607,18 @@ function paintLocker() {
     for (const opt of slot.options) {
       const b = document.createElement("button");
       b.type = "button";
+      b.className = "locker-opt-tile";
       b.dataset.slot = slot.key;
       b.dataset.id = opt.id;
       b.title = opt.blurb;
-      b.textContent = opt.label;
+      b.setAttribute("aria-label", opt.label);
+      const img = document.createElement("img");
+      img.alt = "";
+      img.draggable = false;
+      img.src = lookOptionThumb(locker.team, prefs.look, slot.key, opt.id);
+      const label = document.createElement("span");
+      label.textContent = opt.label;
+      b.append(img, label);
       b.classList.toggle("on", opt.id === prefs.look[slot.key]);
       b.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1450,7 +1642,7 @@ function paintLocker() {
   if (title) title.textContent = locker.on ? "Preferences" : "Home";
   if (blurb) {
     blurb.textContent = locker.on
-      ? "Detail view of the part you edit · inset shows the full body."
+      ? "Detail view of the part you edit · full body on the right."
       : "Pick a match. Ember plants the Wire. First to six.";
   }
 }
@@ -1504,42 +1696,68 @@ function applyLockerBodyCam() {
   lockerBodyCam.far = 80;
 }
 
-function renderLockerPip() {
-  const pip = document.querySelector<HTMLElement>("#locker-pip");
-  if (!pip || pip.hidden) return;
-  const rect = pip.getBoundingClientRect();
-  if (rect.width < 8 || rect.height < 8) return;
+function lockerStageRect(el: HTMLElement | null) {
+  if (!el || el.hidden) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return null;
   const dpr = renderer.getPixelRatio();
-  const x = Math.floor(rect.left * dpr);
-  const y = Math.floor((innerHeight - rect.bottom) * dpr);
-  const w = Math.max(1, Math.floor(rect.width * dpr));
-  const h = Math.max(1, Math.floor(rect.height * dpr));
-  applyLockerBodyCam();
-  lockerBodyCam.aspect = rect.width / rect.height;
-  lockerBodyCam.updateProjectionMatrix();
+  return {
+    cssW: rect.width,
+    cssH: rect.height,
+    x: Math.floor(rect.left * dpr),
+    y: Math.floor((innerHeight - rect.bottom) * dpr),
+    w: Math.max(1, Math.floor(rect.width * dpr)),
+    h: Math.max(1, Math.floor(rect.height * dpr)),
+  };
+}
+
+function renderLockerStage(
+  el: HTMLElement | null,
+  cam: THREE.PerspectiveCamera,
+  place: () => void,
+) {
+  const stage = lockerStageRect(el);
+  if (!stage) return;
+  place();
+  cam.aspect = stage.cssW / stage.cssH;
+  cam.updateProjectionMatrix();
   const full = new THREE.Vector2();
   renderer.getDrawingBufferSize(full);
   renderer.clearDepth();
   renderer.setScissorTest(true);
-  renderer.setScissor(x, y, w, h);
-  renderer.setViewport(x, y, w, h);
-  renderer.render(scene, lockerBodyCam);
+  renderer.setScissor(stage.x, stage.y, stage.w, stage.h);
+  renderer.setViewport(stage.x, stage.y, stage.w, stage.h);
+  renderer.render(scene, cam);
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, full.x, full.y);
 }
 
+function renderLockerDetail() {
+  renderLockerStage(document.querySelector("#locker-detail-stage"), camera, applyLockerCam);
+}
+
+function renderLockerPip() {
+  renderLockerStage(document.querySelector("#locker-pip"), lockerBodyCam, applyLockerBodyCam);
+}
+
 function rebuildLocker() {
   wipeMapMeshes();
-  scene.background = new THREE.Color(0x121410);
+  scene.background = new THREE.Color(0x14160f);
   scene.fog = null;
-  scene.add(new THREE.HemisphereLight(0xc8c0b4, 0x2a2824, 1));
-  const sun = new THREE.DirectionalLight(0xe8e0d4, 0.9);
-  sun.position.set(3.4, 9, 5);
+  scene.add(new THREE.HemisphereLight(0xe4dcc8, 0x242018, 1.45));
+  const sun = new THREE.DirectionalLight(0xfff4e4, 1.35);
+  sun.position.set(3.2, 9.5, 4.6);
   sun.castShadow = true;
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xb0c0d4, 0.55);
+  fill.position.set(-4, 3.4, -2.5);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xd8c8a8, 0.35);
+  rim.position.set(0.5, 2.2, -5);
+  scene.add(rim);
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(7, 40),
-    new THREE.MeshStandardMaterial({ color: 0x1a1c16, roughness: 0.92, metalness: 0.04 }),
+    new THREE.MeshStandardMaterial({ color: 0x1a1c14, roughness: 0.9, metalness: 0.03 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -1574,6 +1792,10 @@ function showSettingsSection(section: typeof settingsSection) {
       locker.on = true;
       locker.dragging = false;
       locker.team = prefs.team ?? "ember";
+      // 3/4 view, locked until drag — no auto-spin haze.
+      locker.phi = Math.PI * 0.92;
+      locker.theta = 1.02;
+      locker.zoom = 1;
       rebuildLocker();
     }
     paintLocker();
@@ -1589,7 +1811,7 @@ function showSettingsSection(section: typeof settingsSection) {
     camera.far = 85;
     camera.fov = 90;
     camera.updateProjectionMatrix();
-    if (!studio.on) loadMap(mapId, true);
+    if (!studio.on && !inServerSession()) loadMap(mapId, true);
   }
 }
 
@@ -1597,7 +1819,7 @@ function enterSettings() {
   if (studio.on) leaveStudio();
   stopReel();
   document.body.classList.remove("bestplay");
-  hideJoinTeam();
+  if (!document.body.classList.contains("joined")) hideJoinTeam();
   locker.onboarding = false;
   locker.dragging = false;
   document.body.classList.add("settings");
@@ -1613,6 +1835,7 @@ function enterLocker(_opts?: { onboarding?: boolean }) {
 }
 
 function leaveLocker(reload = true) {
+  closeStatsPage();
   locker.on = false;
   locker.onboarding = false;
   locker.dragging = false;
@@ -1627,7 +1850,7 @@ function leaveLocker(reload = true) {
   camera.far = 85;
   camera.fov = 90;
   camera.updateProjectionMatrix();
-  if (reload && !studio.on) loadMap(mapId, true);
+  if (reload && !studio.on && !inServerSession()) loadMap(mapId, true);
 }
 
 function walkSpawn() {
@@ -1729,7 +1952,7 @@ function finishStudioDrag() {
     const d = Math.abs(drag.z1 - drag.z0);
     let next = studio.spec;
     const dragged = w >= GRID || d >= GRID;
-    if (studio.tool === "wall" || studio.tool === "floor" || studio.tool === "building" || studio.tool === "area") {
+    if (isRectTool(studio.tool)) {
       if (dragged) next = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y, studioCallName());
       else next = place(studio.spec, studio.tool, drag.x0, drag.z0, { yaw: studio.faceYaw, y: drag.y, name: studioCallName() });
     } else {
@@ -1993,19 +2216,23 @@ bindAdmin({
   },
 });
 
-bindIdentity({
+setIdentityHandlers({
   onChange() {
     setNetName(prefs.name);
     setNetSkin(prefs.skin);
     setNetLook(accountLook() || packLook(prefs.look));
     setNetPlayerKey(accountKey() || prefs.playerKey);
     paintLocker();
+    paintStatsChrome();
+    if (!accountKey() && statsPageOpen()) closeStatsPage();
+    else if (statsPageOpen()) void paintStatsPage();
   },
   onRegistered() {
     enterSettings();
     showSettingsSection("model");
   },
 });
+paintStatsChrome();
 
 {
   const titleEl = document.querySelector<HTMLInputElement>("#studio-title")!;
@@ -2045,6 +2272,21 @@ bindIdentity({
     e.stopPropagation();
     enterStudio();
   });
+  document.querySelector("#home-stats")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!accountKey()) {
+      openLogin();
+      return;
+    }
+    closeLogin();
+    closeRegister();
+    if (document.body.classList.contains("settings")) leaveLocker(false);
+    openStatsPage();
+  });
+  document.querySelector("#stats-back")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeStatsPage();
+  });
   document.querySelector("#settings-back")?.addEventListener("click", (e) => {
     e.stopPropagation();
     leaveLocker();
@@ -2075,6 +2317,7 @@ bindIdentity({
     if (side !== "ember" && side !== "stone") return;
     e.stopPropagation();
     locker.team = side;
+    clearLookThumbs();
     dressLockerPawn();
     paintLocker();
   });
@@ -2405,6 +2648,7 @@ let boltDur = RIFLES.kar.cycle;
 let throwT = 0;
 let throwDur = 0.4;
 let throwDrop = false;
+let throwHeld: NadeKind | null = null;
 let flashT = 0;
 let stunT = 0;
 let lastMelee = -10;
@@ -2433,7 +2677,9 @@ function overlayOpen() {
     document.body.classList.contains("settings") ||
     document.body.classList.contains("podium") ||
     document.body.classList.contains("studio") ||
-    document.body.classList.contains("locker")
+    document.body.classList.contains("locker") ||
+    document.body.classList.contains("paused") ||
+    document.body.classList.contains("choosing")
   );
 }
 
@@ -2449,59 +2695,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
   if (net.status === "connecting") e.stopPropagation();
 });
 {
-  const list = document.querySelector("#server-list")!;
-  list.addEventListener("click", (e) => e.stopPropagation());
-  const paintServers = async () => {
-    if (net.status === "connecting") {
-      paintJoin();
-      return;
-    }
-    const servers = await fetchServers();
-    list.replaceChildren();
-    if (!servers.length) {
-      const p = document.createElement("p");
-      p.className = "server-empty";
-      p.textContent = "No servers · start the game process";
-      list.append(p);
-      return;
-    }
-    for (const s of servers) {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "server-row";
-      if (!s.online) {
-        row.disabled = true;
-        row.dataset.offline = "1";
-      }
-      const name = document.createElement("span");
-      name.className = "s-name";
-      name.textContent = s.name;
-      const map = document.createElement("span");
-      map.className = "s-map";
-      map.textContent = s.mapTitle;
-      const pop = document.createElement("span");
-      pop.className = "s-pop";
-      pop.textContent = `${s.players}/${s.max}`;
-      const phase = document.createElement("span");
-      phase.className = "s-phase";
-      phase.textContent = s.online ? s.phase : "offline";
-      const join = document.createElement("span");
-      join.className = "s-join";
-      join.textContent = s.online ? "Join" : "Offline";
-      row.append(name, map, pop, phase, join);
-      row.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        joinGame(s.name);
-      });
-      list.append(row);
-    }
-    paintJoin();
-  };
-  void paintServers();
-  refreshServers = paintServers;
-  window.setInterval(() => {
-    void paintServers();
-  }, 2000);
+  setJoinHandler(joinGame);
 
   const fillTeams = (root: Element, onPick?: (team: Team) => void) => {
     root.addEventListener("click", (e) => e.stopPropagation());
@@ -2530,29 +2724,45 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
     }
   };
   fillTeams(document.querySelector("#join-team-pick")!, (team) => {
-    pickTeam(team);
-    joinStep = "guns";
-    paintLoadout();
-    paintJoin();
+    prefs.loadout = parseLoadout(prefs.loadout);
+    savePrefs();
+    sendJoinTeam(team);
+    enterPlay();
   });
   const setTeam = document.querySelector("#set-team");
   if (setTeam) fillTeams(setTeam);
   document.querySelector("#join-loadout")?.addEventListener("click", (e) => e.stopPropagation());
-  document.querySelector("#loadout-go")?.addEventListener("click", (e) => {
+  document.querySelector("#join-spec")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    prefs.loadout = parseLoadout(prefs.loadout);
-    savePrefs();
-    enterPlay();
-    hideJoinTeam();
+    if (net.role !== "client") return;
+    enterSpectate();
   });
   document.querySelector("#join-cancel")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (joinStep === "guns" && awaitingTeamPick()) {
-      joinStep = "team";
-      paintJoin();
+    if (joinReturn === "play" || joinReturn === "spec") {
+      leavePauseToGame();
       return;
     }
     leaveToLobby();
+  });
+  document.querySelector("#pause")?.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.querySelector("#pause-disconnect")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    leaveToLobby();
+  });
+  document.querySelector("#pause-team")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openChooseTeam(joinReturn);
+  });
+  document.querySelector("#pause-settings")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    enterSettings();
+  });
+  bindGunPreview({
+    canvas: document.querySelector<HTMLCanvasElement>("#gun-preview-view"),
+    glass: document.querySelector<HTMLElement>("#gun-preview-glass"),
+    name: document.querySelector<HTMLElement>("#gun-preview-name"),
+    modeBtn: document.querySelector<HTMLButtonElement>("#gun-preview-mode"),
   });
   const adminMap = document.querySelector<HTMLSelectElement>("#admin-map")!;
   adminMap.addEventListener("change", () => {
@@ -2603,10 +2813,12 @@ addEventListener("contextmenu", (e) => {
   if (studio.on || locker.on || document.body.classList.contains("started")) e.preventDefault();
 });
 document.addEventListener("pointerlockchange", () => {
+  const wasLocked = locked;
   locked = document.pointerLockElement === canvas;
-  document.body.classList.toggle("started", locked || document.body.classList.contains("started"));
   document.body.classList.toggle("playing", locked);
-  if (locked) document.body.classList.add("started");
+  if (locked && !document.body.classList.contains("spectating") && !document.body.classList.contains("choosing")) {
+    document.body.classList.add("started");
+  }
   if (!locked) {
     ads = false;
     adsMouse = false;
@@ -2616,6 +2828,14 @@ document.addEventListener("pointerlockchange", () => {
     smokeHeld = false;
     smokeCharge = 0;
     keys.clear();
+  }
+  if (
+    wasLocked &&
+    !locked &&
+    !overlayOpen() &&
+    (document.body.classList.contains("started") || document.body.classList.contains("spectating"))
+  ) {
+    openPause();
   }
 });
 
@@ -2648,6 +2868,10 @@ addEventListener("keydown", (e) => {
     }
     if (document.body.classList.contains("register-page")) {
       closeRegister();
+      return;
+    }
+    if (document.body.classList.contains("stats-page")) {
+      closeStatsPage();
       return;
     }
   }
@@ -2747,11 +2971,20 @@ addEventListener("keydown", (e) => {
       return;
     }
     if (document.body.classList.contains("settings")) {
-      document.body.classList.remove("settings");
+      leaveLocker(!inServerSession());
+      return;
+    }
+    if (document.body.classList.contains("paused")) {
+      if (performance.now() - pauseOpenedAt < 280) return;
+      leavePauseToGame();
+      return;
+    }
+    if (document.body.classList.contains("joined") && !studio.on && !locker.on) {
+      openPause();
       return;
     }
     if (locked) document.exitPointerLock();
-    else if (!document.body.classList.contains("admin")) document.body.classList.add("settings");
+    else if (!document.body.classList.contains("admin")) enterSettings();
   }
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
@@ -2766,6 +2999,15 @@ addEventListener("mousedown", (e) => {
     locker.dragging = true;
     document.body.classList.add("locker-drag");
     return;
+  }
+  if (onJoinScreen() && e.button === 0) {
+    const t = e.target as HTMLElement | null;
+    if (t === canvas || t?.id === "view" || t?.id === "join-team") {
+      joinOrbiting = true;
+      document.body.classList.add("orbiting");
+      e.preventDefault();
+      return;
+    }
   }
   if (studio.on) {
     if ((e.target as HTMLElement | null)?.closest("#studio")) return;
@@ -2887,6 +3129,10 @@ addEventListener("mousedown", (e) => {
   }
 });
 addEventListener("mouseup", (e) => {
+  if (joinOrbiting) {
+    joinOrbiting = false;
+    document.body.classList.remove("orbiting");
+  }
   if (locker.on && e.button === 0) {
     locker.dragging = false;
     document.body.classList.remove("locker-drag");
@@ -2923,6 +3169,12 @@ addEventListener("wheel", (e) => {
     e.preventDefault();
     const { minX, maxX, minZ, maxZ } = studio.spec.bounds;
     zoomOrbit(studio.cam, e.deltaY, Math.max(180, Math.hypot(maxX - minX, maxZ - minZ) * 1.6));
+    return;
+  }
+  if (onJoinScreen()) {
+    e.preventDefault();
+    const { minX, maxX, minZ, maxZ } = world.bounds;
+    zoomOrbit(joinCam, e.deltaY, Math.max(180, Math.hypot(maxX - minX, maxZ - minZ) * 1.6));
     return;
   }
   if (!locked || alive) return;
@@ -2986,13 +3238,18 @@ addEventListener("mousemove", (e) => {
     } else if (studio.painting) stampStudio();
     return;
   }
+  if (joinOrbiting) {
+    orbitDrag(joinCam, e.movementX, e.movementY);
+    return;
+  }
   if (!locked) return;
+  if (document.body.classList.contains("spectating") || (!alive && freeLook)) {
+    yaw -= e.movementX * MOUSE * prefs.sens;
+    pitch -= e.movementY * MOUSE * prefs.sens;
+    pitch = Math.max(-1.4, Math.min(1.4, pitch));
+    return;
+  }
   if (!alive) {
-    if (freeLook) {
-      yaw -= e.movementX * MOUSE * prefs.sens;
-      pitch -= e.movementY * MOUSE * prefs.sens;
-      pitch = Math.max(-1.4, Math.min(1.4, pitch));
-    }
     return;
   }
   const adsScale = ads ? RIFLES[rifleKind].adsSens : 1;
@@ -3047,8 +3304,42 @@ function isNade(w: string): w is NadeKind {
   return w === "smoke" || w === "frag" || w === "stun" || w === "flash";
 }
 
-function paintNadeView() {
-  (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(nadeKind));
+function paintNadeView(kind: NadeKind = throwHeld ?? nadeKind) {
+  (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(kind));
+}
+
+function liveThrowK() {
+  return throwProgress(throwT, throwDur);
+}
+
+function livePoseWeapon(): Pose["weapon"] {
+  if (throwT > 0 && throwHeld) return throwHeld;
+  if (weapon === "rifle") return rifleKind;
+  if (weapon === "knife" || isNade(weapon)) return weapon;
+  return rifleKind;
+}
+
+function armThrow(kind: NadeKind, dur: number, drop: boolean) {
+  throwHeld = kind;
+  throwDrop = drop;
+  throwDur = dur;
+  throwT = dur;
+  paintNadeView(kind);
+  recordSnap();
+}
+
+function finishThrow() {
+  const kind = throwHeld;
+  throwHeld = null;
+  if (!kind || !isNade(weapon) || nadeKind !== kind) return;
+  const next = nextHeldNade(nadeBag, kind);
+  if (next === "rifle") {
+    weapon = "rifle";
+    return;
+  }
+  nadeKind = next;
+  weapon = next;
+  paintNadeView(next);
 }
 
 function selectNade() {
@@ -3117,17 +3408,7 @@ function tryThrowSmoke(power = 0.55) {
   }
   liveRifle().root.position.z += 0.02;
   bang(90, 0.07, 0.04);
-  throwDrop = false;
-  throwDur = 0.4;
-  throwT = 0.4;
-  if (isNade(weapon) && nadeBag[nadeKind] <= 0) {
-    const next = NADE_ORDER.find((k) => nadeBag[k] > 0);
-    if (next) {
-      nadeKind = next;
-      weapon = next;
-      paintNadeView();
-    } else weapon = "rifle";
-  }
+  armThrow(kind, 0.4, false);
 }
 
 function tryDropSmoke() {
@@ -3157,17 +3438,7 @@ function tryDropSmoke() {
     dropSmoke(scene, origin, kind);
   }
   bang(70, 0.05, 0.03);
-  throwDrop = true;
-  throwDur = 0.24;
-  throwT = 0.24;
-  if (isNade(weapon) && nadeBag[nadeKind] <= 0) {
-    const next = NADE_ORDER.find((k) => nadeBag[k] > 0);
-    if (next) {
-      nadeKind = next;
-      weapon = next;
-      paintNadeView();
-    } else weapon = "rifle";
-  }
+  armThrow(kind, 0.24, true);
 }
 
 function releaseSmoke() {
@@ -3873,10 +4144,21 @@ function collectPoses(): Pose[] {
         pitch: self ? pitch : p.pitch,
         eye: self ? eyeOff() : 1.52,
         alive: self ? alive : p.alive,
-        weapon: pawnPoseWeapon(self ? (weapon === "rifle" ? rifleKind : weapon) : p.weapon),
+        weapon: pawnPoseWeapon(self ? livePoseWeapon() : p.netId === 0 ? botRifle(p.id) : p.weapon),
         ads: self ? ads && weapon === "rifle" : p.ads,
         bash: self && bashT > 0 ? 1 - bashT / 0.42 : 0,
-        fov: self && ads && weapon === "rifle" ? RIFLES[rifleKind].adsFov : p.ads ? 68 : 90,
+        throw: self ? liveThrowK() : p.throw ?? 0,
+        throwDrop: self ? throwDrop : !!p.throwDrop,
+        fov:
+          self && ads && weapon === "rifle"
+            ? RIFLES[rifleKind].adsFov
+            : p.netId === 0
+              ? p.ads
+                ? RIFLES.kar.adsFov
+                : 90
+              : p.ads
+                ? 68
+                : 90,
         kick: self ? gunKickZ : 0,
         punchP: self ? punchP : 0,
         punchY: self ? punchY : 0,
@@ -3894,9 +4176,11 @@ function collectPoses(): Pose[] {
       pitch,
       eye: eyeOff(),
       alive,
-      weapon: weapon === "rifle" ? rifleKind : weapon,
+      weapon: livePoseWeapon(),
       ads: ads && weapon === "rifle",
       bash: bashT > 0 ? 1 - bashT / 0.42 : 0,
+      throw: liveThrowK(),
+      throwDrop,
       fov,
       kick: gunKickZ,
       punchP,
@@ -3914,10 +4198,12 @@ function collectPoses(): Pose[] {
       pitch: b.lookPitch,
       eye: 1.52,
       alive: b.hp > 0,
-      weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
+      weapon: botRifle(b.id),
       ads: b.aim,
       bash: 0,
-      fov: b.aim ? 68 : 90,
+      throw: 0,
+      throwDrop: false,
+      fov: b.aim ? RIFLES.kar.adsFov : 90,
       kick: b.flash > 0.4 ? 0.06 : 0,
       punchP: b.flash > 0.4 ? 0.8 : 0,
       punchY: 0,
@@ -3937,6 +4223,8 @@ function collectPoses(): Pose[] {
       weapon: isNade(r.weapon) ? r.weapon : r.weapon === "knife" ? r.weapon : rifleFromWeapon(r.weapon),
       ads: r.ads,
       bash: 0,
+      throw: r.throw,
+      throwDrop: r.throwDrop,
       fov: r.ads ? 64 : 90,
       kick: 0,
       punchP: 0,
@@ -4123,16 +4411,16 @@ function startReel() {
 
 function holdBestPlay(wall: number) {
   if (net.role === "client" || match.phase !== "bestplay") return;
-  match.endT = Math.max(match.endT, wall + 0.85);
+  match.endT = recapHoldFromReel(wall, match.endT);
 }
 
 function trySkipReel() {
   const solo = humanCount(match) <= 1;
   if (reel && time < reel.skipAt && !solo) return;
   if (!reel && !solo) return;
-  if (solo) net.sendEvent({ kind: "skipRecap" });
   if (reel) stopReel();
   else if (net.role !== "client") trySkipBestPlay(match);
+  else net.sendEvent({ kind: "skipRecap" });
 }
 
 function stopReel() {
@@ -4152,9 +4440,12 @@ function stopReel() {
     r.root.visible = true;
   }
   for (const g of clientPawns.values()) setPawnHeldVisible(g, true);
+  const recapOpen = match.phase === "bestplay";
   reel = null;
   reelPlayed = true;
-  if (net.role !== "client" && match.phase === "bestplay") concludeBestPlay(match);
+  if (!recapOpen) return;
+  if (net.role !== "client") concludeBestPlay(match);
+  else net.sendEvent({ kind: "skipRecap" });
 }
 
 function applyViewSample(t: number, viewId: number, snap: boolean) {
@@ -4280,15 +4571,18 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
 
 function applyReelHands(cam: Pose) {
   const bashing = cam.bash > 0.02;
-  const rifleOn = isRifleId(cam.weapon) && !bashing;
+  const throwing = (cam.throw ?? 0) > 0.02;
+  const nadeOn = isNade(cam.weapon as Weapon);
+  const rifleOn = isRifleId(cam.weapon) && !bashing && !throwing;
   const kind: RifleId = rifleFromWeapon(cam.weapon);
   const camFov = cam.fov || (cam.ads ? RIFLES[kind].adsFov : 90);
   const zoom = adsZoomK(kind, camFov);
   const aiming = cam.ads && rifleOn;
   showRifle(kind, rifleOn && !glassHidesRifle(kind, aiming, zoom));
   setKarGlass(kind, aiming, zoom);
-  knife.visible = cam.weapon === "knife" || bashing;
-  nadeView.visible = isNade(cam.weapon as Weapon) && !bashing;
+  knife.visible = (cam.weapon === "knife" || bashing) && !throwing;
+  nadeView.visible = (nadeOn || throwing) && !bashing;
+  if (nadeOn) paintNadeView(cam.weapon as NadeKind);
   if (bashing) poseKnifeSlash(knife, cam.bash);
   else poseKnifeRest(knife);
   const hold = rifles[kind];
@@ -4303,9 +4597,11 @@ function applyReelHands(cam: Pose) {
   poseBolt(hold, 0);
   poseScopeMask(hold, wrap);
   hold.root.updateMatrixWorld(true);
-  if (isNade(cam.weapon as Weapon) && !bashing) {
+  if (throwing) poseThrow(nadeView, cam.throw ?? 0, !!cam.throwDrop);
+  else if (nadeOn && !bashing) {
     nadeView.rotation.set(0, 0, 0);
     nadeView.position.set(0.18, -0.2, -0.2);
+    nadeView.visible = true;
   }
   hideRifleFlash();
   if (rifleOn) hold.flash.visible = cam.flash;
@@ -4450,6 +4746,8 @@ function roundSpawn() {
   spawnProtectUntil = time + 1.2;
   nadeBag = { ...NADE_MAX };
   nadeKind = "smoke";
+  throwT = 0;
+  throwHeld = null;
   paintNadeView();
   flashT = 0;
   stunT = 0;
@@ -4470,6 +4768,8 @@ function roundSpawn() {
     r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
     r.root.visible = true;
     r.nades = fullNades();
+    r.throw = 0;
+    r.throwDrop = false;
     restorePawnHead(r.root);
   }
   clearTape(tape);
@@ -4689,7 +4989,14 @@ function nearestBot(from: THREE.Vector3): Bot | undefined {
 
 let last = performance.now();
 function frame(now: number) {
-  if (serverGone(document.body.classList.contains("started") && net.status !== "offline", lastBeat, now)) {
+  if (serverGone(
+    (document.body.classList.contains("started") ||
+      document.body.classList.contains("joined") ||
+      document.body.classList.contains("spectating")) &&
+      net.status !== "offline",
+    lastBeat,
+    now,
+  )) {
     leaveToLobby();
   }
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -4755,7 +5062,10 @@ function frame(now: number) {
   if (diveT > 0) diveT = Math.max(0, diveT - dt);
   if (bashT > 0) bashT = Math.max(0, bashT - dt);
   if (boltT > 0) boltT = Math.max(0, boltT - dt);
-  if (throwT > 0) throwT = Math.max(0, throwT - dt);
+  if (throwT > 0) {
+    throwT = Math.max(0, throwT - dt);
+    if (throwT <= 0) finishThrow();
+  }
   if (flashT > 0) flashT = Math.max(0, flashT - dt);
   if (stunT > 0) stunT = Math.max(0, stunT - dt);
 
@@ -5217,11 +5527,21 @@ function frame(now: number) {
     seenRound = match.round;
     nadeBag = { ...NADE_MAX };
     nadeKind = "smoke";
+    throwT = 0;
+    throwHeld = null;
     predHist.length = 0;
     paintNadeView();
   }
 
-  if (alive || match.phase === "bestplay" || match.phase === "matchover" || match.phase === "settle") {
+  const joinMenu =
+    onJoinScreen() ||
+    document.body.classList.contains("paused") ||
+    document.body.classList.contains("spectating");
+  if (joinMenu) {
+    hideDeath();
+    hideDeathOverlay();
+    document.body.classList.remove("dead", "killcam");
+  } else if (alive || match.phase === "bestplay" || match.phase === "matchover" || match.phase === "settle") {
     if (!killCam) {
       hideDeathOverlay();
       if (alive || match.phase === "bestplay" || match.phase === "matchover") {
@@ -5272,7 +5592,36 @@ function frame(now: number) {
     }
   }
 
-  if (!watching) {
+  if (onJoinScreen()) {
+    if (!joinOrbiting && !document.body.classList.contains("paused")) joinCam.phi += dt * 0.08;
+    applyOrbit(camera, joinCam);
+    showRifle(rifleKind, false);
+    setKarGlass(rifleKind, false, 0);
+    knife.visible = false;
+    nadeView.visible = false;
+    arm.root.visible = false;
+    setSpec(null);
+    ghost.visible = false;
+  } else if (document.body.classList.contains("spectating") && !document.body.classList.contains("choosing")) {
+    if (!document.body.classList.contains("paused")) tickSpecFly(dt);
+    camera.position.set(specFly.x, specFly.y, specFly.z);
+    camera.rotation.order = "YXZ";
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+    camera.rotation.z = 0;
+    camera.near = 0.05;
+    camera.far = 400;
+    fov += (90 - fov) * Math.min(1, dt * 10);
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    showRifle(rifleKind, false);
+    setKarGlass(rifleKind, false, 0);
+    knife.visible = false;
+    nadeView.visible = false;
+    arm.root.visible = false;
+    hideLiveSpecSubject(null);
+    setSpec("Spectating · WASD fly · Esc menu");
+  } else if (!watching) {
     if (match.phase === "matchover") {
       const { minX, maxX, minZ, maxZ } = world.bounds;
       const cx = (minX + maxX) * 0.5;
@@ -5360,7 +5709,10 @@ function frame(now: number) {
         nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing) && !cowedSelf;
         if (bashing) poseKnifeSlash(knife, 1 - bashT / 0.42);
         else poseKnifeRest(knife);
-        if (throwing) poseThrow(nadeView, throwK, throwDrop);
+        if (throwing) {
+          if (throwHeld) paintNadeView(throwHeld);
+          poseThrow(nadeView, throwK, throwDrop);
+        }
         else if (isNade(weapon)) {
           nadeView.rotation.x = Math.sin(time * 3) * 0.04;
           nadeView.position.set(0.18, -0.2, -0.2 - smokeCharge * 0.18);
@@ -5478,7 +5830,7 @@ function frame(now: number) {
     const site = inSite(world, "loft", px, pz, py) ? "ICE" : inSite(world, "well", px, pz, py) ? "SLIP" : "";
     prompt = site
       ? "HOLD F · PLANT"
-      : `${displayName(slotById(match, viewId)?.name ?? mePawn?.name ?? prefs.name)} has the Bomb · gold pad at A or B`;
+      : `${displayName(slotById(match, viewId)?.name ?? mePawn?.name ?? prefs.name)} has the Bomb · plant at A or B`;
   } else if (match.wire.mode === "planted" && youTeam !== planter) {
     if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE BOMB";
   } else if (match.phase === "planted") {
@@ -5500,16 +5852,30 @@ function frame(now: number) {
   const showBoard = holdBoard || match.phase === "matchover";
   document.body.classList.toggle("board", holdBoard);
   if (showBoard) {
-    renderScoreboard(match, viewId, (id) => {
-      if (id === viewId) return net.role === "client" ? net.pingMs : 0;
-      const remote = [...remotes.values()].find((x) => x.slotId === id);
-      if (remote) return remote.ping;
-      const pawn = lastSnap?.pawns.find((p) => p.id === id);
-      if (pawn?.ping != null) return pawn.ping;
-      if (bots.some((b) => b.id === id)) return null;
-      if (pawn && (pawn.netId ?? 0) > 0) return pawn.ping ?? 0;
-      return null;
-    });
+    const keys = match.slots.map((s) => s.playerKey).filter((k): k is string => !!k);
+    const youKey = accountKey() || prefs.playerKey;
+    if (youKey) keys.push(youKey);
+    void loadBoard(keys);
+    if (youKey) void loadCareer(youKey);
+    renderScoreboard(
+      match,
+      viewId,
+      (id) => {
+        if (id === viewId) return net.role === "client" ? net.pingMs : 0;
+        const remote = [...remotes.values()].find((x) => x.slotId === id);
+        if (remote) return remote.ping;
+        const pawn = lastSnap?.pawns.find((p) => p.id === id);
+        if (pawn?.ping != null) return pawn.ping;
+        if (bots.some((b) => b.id === id)) return null;
+        if (pawn && (pawn.netId ?? 0) > 0) return pawn.ping ?? 0;
+        return null;
+      },
+      {
+        board: careerBoard(),
+        youKey,
+        vs: vsRecord,
+      },
+    );
   }
   if (match.phase === "matchover") {
     if (!podiumOn) {
@@ -5582,7 +5948,7 @@ function frame(now: number) {
     nadeKind,
     clouds: lastSnap?.clouds ?? activeClouds(),
     air: lastSnap?.nades ?? activeNades(),
-    weapon: weapon === "rifle" ? rifleKind : weapon,
+    weapon: livePoseWeapon(),
     rifleName: RIFLES[rifleKind].name,
     loadoutKeys: hudWeaponLine(prefs.loadout, nadeKind, nadeBag),
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
@@ -5614,7 +5980,7 @@ function frame(now: number) {
         pitch,
         hp,
         alive,
-        weapon: weapon === "rifle" ? rifleKind : weapon,
+        weapon: livePoseWeapon(),
         ads,
         crouch,
         prone,
@@ -5626,6 +5992,8 @@ function frame(now: number) {
         skin: prefs.skin,
         look: packLook(prefs.look),
         cow: isCow(playerId),
+        throw: liveThrowK(),
+        throwDrop,
       },
       bots,
       remotes,
@@ -5636,20 +6004,28 @@ function frame(now: number) {
     net.sendSnapshot(snap);
   }
   if (net.role === "client") {
+    const mute =
+      studio.on ||
+      locker.on ||
+      onJoinScreen() ||
+      document.body.classList.contains("paused") ||
+      document.body.classList.contains("spectating");
     net.sendInput(
       collectInput({
-        keys: studio.on || locker.on ? new Set() : keys,
+        keys: mute ? new Set() : keys,
         yaw,
         pitch,
-        fire: studio.on || locker.on || isCow(playerId) ? false : wantShot,
-        ads: studio.on || locker.on ? false : ads,
-        lean: studio.on || locker.on ? 0 : lean,
-        weapon: weapon === "rifle" ? rifleKind : weapon,
-        crouch: studio.on || locker.on ? false : crouch,
-        prone: studio.on || locker.on ? false : prone,
-        jump: studio.on || locker.on ? false : keys.has("Space"),
-        use: studio.on || locker.on ? false : wantUse,
+        fire: mute || isCow(playerId) ? false : wantShot,
+        ads: mute ? false : ads,
+        lean: mute ? 0 : lean,
+        weapon: livePoseWeapon(),
+        crouch: mute ? false : crouch,
+        prone: mute ? false : prone,
+        jump: mute ? false : keys.has("Space"),
+        use: mute ? false : wantUse,
         ping: net.pingMs,
+        throw: liveThrowK(),
+        throwDrop,
       }),
     );
   }
@@ -5670,7 +6046,7 @@ function frame(now: number) {
     locker.dist += (want.dist - locker.dist) * ease;
     locker.aimY += (want.aimY - locker.aimY) * ease;
     locker.fov += (want.fov - locker.fov) * ease;
-    if (!locker.dragging) locker.phi += dt * 0.2;
+    // Stable detail view — only turn when the player drags.
     applyLockerCam();
   } else if (studio.on) {
     if (studio.drag?.mode !== "peg") studioPeg.visible = false;
@@ -5857,12 +6233,15 @@ function frame(now: number) {
           studioGhost.visible = true;
           studioGhost.scale.set(foot.w, sy, foot.d);
           studioGhost.position.set(foot.x, y + sy / 2, foot.z);
-        } else if (studio.tool === "area") {
+        } else if (studio.tool === "area" || studio.tool === "siteA" || studio.tool === "siteB") {
           const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
           const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
+          const y = studio.tool === "area"
+            ? 0.06
+            : rectSurfaceY(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1) + 0.06;
           studioGhost.visible = true;
           studioGhost.scale.set(w, 0.12, d);
-          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, 0.06, (studio.drag.z0 + studio.drag.z1) / 2);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, y, (studio.drag.z0 + studio.drag.z1) / 2);
         } else {
           const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
           const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
@@ -5907,6 +6286,11 @@ function frame(now: number) {
           } else if (studio.tool === "area") {
             studioGhost.scale.set(STAMP, 0.12, STAMP);
             studioGhost.position.set(snapCell(hit.x), 0.06, snapCell(hit.z));
+          } else if (studio.tool === "siteA" || studio.tool === "siteB") {
+            const gx = snapCell(hit.x);
+            const gz = snapCell(hit.z);
+            studioGhost.scale.set(GRID, 0.12, GRID);
+            studioGhost.position.set(gx, surfaceAt(studio.spec, gx, gz) + 0.06, gz);
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
             const gx = studio.tool === "crate" ? snapCell(hit.x) : snap(hit.x);
@@ -5925,26 +6309,39 @@ function frame(now: number) {
   }
 
   renderer.autoClear = true;
-  const scopeVm = rifles.karscope.root.visible && (watching ? lastReelAds : ads);
-  if (scopeVm) {
-    const savedFov = camera.fov;
-    camera.layers.set(0);
-    renderer.render(scene, camera);
-    camera.fov = VM_FOV;
-    camera.updateProjectionMatrix();
-    camera.layers.set(VM_LAYER);
-    renderer.autoClear = false;
-    renderer.clearDepth();
-    renderer.render(scene, camera);
-    renderer.autoClear = true;
-    camera.fov = savedFov;
-    camera.updateProjectionMatrix();
-    camera.layers.enable(0);
-    camera.layers.enable(VM_LAYER);
+  if (locker.on) {
+    const prevExposure = renderer.toneMappingExposure;
+    renderer.toneMappingExposure = 1.18;
+    renderer.setClearColor(0x0c0e0a, 1);
+    renderer.clear();
+    renderLockerDetail();
+    renderLockerPip();
+    renderer.toneMappingExposure = prevExposure;
   } else {
-    renderer.render(scene, camera);
+    const scopeVm = rifles.karscope.root.visible && (watching ? lastReelAds : ads);
+    if (scopeVm) {
+      const savedFov = camera.fov;
+      camera.layers.set(0);
+      renderer.render(scene, camera);
+      camera.fov = VM_FOV;
+      camera.updateProjectionMatrix();
+      camera.layers.set(VM_LAYER);
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+      renderer.autoClear = true;
+      camera.fov = savedFov;
+      camera.updateProjectionMatrix();
+      camera.layers.enable(0);
+      camera.layers.enable(VM_LAYER);
+    } else {
+      renderer.render(scene, camera);
+    }
+    if (onJoinScreen()) {
+      tickGunPreview(dt);
+      renderGunPreview();
+    }
   }
-  if (locker.on) renderLockerPip();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

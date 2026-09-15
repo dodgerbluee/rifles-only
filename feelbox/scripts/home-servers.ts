@@ -22,6 +22,16 @@ check("settings page hides the home start shell", /body\.settings\s+#start/.test
 check("home chrome has Map studio before settings", html.indexOf('id="home-studio"') < html.indexOf('id="open-settings"'));
 check("home chrome has Log in after settings", html.indexOf('id="open-settings"') < html.indexOf('id="home-login"'));
 check("servers page has a header section", html.includes('class="servers-header"') && html.includes('id="home-servers"'));
+check(
+  "server list has aligned column headers",
+  html.includes('class="server-cols"') &&
+    html.includes("Server Name") &&
+    html.includes(">Map<") &&
+    html.includes(">Players<") &&
+    html.includes(">Status<") &&
+    /server-cols[\s\S]*?grid-template-columns:\s*1\.4fr 1fr 70px 80px auto/.test(css) &&
+    /#server-list \.server-row[\s\S]*?grid-template-columns:\s*1\.4fr 1fr 70px 80px auto/.test(css),
+);
 check("login is a modal", html.includes('id="login-modal"'));
 check("register is its own page", html.includes('id="register-page"'));
 check("settings uses two-pane shell", html.includes('class="settings-shell"') && html.includes('class="settings-nav"'));
@@ -32,6 +42,10 @@ check("crosshair is its own section", html.includes('data-settings-section="cros
 check("controls section exists", html.includes('data-settings-section="controls"'));
 check("name lives under player settings", html.includes('id="locker-name"') && html.indexOf('settings-pane-player') < html.indexOf('id="locker-name"'));
 check("locker pip still exists", html.includes('id="locker-pip"'));
+check("model uses full-page layout", html.includes('class="model-layout"') && html.includes('class="model-catalog"') && html.includes('id="locker-detail-stage"'));
+check("crosshair has a live preview stage", html.includes('id="ch-preview"') && html.includes('ch-preview-stage') && html.includes('id="ch-preview-draw"'));
+check("model shell leaves detail view clear", /body\.settings-model\s+\.settings-shell[\s\S]*?background:\s*transparent/.test(css));
+check("html starts the lobby before the game module", html.includes('src="/src/boot.ts"'));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

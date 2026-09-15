@@ -18,6 +18,9 @@ services:
       GAME_WS: ws://game:8081/ws
       DATA_DIR: /data
       ACCOUNTS_PATH: /data/accounts.json
+      CAREER_PATH: /data/career.json
+      # Must match game. Without this, docker-network ingest is rejected.
+      INGEST_TOKEN: ${INGEST_TOKEN:-rifles-ingest}
     volumes:
       - ${FEELBOX_DATA:-../data}:/data
     restart: unless-stopped
@@ -36,6 +39,8 @@ services:
       GAME_PER_TEAM: "5"
       DATA_DIR: /data
       ACCOUNTS_PATH: /data/accounts.json
+      CAREER_PATH: /data/career.json
+      INGEST_TOKEN: ${INGEST_TOKEN:-rifles-ingest}
     volumes:
       - ${FEELBOX_DATA:-../data}:/data
     expose:

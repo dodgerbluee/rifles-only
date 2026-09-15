@@ -2,7 +2,7 @@
  * Iron Kar has no glass. Scoped Kar looks into a faceted ZF ocular.
  */
 import * as THREE from "three";
-import { makeKar98, makeKar98Scoped, RIFLES } from "../src/weapons.ts";
+import { makeKar98, makeKar98Scoped, makeWorldKar, RIFLES } from "../src/weapons.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -49,6 +49,14 @@ scoped.root.traverse((c) => {
   if (geo.type === "CylinderGeometry" && geo.parameters.openEnded && (geo.parameters.radialSegments ?? 0) <= 8) pipes += 1;
 });
 check("scope body is an 8-sided open tube", pipes >= 4, `pipes=${pipes}`);
+
+const world = makeWorldKar();
+let worldOcular = false;
+world.traverse((c) => {
+  if (c.userData.karOcular) worldOcular = true;
+});
+check("world Kar is the iron rifle, not scoped glass", !worldOcular);
+check("world Kar is held at the pawn, not the camera hip", world.position.length() < 1e-6);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

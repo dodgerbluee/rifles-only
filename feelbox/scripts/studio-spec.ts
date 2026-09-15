@@ -33,6 +33,8 @@ import {
   itemsInRect,
   defaultOrbit,
   GRID,
+  SITE_MIN,
+  SITE_ZONE,
   panDrag,
   toolFromCode,
   walkKeepsTool,
@@ -44,7 +46,7 @@ import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } fro
 import { SIDING_SPEC } from "../src/maps/siding.ts";
 import { HARBOR_SPEC } from "../src/maps/harbor.ts";
 import { LAYOUT_SPECS } from "../src/maps/index.ts";
-import { groundHeight } from "../src/world.ts";
+import { groundHeight, inSite, sitePads } from "../src/world.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -96,7 +98,16 @@ check("little crate sits on a cell center", little?.x === 4.25 && little?.z === 
 check("jump crate stamped", spec.cover?.some((c) => c.kind === "jumpCrate" && c.x === 6 && c.z === 4) === true);
 check("full crate stamped", spec.cover?.some((c) => c.kind === "fullCrate" && c.x === 8 && c.z === 4) === true);
 check("climb faces -z when looking north", spec.climbs?.[0]?.dir === "-z");
-check("site A snapped to a cell", spec.sites.find((s) => s.id === "loft")?.x === -10.25);
+const clickLoft = spec.sites.find((s) => s.id === "loft");
+const clickPads = clickLoft ? sitePads(clickLoft) : [];
+check(
+  "site A snapped to a cell",
+  clickPads.some((p) => Math.abs(p.x - -10.25) < 0.02 && Math.abs(p.z - 10.25) < 0.02 && Math.abs(p.w - GRID) < 0.02),
+);
+check(
+  "click A adds a cell and keeps the starter pad",
+  clickPads.length >= 2 && clickPads.some((p) => Math.abs(p.w - SITE_ZONE) < 0.02 && Math.abs(p.d - SITE_ZONE) < 0.02),
+);
 
 spec = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 });
 spec = place(spec, "crate", 4.1, 4.1);
@@ -229,6 +240,40 @@ check("building beats the area under the cursor", pickItem(nest, 0, 0)?.kind ===
 check("rename area", setAreaName(calls, 1, "Connector").areas?.[1]?.name === "Connector");
 const draggedCall = placeBuildingRect(blankSpec(), -4, -4, 4, 4, "area", 0, 0, "Banana");
 check("dragged call keeps its name", draggedCall.areas?.[0]?.name === "Banana" && (draggedCall.areas?.[0]?.w ?? 0) >= 8);
+check("A site is a drag rect", isRectTool("siteA") && isRectTool("siteB"));
+let oneA = blankSpec();
+oneA = { ...oneA, sites: oneA.sites.filter((s) => s.id !== "loft") };
+const draggedSite = placeBuildingRect(oneA, -4, -3, 4, 3, "siteA", 0);
+const loft = draggedSite.sites.find((s) => s.id === "loft");
+check("dragged A keeps the painted pad", (loft?.w ?? 0) >= 8 && (loft?.d ?? 0) >= 6, `w=${loft?.w} d=${loft?.d}`);
+const siteItem = { kind: "site" as const, i: draggedSite.sites.findIndex((s) => s.id === "loft") };
+const grownSite = resizeItem(draggedSite, siteItem, "e", (loft?.x ?? 0) + (loft?.w ?? 0) / 2 + 2, loft?.z ?? 0);
+check("knobs grow the A pad", (grownSite.sites.find((s) => s.id === "loft")?.w ?? 0) > (loft?.w ?? 0));
+const siteWorld = compileLayout(new THREE.Scene(), draggedSite);
+check("painted pad is plantable inside", inSite(siteWorld, "loft", 3.5, 2, 0));
+check("outside the pad is not plantable", !inSite(siteWorld, "loft", 8, 0, 0));
+const added = place(blankSpec(), "siteA", 0, 0);
+const addedWorld = compileLayout(new THREE.Scene(), added);
+check("click A adds a plantable cell", inSite(addedWorld, "loft", 0.25, 0.25, 0));
+check("click A keeps the starter pad plantable", inSite(addedWorld, "loft", -14, 8, 0));
+check("click A is at least SITE_MIN", sitePads(added.sites.find((s) => s.id === "loft")!).some((p) => p.w >= SITE_MIN && p.d >= SITE_MIN));
+
+let el = blankSpec();
+el = { ...el, sites: el.sites.filter((s) => s.id !== "loft") };
+el = placeBuildingRect(el, -3, -1, 3, 1, "siteA", 0);
+el = placeBuildingRect(el, -3, -1, -1, 5, "siteA", 0);
+const ellPads = sitePads(el.sites.find((s) => s.id === "loft")!);
+check("L site is more than one rect", ellPads.length >= 2, `pads=${ellPads.length}`);
+const ellWorld = compileLayout(new THREE.Scene(), el);
+check("L bar is plantable", inSite(ellWorld, "loft", 0, 0, 0));
+check("L stem is plantable", inSite(ellWorld, "loft", -2, 4, 0));
+check("L notch is not plantable", !inSite(ellWorld, "loft", 2, 2, 0));
+
+let punched = { ...blankSpec(), sites: blankSpec().sites.filter((s) => s.id !== "loft") };
+punched = place(punched, "siteA", 0, 0);
+punched = eraseNear(punched, 0, 0);
+check("erase punches the last site cell away", !punched.sites.some((s) => s.id === "loft"));
+check("site ghost is one grid square", ghostSize("siteA", GRID, GRID).join() === `${GRID},0.12,${GRID}`);
 check("harbor theme is dust", HARBOR_SPEC.theme === "dust");
 
 let floored = blankSpec();

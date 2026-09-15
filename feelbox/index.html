@@ -97,6 +97,7 @@
     <div id="start">
       <div id="home-chrome">
         <button type="button" id="home-studio">Map studio</button>
+        <button type="button" id="home-stats" hidden>Player Stats</button>
         <button type="button" id="open-settings" aria-label="Settings" title="Settings">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.81 8.48a.5.5 0 0 0 .12.64L4.96 10.7c-.04.31-.06.63-.06.94s.02.63.06.94L2.93 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.6.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.23.1.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
@@ -111,7 +112,16 @@
           <h1 class="title" id="start-title">Servers</h1>
           <p id="start-blurb" class="servers-lead">Pick a match. Ember plants the Wire. First to six.</p>
         </header>
-        <div id="server-list"></div>
+        <div class="server-table" aria-label="Server list">
+          <div class="server-cols" role="row">
+            <span class="s-name">Server Name</span>
+            <span class="s-map">Map</span>
+            <span class="s-pop">Players</span>
+            <span class="s-phase">Status</span>
+            <span class="s-join">Join</span>
+          </div>
+          <div id="server-list" role="list"></div>
+        </div>
       </section>
     </div>
 
@@ -128,6 +138,36 @@
             <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="stats-page" hidden>
+      <div class="stats-shell">
+        <button type="button" id="stats-back">Back to server list</button>
+        <header class="stats-hero">
+          <p class="kicker">Rifles Only</p>
+          <h1 class="title" id="stats-title">Player Stats</h1>
+          <p class="stats-lead" id="stats-lead">Your career across every Last Wire box on this lobby.</p>
+        </header>
+        <p class="stats-empty" id="stats-empty" hidden>Play a match while logged in to start a record.</p>
+        <div id="stats-body" hidden>
+          <section class="stats-panel" aria-labelledby="stats-overview-h">
+            <h2 class="stats-panel-title" id="stats-overview-h">Overview</h2>
+            <div class="stats-heroes" id="stats-overview"></div>
+          </section>
+          <section class="stats-panel" aria-labelledby="stats-combat-h">
+            <h2 class="stats-panel-title" id="stats-combat-h">Combat</h2>
+            <div class="stats-grid" id="stats-combat"></div>
+          </section>
+          <section class="stats-panel" aria-labelledby="stats-utility-h">
+            <h2 class="stats-panel-title" id="stats-utility-h">Utility &amp; Last Wire</h2>
+            <div class="stats-grid" id="stats-utility"></div>
+          </section>
+          <section class="stats-panel" aria-labelledby="stats-rivals-h">
+            <h2 class="stats-panel-title" id="stats-rivals-h">Rivals</h2>
+            <div id="stats-rivals"></div>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -154,16 +194,41 @@
     <div id="join-team" hidden>
       <p class="join-kicker">Joining <span id="join-who">the match</span></p>
       <p id="join-status" hidden></p>
-      <p class="join-ask">Pick a side</p>
+      <p class="join-ask">Pick a side · choose a rifle</p>
       <div id="join-team-pick" hidden></div>
       <div id="join-loadout" hidden>
+        <div id="gun-preview">
+          <div id="gun-preview-stage">
+            <canvas id="gun-preview-view"></canvas>
+            <div id="gun-preview-glass" aria-hidden="true">
+              <div class="gp-shade"></div>
+              <div class="gp-ring"></div>
+              <div class="gp-reticle">
+                <span class="gp-bar gp-bar-s"></span>
+                <span class="gp-bar gp-bar-l"></span>
+                <span class="gp-bar gp-bar-r"></span>
+              </div>
+            </div>
+          </div>
+          <p id="gun-preview-name">Kar98k</p>
+          <button type="button" id="gun-preview-mode">View sights</button>
+        </div>
         <p class="loadout-label">Primary</p>
         <div id="loadout-primary" class="loadout-row"></div>
         <p class="loadout-label">Secondary</p>
         <div id="loadout-secondary" class="loadout-row"></div>
-        <button type="button" id="loadout-go">Enter match</button>
       </div>
+      <button type="button" id="join-spec">Spectate</button>
       <button type="button" id="join-cancel">Back</button>
+    </div>
+
+    <div id="pause" hidden>
+      <div class="pause-panel">
+        <p class="pause-kicker">Menu</p>
+        <button type="button" id="pause-disconnect">Disconnect</button>
+        <button type="button" id="pause-team">Choose Team</button>
+        <button type="button" id="pause-settings">Settings</button>
+      </div>
     </div>
 
     <div id="settings" hidden>
@@ -186,50 +251,72 @@
             <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>
           </section>
 
-          <section class="settings-pane" id="settings-pane-model" data-settings-pane="model" aria-labelledby="settings-model-h" hidden>
-            <h2 class="settings-pane-title" id="settings-model-h">Model</h2>
-            <p class="home-lead">Character look. Drag the figure to turn — main view is detail, inset is full body.</p>
-            <div id="locker-look">
-              <p class="locker-label">Character</p>
-              <div id="locker-secs" class="locker-secs"></div>
-              <p id="locker-slot-hint" class="locker-slot-hint"></p>
-              <div id="locker-opts" class="locker-opts"></div>
-            </div>
-            <p class="locker-label">Preview side</p>
-            <div id="locker-sides">
-              <button type="button" data-side="ember">Ember</button>
-              <button type="button" data-side="stone">Stone</button>
-            </div>
-            <p class="locker-hint">Melee reach is the same on every option</p>
-            <div class="locker-footer">
-              <button type="button" id="locker-save-look">Save character</button>
+          <section class="settings-pane model-pane" id="settings-pane-model" data-settings-pane="model" aria-labelledby="settings-model-h" hidden>
+            <div class="model-layout">
+              <div class="model-catalog">
+                <h2 class="settings-pane-title" id="settings-model-h">Model</h2>
+                <p class="home-lead">Pick a part, then an option. Drag the detail view to turn — it stays sharp and still until you drag.</p>
+                <div id="locker-look">
+                  <div id="locker-secs" class="locker-secs" aria-label="Look parts"></div>
+                  <p id="locker-slot-hint" class="locker-slot-hint"></p>
+                  <div id="locker-opts" class="locker-opts" aria-label="Look options"></div>
+                </div>
+                <div class="model-catalog-foot">
+                  <p class="locker-label">Preview side</p>
+                  <div id="locker-sides">
+                    <button type="button" data-side="ember">Ember</button>
+                    <button type="button" data-side="stone">Stone</button>
+                  </div>
+                  <p class="locker-hint">Melee reach is the same on every option</p>
+                  <div class="locker-footer">
+                    <button type="button" id="locker-save-look">Save character</button>
+                  </div>
+                </div>
+              </div>
+              <div class="model-detail" id="locker-detail-stage" aria-label="Detail preview">
+                <span class="model-stage-label">Detail</span>
+              </div>
+              <div id="locker-pip" class="model-body" hidden aria-hidden="true">
+                <span class="locker-pip-label">Full body</span>
+              </div>
             </div>
           </section>
 
-          <section class="settings-pane" id="settings-pane-crosshair" data-settings-pane="crosshair" aria-labelledby="settings-crosshair-h" hidden>
+          <section class="settings-pane ch-pane" id="settings-pane-crosshair" data-settings-pane="crosshair" aria-labelledby="settings-crosshair-h" hidden>
             <h2 class="settings-pane-title" id="settings-crosshair-h">Crosshair</h2>
-            <p class="home-lead">Slots and shape. Preview updates live.</p>
-            <div id="ch-slots"></div>
-            <div id="ch-preview"><span class="ch-draw" id="ch-preview-draw"></span></div>
-            <label class="admin-select"><span>Style</span>
-              <select id="ch-style">
-                <option value="classic">Classic</option>
-                <option value="static">Classic Static</option>
-              </select>
-            </label>
-            <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
-            <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
-            <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
-            <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
-            <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
-            <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
-            <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
-            <div id="ch-colors"></div>
-            <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
-            <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
-            <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
-            <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
-            <button type="button" id="ch-reset">Reset slot</button>
+            <p class="home-lead">Slots and shape. The live preview updates as you change options.</p>
+            <div class="ch-layout">
+              <div class="ch-preview-col">
+                <div id="ch-preview" class="ch-preview-stage" aria-label="Live crosshair preview">
+                  <div class="ch-preview-field" aria-hidden="true"></div>
+                  <span class="ch-draw" id="ch-preview-draw"></span>
+                </div>
+                <p class="locker-label">Slots</p>
+                <div id="ch-slots"></div>
+              </div>
+              <div class="ch-controls-col">
+                <label class="admin-select"><span>Style</span>
+                  <select id="ch-style">
+                    <option value="classic">Classic</option>
+                    <option value="static">Classic Static</option>
+                  </select>
+                </label>
+                <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
+                <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
+                <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
+                <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
+                <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
+                <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
+                <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
+                <p class="locker-label">Color</p>
+                <div id="ch-colors"></div>
+                <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
+                <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
+                <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
+                <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
+                <button type="button" id="ch-reset">Reset slot</button>
+              </div>
+            </div>
           </section>
 
           <section class="settings-pane" id="settings-pane-controls" data-settings-pane="controls" aria-labelledby="settings-controls-h" hidden>
@@ -239,9 +326,6 @@
             <p class="admin-hint">Click the game to lock the mouse. Esc unlocks and opens Settings.</p>
           </section>
         </div>
-      </div>
-      <div id="locker-pip" hidden aria-hidden="true">
-        <span class="locker-pip-label">Full body</span>
       </div>
     </div>
 
@@ -404,6 +488,6 @@
       <div id="admin-knobs"></div>
       <p class="admin-hint">Unlimited bots. Cow: flaming, no weapons, explodes in 10s. ` or F10 closes.</p>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/boot.ts"></script>
   </body>
 </html>

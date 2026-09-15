@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { createAccountBook, defaultAccountPath, defaultDataDir, isPlayerKey, publicAccount } from "./accounts.mjs";
+import { boardSnippet, createCareerBook, defaultCareerPath, emptyCareer, publicCareer } from "./career.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -28,6 +29,8 @@ function mapFileName(id) {
 }
 const ACCOUNT_PATH = defaultAccountPath(ROOT);
 const accounts = createAccountBook(ACCOUNT_PATH);
+const career = createCareerBook(defaultCareerPath(ROOT));
+const INGEST_TOKEN = process.env.INGEST_TOKEN ?? "rifles-ingest";
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
@@ -72,6 +75,34 @@ function readJson(req, max = 16 * 1024) {
     });
     req.on("error", reject);
   });
+}
+
+function privateOrLocalIp(ip) {
+  const v = String(ip || "").replace(/^::ffff:/, "");
+  if (!v || v === "127.0.0.1" || v === "::1" || v === "localhost") return true;
+  if (/^10\./.test(v)) return true;
+  if (/^192\.168\./.test(v)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(v)) return true;
+  return false;
+}
+
+/** Shared token when set. Without a token, trust loopback + docker/LAN peers. */
+function ingestAllowed(req, body) {
+  const sent = String(req.headers["x-ingest-token"] || body?.token || "");
+  if (INGEST_TOKEN) return sent === INGEST_TOKEN;
+  return privateOrLocalIp(req.socket.remoteAddress);
+}
+
+function careerNames(line) {
+  const names = {};
+  if (!line?.vs) return names;
+  for (const key of Object.keys(line.vs)) {
+    if (!isPlayerKey(key)) continue;
+    const rec = accounts.get(key);
+    if (rec?.username) names[key] = rec.username;
+    else if (rec?.name) names[key] = rec.name;
+  }
+  return names;
 }
 
 function authPayload(rec) {
@@ -306,6 +337,51 @@ const server = http.createServer((req, res) => {
         json(res, 200, { ok: true, name: rec.name, look: rec.look });
       })
       .catch(() => json(res, 400, { ok: false }));
+    return;
+  }
+
+  if (url.pathname === "/api/career/ingest" && req.method === "POST") {
+    void readJson(req)
+      .then((body) => {
+        if (!ingestAllowed(req, body)) {
+          json(res, 401, { ok: false, reason: "auth" });
+          return;
+        }
+        const result = career.ingest(body);
+        if (!result.ok) {
+          json(res, 400, { ok: false, reason: result.reason });
+          return;
+        }
+        json(res, 200, { ok: true, duplicate: !!result.duplicate });
+      })
+      .catch(() => json(res, 400, { ok: false }));
+    return;
+  }
+
+  if (url.pathname === "/api/career" && req.method === "GET") {
+    const key = url.searchParams.get("key") ?? "";
+    if (!isPlayerKey(key)) {
+      json(res, 400, { ok: false });
+      return;
+    }
+    const rec = career.get(key) ?? emptyCareer(key);
+    json(res, 200, { ok: true, ...publicCareer(rec, careerNames(rec)) });
+    return;
+  }
+
+  if (url.pathname === "/api/career/board" && req.method === "GET") {
+    const keys = (url.searchParams.get("keys") ?? "")
+      .split(",")
+      .map((k) => k.trim())
+      .filter(isPlayerKey)
+      .slice(0, 16);
+    const rows = career.board(keys);
+    const out = {};
+    for (const key of keys) {
+      const snip = boardSnippet(rows[key]);
+      if (snip) out[key] = snip;
+    }
+    json(res, 200, { ok: true, board: out });
     return;
   }
 

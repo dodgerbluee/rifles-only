@@ -1,4 +1,5 @@
 import type { World } from "./world";
+import { siteCentroid, siteOutlineEdges, sitePads } from "./world";
 import { actorTag, displayName, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
@@ -261,17 +262,22 @@ function drawMinimap(
     mapCtx.fillRect(x, y, Math.max(1.2, w), Math.max(1.2, h));
   }
 
-  mapCtx.font = "bold 11px ui-sans-serif, system-ui";
+  mapCtx.font = "bold 14px ui-sans-serif, system-ui";
   mapCtx.textAlign = "center";
   mapCtx.textBaseline = "middle";
   for (const site of world.sites) {
-    const p = to(site.x, site.z);
-    mapCtx.fillStyle = "rgba(20,18,12,0.7)";
-    mapCtx.fillRect(p.x - 8, p.y - 8, 16, 16);
-    mapCtx.strokeStyle = "#e8d9a8";
-    mapCtx.lineWidth = 1.2;
-    mapCtx.strokeRect(p.x - 8, p.y - 8, 16, 16);
-    mapCtx.fillStyle = "#e8d9a8";
+    const pads = sitePads(site);
+    mapCtx.fillStyle = "rgba(212, 180, 90, 0.7)";
+    for (const e of siteOutlineEdges(pads)) {
+      const a = to(e.x - e.sx / 2, e.z + e.sz / 2);
+      const c = to(e.x + e.sx / 2, e.z - e.sz / 2);
+      const x = Math.min(a.x, c.x);
+      const y = Math.min(a.y, c.y);
+      mapCtx.fillRect(x, y, Math.max(1.2, Math.abs(c.x - a.x)), Math.max(1.2, Math.abs(c.y - a.y)));
+    }
+    const mid = siteCentroid(pads);
+    const p = to(mid.x, mid.z);
+    mapCtx.fillStyle = "#efe2b4";
     mapCtx.fillText(site.call, p.x, p.y + 0.5);
   }
 
@@ -415,6 +421,11 @@ export function renderScoreboard(
   m: Match,
   youId: number,
   pingOf: (id: number) => number | null,
+  extra: {
+    board?: Map<string, { kd: number }>;
+    youKey?: string;
+    vs?: (key: string) => { wins: number; losses: number } | null;
+  } = {},
 ) {
   const ember = document.querySelector("#board-ember")!;
   const stone = document.querySelector("#board-stone")!;
@@ -453,7 +464,12 @@ export function renderScoreboard(
     const ping = pingOf(s.id);
     const tags = s.alive ? "" : '<em class="board-dead">Down</em>';
     const pingCls = ping == null ? "" : ping > 110 ? " ping-bad" : ping > 70 ? " ping-ok" : " ping-good";
-    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span class="board-ping${pingCls}">${ping == null ? "—" : Math.round(ping)}</span>`;
+    const career = s.playerKey ? extra.board?.get(s.playerKey) : null;
+    const careerBit = career ? `<em class="board-career">${career.kd.toFixed(2)}</em>` : "";
+    const h2h =
+      extra.youKey && s.playerKey && s.playerKey !== extra.youKey ? extra.vs?.(s.playerKey) : null;
+    const h2hBit = h2h ? `<em class="board-h2h">${h2h.wins}–${h2h.losses}</em>` : "";
+    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${careerBit}${h2hBit}${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span class="board-ping${pingCls}">${ping == null ? "—" : Math.round(ping)}</span>`;
     return el;
   };
   for (const s of emberSlots.sort(rank)) ember.append(row(s));

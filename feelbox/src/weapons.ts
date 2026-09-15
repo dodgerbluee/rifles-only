@@ -333,6 +333,22 @@ export function makeKar98(): RifleView {
   return buildKar98(false);
 }
 
+/** Third-person held Kar — same mesh as the iron viewmodel, not a stub or scoped glass. */
+export function makeWorldKar() {
+  const view = makeKar98();
+  view.flash.visible = false;
+  view.clip.visible = false;
+  for (const round of view.rounds) round.visible = false;
+  const gun = view.root;
+  gun.position.set(0, 0, 0);
+  gun.rotation.set(0, 0, 0);
+  gun.scale.setScalar(1.25);
+  gun.traverse((o) => {
+    if (o instanceof THREE.Mesh) o.castShadow = true;
+  });
+  return gun;
+}
+
 /** Same rifle with a ZF tube. ADS looks into the 3D ocular; reticle is 2D. */
 export function makeKar98Scoped(): RifleView {
   return buildKar98(true);

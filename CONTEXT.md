@@ -21,7 +21,7 @@ Plant arms the Wire (five seconds). Cut disarms it (seven seconds).
 _Avoid_: Defuse, bomb plant, explode
 
 **Ice**:
-Site A. A two-storey cold store on the north quay. The plant sits on a gold pad on the hanging-rail floor. Street doors on the south wall; stairs inside.
+Site A. A two-storey cold store on the north quay. The plant sits inside a gold outline on the hanging-rail floor. Street doors on the south wall; stairs inside.
 _Avoid_: Bombsite A, palace, apps, Loft
 
 **Slip**:
