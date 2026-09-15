@@ -925,64 +925,81 @@ function mouthLine(head: THREE.Mesh, k: Kit, look: Appearance) {
 
 /* --------------------------------- hair -------------------------------- */
 
+/**
+ * Anything turned all the way round stops at the brow, or it draws a band
+ * across the face. Temples, ears and nape are carried by an open arc instead.
+ */
+const HAIRLINE = 0.056;
+const NAPE = 4.3;
+
 function dressHair(head: THREE.Mesh, id: HairId, k: Kit) {
   const hair = k.hair;
   if (id === "buzz") {
     const cap = turned(
-      [[0.002, 0.169], [0.064, 0.164], [0.116, 0.148], [0.152, 0.114], [0.17, 0.066], [0.176, 0.012], [0.174, -0.02]],
+      [[0.002, 0.169], [0.064, 0.164], [0.116, 0.148], [0.152, 0.114], [0.17, 0.08], [0.175, HAIRLINE]],
       hair,
-      16,
-      12,
+      14,
+      10,
     );
-    head.add(cap);
+    const nape = shellOf([[0.175, 0.058], [0.178, 0.02], [0.177, -0.016], [0.169, -0.042]], hair, BACK, NAPE, 12, 8);
+    head.add(cap, nape);
     return;
   }
   if (id === "crew") {
     const cap = turned(
-      [[0.002, 0.196], [0.082, 0.192], [0.132, 0.178], [0.162, 0.148], [0.176, 0.102], [0.181, 0.05], [0.179, 0.004]],
+      [[0.002, 0.196], [0.082, 0.192], [0.132, 0.178], [0.162, 0.148], [0.176, 0.102], [0.18, HAIRLINE]],
       hair,
-      16,
       14,
+      10,
     );
-    const sides = turned(
-      [[0.176, 0.006], [0.178, -0.018], [0.172, -0.042], [0.16, -0.058]],
+    const nape = shellOf(
+      [[0.18, 0.058], [0.181, 0.012], [0.175, -0.032], [0.162, -0.058]],
       mat(tint(HAIR_HEX.crew, 0.75), 0.9),
-      16,
+      BACK,
+      NAPE,
+      12,
       8,
     );
-    head.add(cap, sides);
+    head.add(cap, nape);
     return;
   }
   if (id === "mop") {
     const dome = turned(
-      [
-        [0.002, 0.206], [0.086, 0.201], [0.142, 0.186], [0.176, 0.152], [0.196, 0.094],
-        [0.202, 0.026], [0.198, -0.03], [0.186, -0.066], [0.166, -0.084],
-      ],
+      [[0.002, 0.206], [0.086, 0.201], [0.142, 0.186], [0.178, 0.152], [0.196, 0.1], [0.201, 0.06]],
       hair,
       14,
-      12,
+      11,
     );
-    const fringe = shellOf([[0.176, 0.05], [0.19, 0.0], [0.192, -0.042], [0.18, -0.07]], hair, FRONT, 2.9, 12, 8);
+    const curtain = shellOf(
+      [[0.201, 0.062], [0.206, 0.0], [0.202, -0.062], [0.188, -0.098]],
+      hair,
+      BACK,
+      4.5,
+      12,
+      10,
+    );
+    const fringe = shellOf([[0.18, 0.118], [0.194, 0.086], [0.198, 0.052], [0.19, 0.032]], hair, FRONT, 2.6, 12, 8);
     const tuftL = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.07, 3, 6), hair);
     tuftL.position.set(-0.15, -0.05, 0.09);
     tuftL.rotation.x = -0.4;
     const tuftR = tuftL.clone();
     tuftR.position.x = 0.15;
-    head.add(dome, fringe, tuftL, tuftR);
+    head.add(dome, curtain, fringe, tuftL, tuftR);
     return;
   }
   if (id === "fade") {
     const crown = turned(
-      [[0.002, 0.19], [0.07, 0.185], [0.118, 0.17], [0.15, 0.14], [0.163, 0.098], [0.166, 0.056]],
+      [[0.002, 0.19], [0.07, 0.185], [0.118, 0.17], [0.15, 0.14], [0.163, 0.1], [0.166, HAIRLINE]],
       hair,
-      16,
-      12,
+      14,
+      10,
     );
-    const faded = turned(
-      [[0.166, 0.058], [0.175, 0.02], [0.177, -0.016], [0.17, -0.05]],
+    const faded = shellOf(
+      [[0.167, 0.058], [0.176, 0.02], [0.178, -0.016], [0.171, -0.05]],
       mat(tint(HAIR_HEX.fade, 1.9), 0.92),
-      16,
+      BACK,
+      NAPE,
+      12,
       8,
     );
     const part = shellOf(
@@ -997,11 +1014,12 @@ function dressHair(head: THREE.Mesh, id: HairId, k: Kit) {
     return;
   }
   const cap = turned(
-    [[0.002, 0.174], [0.07, 0.17], [0.12, 0.154], [0.155, 0.12], [0.172, 0.07], [0.178, 0.014], [0.176, -0.026]],
+    [[0.002, 0.174], [0.07, 0.17], [0.12, 0.154], [0.155, 0.12], [0.172, 0.082], [0.177, HAIRLINE]],
     hair,
-    16,
-    12,
+    14,
+    10,
   );
+  const nape = shellOf([[0.177, 0.058], [0.18, 0.018], [0.176, -0.02], [0.166, -0.046]], hair, BACK, NAPE, 12, 8);
   const knot = turned([[0.002, 0.0], [0.04, 0.018], [0.058, 0.05], [0.05, 0.082], [0.002, 0.096]], hair, 12, 10);
   knot.position.set(0, 0.118, 0.098);
   knot.rotation.x = -0.75;
@@ -1009,7 +1027,7 @@ function dressHair(head: THREE.Mesh, id: HairId, k: Kit) {
   const band = new THREE.Mesh(new THREE.TorusGeometry(0.044, 0.01, 5, 10), mat(0x8a3420, 0.8));
   band.position.set(0, 0.128, 0.086);
   band.rotation.x = 0.85;
-  head.add(cap, knot, band);
+  head.add(cap, nape, knot, band);
 }
 
 /* -------------------------------- beards ------------------------------- */
@@ -1260,28 +1278,37 @@ function dressHat(head: THREE.Mesh, id: HatId, k: Kit, team: Team, cloth: THREE.
   }
   if (id === "watch") {
     const cap = turned(
-      [
-        [0.002, 0.2], [0.072, 0.196], [0.126, 0.18], [0.162, 0.146], [0.18, 0.096],
-        [0.188, 0.036], [0.19, -0.014], [0.203, -0.05], [0.208, -0.086], [0.196, -0.108], [0.184, -0.096],
-      ],
+      [[0.002, 0.202], [0.072, 0.198], [0.126, 0.182], [0.164, 0.148], [0.182, 0.104], [0.19, 0.058]],
       k.helm,
       14,
-      13,
+      11,
     );
+    const skirt = shellOf(
+      [[0.19, 0.06], [0.194, 0.0], [0.204, -0.048], [0.21, -0.088], [0.198, -0.11], [0.188, -0.094]],
+      k.helm,
+      BACK,
+      4.4,
+      12,
+      12,
+    );
+    const roll = shellOf([[0.19, 0.096], [0.203, 0.074], [0.206, 0.048], [0.194, 0.032]], k.helm, FRONT, 2.5, 12, 8);
+    cap.add(skirt, roll);
     head.add(cap);
-    cloth.push(cap);
+    cloth.push(cap, skirt, roll);
     return cap;
   }
   if (id === "ushanka") {
     const crown = turned(
-      [[0.002, 0.212], [0.086, 0.207], [0.142, 0.19], [0.178, 0.154], [0.196, 0.1], [0.202, 0.04], [0.2, -0.006]],
+      [[0.002, 0.212], [0.086, 0.207], [0.142, 0.19], [0.178, 0.154], [0.196, 0.104], [0.202, 0.052]],
       k.helm,
-      16,
       14,
+      11,
     );
     const fur = mat(0x6a5a48, 0.96);
-    const roll = shellOf([[0.19, 0.03], [0.216, -0.004], [0.218, -0.048], [0.196, -0.072]], fur, FRONT, 2.6, 12, 8);
-    crown.add(roll);
+    const nape = shellOf([[0.202, 0.054], [0.206, 0.012], [0.202, -0.028], [0.19, -0.05]], k.helm, BACK, 4.4, 12, 8);
+    const roll = shellOf([[0.196, 0.118], [0.222, 0.086], [0.224, 0.048], [0.202, 0.026]], fur, FRONT, 2.7, 12, 8);
+    crown.add(nape, roll);
+    cloth.push(nape);
     for (const side of [-1, 1] as const) {
       const flap = shellOf(
         [[0.196, 0.0], [0.208, -0.07], [0.202, -0.15], [0.18, -0.2]],
@@ -1304,10 +1331,10 @@ function dressHat(head: THREE.Mesh, id: HatId, k: Kit, team: Team, cloth: THREE.
   }
   if (id === "boonie") {
     const dome = turned(
-      [[0.002, 0.194], [0.078, 0.19], [0.13, 0.175], [0.164, 0.144], [0.182, 0.1], [0.19, 0.05], [0.19, 0.012]],
+      [[0.002, 0.198], [0.078, 0.194], [0.13, 0.18], [0.164, 0.15], [0.182, 0.11], [0.191, 0.062]],
       k.helm,
-      16,
       14,
+      11,
     );
     const brim = turned(
       [
@@ -1318,9 +1345,8 @@ function dressHat(head: THREE.Mesh, id: HatId, k: Kit, team: Team, cloth: THREE.
       14,
       12,
     );
-    brim.position.y = 0.022;
-    const band = turned([[0.19, 0.03], [0.198, 0.014], [0.196, -0.004], [0.188, -0.014]], mat(0x3a3428, 0.92), 16, 6);
-    band.position.y = 0.024;
+    brim.position.y = 0.072;
+    const band = turned([[0.191, 0.08], [0.199, 0.064], [0.197, 0.046], [0.189, 0.036]], mat(0x3a3428, 0.92), 14, 6);
     dome.add(brim, band);
     head.add(dome);
     cloth.push(dome, brim);
@@ -1328,22 +1354,22 @@ function dressHat(head: THREE.Mesh, id: HatId, k: Kit, team: Team, cloth: THREE.
   }
   const helm = turned(
     [
-      [0.002, 0.185], [0.062, 0.182], [0.118, 0.166], [0.157, 0.132], [0.182, 0.086],
-      [0.198, 0.03], [0.208, -0.028], [0.222, -0.07], [0.226, -0.092], [0.21, -0.096],
-      [0.198, -0.062], [0.19, -0.014], [0.182, 0.04],
+      [0.002, 0.19], [0.062, 0.188], [0.118, 0.176], [0.157, 0.152], [0.182, 0.12],
+      [0.198, 0.081], [0.209, 0.044], [0.224, 0.018], [0.228, 0.003], [0.212, 0.0],
+      [0.2, 0.024], [0.192, 0.059], [0.184, 0.096],
     ],
     k.helm,
     14,
     15,
   );
-  helm.position.y = 0.012;
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.203, 0.011, 5, 16), mat(teamTrim(team), 0.45, 0.2));
-  band.position.y = -0.03;
+  helm.position.y = 0.04;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.206, 0.011, 5, 16), mat(teamTrim(team), 0.45, 0.2));
+  band.position.y = 0.032;
   band.rotation.x = Math.PI * 0.5;
   helm.add(band);
   for (const side of [-1, 1] as const) {
     const strap = new THREE.Mesh(new THREE.CapsuleGeometry(0.008, 0.13, 2, 5), mat(0x3a3228, 0.9));
-    strap.position.set(side * 0.158, -0.13, -0.02);
+    strap.position.set(side * 0.162, -0.118, -0.02);
     strap.rotation.z = side * 0.22;
     helm.add(strap);
   }
