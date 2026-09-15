@@ -251,6 +251,7 @@ import {
 import { prefs, savePrefs } from "./prefs";
 import { bindCrosshairSettings } from "./crosshair";
 import { LOOK_GROUPS, LOOK_SLOTS, applyLookChoice, lookBodyCam, lookDetailCam, lookView, type LookSlot } from "./look";
+import { clearLookThumbs, lookOptionThumb } from "./look-thumbs";
 import { setStepVolume, tickSteps } from "./steps";
 import { createHoldSound, isActivelyCutting, tickHoldSound } from "./holdSound";
 import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
@@ -1374,20 +1375,22 @@ function commitLook() {
 
 function paintLocker() {
   const pip = document.querySelector<HTMLElement>("#locker-pip");
-  if (pip) pip.hidden = !(locker.on && settingsSection === "model");
+  if (pip) {
+    const show = locker.on && settingsSection === "model";
+    pip.hidden = !show;
+    pip.setAttribute("aria-hidden", show ? "false" : "true");
+  }
   document.body.classList.toggle("onboarding", false);
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
   const secs = document.querySelector("#locker-secs");
   if (secs && !secs.childElementCount) {
+    // One continuous list with light category labels — not three chunky sections.
     for (const group of LOOK_GROUPS) {
-      const wrap = document.createElement("div");
-      wrap.className = "locker-secs-group";
-      const title = document.createElement("p");
-      title.className = "locker-secs-title";
-      title.textContent = group.title;
-      const row = document.createElement("div");
-      row.className = "locker-secs-row";
+      const div = document.createElement("p");
+      div.className = "locker-secs-div";
+      div.textContent = group.title;
+      secs.append(div);
       for (const key of group.keys) {
         const slot = LOOK_SLOTS.find((s) => s.key === key);
         if (!slot) continue;
@@ -1400,10 +1403,8 @@ function paintLocker() {
           locker.slot = slot.key;
           paintLocker();
         });
-        row.append(b);
+        secs.append(b);
       }
-      wrap.append(title, row);
-      secs.append(wrap);
     }
   }
   secs?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
@@ -1428,10 +1429,18 @@ function paintLocker() {
     for (const opt of slot.options) {
       const b = document.createElement("button");
       b.type = "button";
+      b.className = "locker-opt-tile";
       b.dataset.slot = slot.key;
       b.dataset.id = opt.id;
       b.title = opt.blurb;
-      b.textContent = opt.label;
+      b.setAttribute("aria-label", opt.label);
+      const img = document.createElement("img");
+      img.alt = "";
+      img.draggable = false;
+      img.src = lookOptionThumb(locker.team, prefs.look, slot.key, opt.id);
+      const label = document.createElement("span");
+      label.textContent = opt.label;
+      b.append(img, label);
       b.classList.toggle("on", opt.id === prefs.look[slot.key]);
       b.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1455,7 +1464,7 @@ function paintLocker() {
   if (title) title.textContent = locker.on ? "Preferences" : "Home";
   if (blurb) {
     blurb.textContent = locker.on
-      ? "Detail view of the part you edit · inset shows the full body."
+      ? "Detail view of the part you edit · full body on the right."
       : "Pick a match. Ember plants the Wire. First to six.";
   }
 }
@@ -1509,42 +1518,68 @@ function applyLockerBodyCam() {
   lockerBodyCam.far = 80;
 }
 
-function renderLockerPip() {
-  const pip = document.querySelector<HTMLElement>("#locker-pip");
-  if (!pip || pip.hidden) return;
-  const rect = pip.getBoundingClientRect();
-  if (rect.width < 8 || rect.height < 8) return;
+function lockerStageRect(el: HTMLElement | null) {
+  if (!el || el.hidden) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return null;
   const dpr = renderer.getPixelRatio();
-  const x = Math.floor(rect.left * dpr);
-  const y = Math.floor((innerHeight - rect.bottom) * dpr);
-  const w = Math.max(1, Math.floor(rect.width * dpr));
-  const h = Math.max(1, Math.floor(rect.height * dpr));
-  applyLockerBodyCam();
-  lockerBodyCam.aspect = rect.width / rect.height;
-  lockerBodyCam.updateProjectionMatrix();
+  return {
+    cssW: rect.width,
+    cssH: rect.height,
+    x: Math.floor(rect.left * dpr),
+    y: Math.floor((innerHeight - rect.bottom) * dpr),
+    w: Math.max(1, Math.floor(rect.width * dpr)),
+    h: Math.max(1, Math.floor(rect.height * dpr)),
+  };
+}
+
+function renderLockerStage(
+  el: HTMLElement | null,
+  cam: THREE.PerspectiveCamera,
+  place: () => void,
+) {
+  const stage = lockerStageRect(el);
+  if (!stage) return;
+  place();
+  cam.aspect = stage.cssW / stage.cssH;
+  cam.updateProjectionMatrix();
   const full = new THREE.Vector2();
   renderer.getDrawingBufferSize(full);
   renderer.clearDepth();
   renderer.setScissorTest(true);
-  renderer.setScissor(x, y, w, h);
-  renderer.setViewport(x, y, w, h);
-  renderer.render(scene, lockerBodyCam);
+  renderer.setScissor(stage.x, stage.y, stage.w, stage.h);
+  renderer.setViewport(stage.x, stage.y, stage.w, stage.h);
+  renderer.render(scene, cam);
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, full.x, full.y);
 }
 
+function renderLockerDetail() {
+  renderLockerStage(document.querySelector("#locker-detail-stage"), camera, applyLockerCam);
+}
+
+function renderLockerPip() {
+  renderLockerStage(document.querySelector("#locker-pip"), lockerBodyCam, applyLockerBodyCam);
+}
+
 function rebuildLocker() {
   wipeMapMeshes();
-  scene.background = new THREE.Color(0x121410);
+  scene.background = new THREE.Color(0x14160f);
   scene.fog = null;
-  scene.add(new THREE.HemisphereLight(0xc8c0b4, 0x2a2824, 1));
-  const sun = new THREE.DirectionalLight(0xe8e0d4, 0.9);
-  sun.position.set(3.4, 9, 5);
+  scene.add(new THREE.HemisphereLight(0xe4dcc8, 0x242018, 1.45));
+  const sun = new THREE.DirectionalLight(0xfff4e4, 1.35);
+  sun.position.set(3.2, 9.5, 4.6);
   sun.castShadow = true;
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xb0c0d4, 0.55);
+  fill.position.set(-4, 3.4, -2.5);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xd8c8a8, 0.35);
+  rim.position.set(0.5, 2.2, -5);
+  scene.add(rim);
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(7, 40),
-    new THREE.MeshStandardMaterial({ color: 0x1a1c16, roughness: 0.92, metalness: 0.04 }),
+    new THREE.MeshStandardMaterial({ color: 0x1a1c14, roughness: 0.9, metalness: 0.03 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -1579,6 +1614,10 @@ function showSettingsSection(section: typeof settingsSection) {
       locker.on = true;
       locker.dragging = false;
       locker.team = prefs.team ?? "ember";
+      // 3/4 view, locked until drag — no auto-spin haze.
+      locker.phi = Math.PI * 0.92;
+      locker.theta = 1.02;
+      locker.zoom = 1;
       rebuildLocker();
     }
     paintLocker();
@@ -2100,6 +2139,7 @@ paintStatsChrome();
     if (side !== "ember" && side !== "stone") return;
     e.stopPropagation();
     locker.team = side;
+    clearLookThumbs();
     dressLockerPawn();
     paintLocker();
   });
@@ -5639,7 +5679,7 @@ function frame(now: number) {
     locker.dist += (want.dist - locker.dist) * ease;
     locker.aimY += (want.aimY - locker.aimY) * ease;
     locker.fov += (want.fov - locker.fov) * ease;
-    if (!locker.dragging) locker.phi += dt * 0.2;
+    // Stable detail view — only turn when the player drags.
     applyLockerCam();
   } else if (studio.on) {
     if (studio.drag?.mode !== "peg") studioPeg.visible = false;
@@ -5886,8 +5926,17 @@ function frame(now: number) {
     lockerPawn.visible = false;
   }
 
-  renderer.render(scene, camera);
-  if (locker.on) renderLockerPip();
+  if (locker.on) {
+    const prevExposure = renderer.toneMappingExposure;
+    renderer.toneMappingExposure = 1.18;
+    renderer.setClearColor(0x0c0e0a, 1);
+    renderer.clear();
+    renderLockerDetail();
+    renderLockerPip();
+    renderer.toneMappingExposure = prevExposure;
+  } else {
+    renderer.render(scene, camera);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

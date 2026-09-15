@@ -217,50 +217,72 @@
             <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>
           </section>
 
-          <section class="settings-pane" id="settings-pane-model" data-settings-pane="model" aria-labelledby="settings-model-h" hidden>
-            <h2 class="settings-pane-title" id="settings-model-h">Model</h2>
-            <p class="home-lead">Character look. Drag the figure to turn — main view is detail, inset is full body.</p>
-            <div id="locker-look">
-              <p class="locker-label">Character</p>
-              <div id="locker-secs" class="locker-secs"></div>
-              <p id="locker-slot-hint" class="locker-slot-hint"></p>
-              <div id="locker-opts" class="locker-opts"></div>
-            </div>
-            <p class="locker-label">Preview side</p>
-            <div id="locker-sides">
-              <button type="button" data-side="ember">Ember</button>
-              <button type="button" data-side="stone">Stone</button>
-            </div>
-            <p class="locker-hint">Melee reach is the same on every option</p>
-            <div class="locker-footer">
-              <button type="button" id="locker-save-look">Save character</button>
+          <section class="settings-pane model-pane" id="settings-pane-model" data-settings-pane="model" aria-labelledby="settings-model-h" hidden>
+            <div class="model-layout">
+              <div class="model-catalog">
+                <h2 class="settings-pane-title" id="settings-model-h">Model</h2>
+                <p class="home-lead">Pick a part, then an option. Drag the detail view to turn — it stays sharp and still until you drag.</p>
+                <div id="locker-look">
+                  <div id="locker-secs" class="locker-secs" aria-label="Look parts"></div>
+                  <p id="locker-slot-hint" class="locker-slot-hint"></p>
+                  <div id="locker-opts" class="locker-opts" aria-label="Look options"></div>
+                </div>
+                <div class="model-catalog-foot">
+                  <p class="locker-label">Preview side</p>
+                  <div id="locker-sides">
+                    <button type="button" data-side="ember">Ember</button>
+                    <button type="button" data-side="stone">Stone</button>
+                  </div>
+                  <p class="locker-hint">Melee reach is the same on every option</p>
+                  <div class="locker-footer">
+                    <button type="button" id="locker-save-look">Save character</button>
+                  </div>
+                </div>
+              </div>
+              <div class="model-detail" id="locker-detail-stage" aria-label="Detail preview">
+                <span class="model-stage-label">Detail</span>
+              </div>
+              <div id="locker-pip" class="model-body" hidden aria-hidden="true">
+                <span class="locker-pip-label">Full body</span>
+              </div>
             </div>
           </section>
 
-          <section class="settings-pane" id="settings-pane-crosshair" data-settings-pane="crosshair" aria-labelledby="settings-crosshair-h" hidden>
+          <section class="settings-pane ch-pane" id="settings-pane-crosshair" data-settings-pane="crosshair" aria-labelledby="settings-crosshair-h" hidden>
             <h2 class="settings-pane-title" id="settings-crosshair-h">Crosshair</h2>
-            <p class="home-lead">Slots and shape. Preview updates live.</p>
-            <div id="ch-slots"></div>
-            <div id="ch-preview"><span class="ch-draw" id="ch-preview-draw"></span></div>
-            <label class="admin-select"><span>Style</span>
-              <select id="ch-style">
-                <option value="classic">Classic</option>
-                <option value="static">Classic Static</option>
-              </select>
-            </label>
-            <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
-            <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
-            <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
-            <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
-            <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
-            <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
-            <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
-            <div id="ch-colors"></div>
-            <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
-            <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
-            <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
-            <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
-            <button type="button" id="ch-reset">Reset slot</button>
+            <p class="home-lead">Slots and shape. The live preview updates as you change options.</p>
+            <div class="ch-layout">
+              <div class="ch-preview-col">
+                <div id="ch-preview" class="ch-preview-stage" aria-label="Live crosshair preview">
+                  <div class="ch-preview-field" aria-hidden="true"></div>
+                  <span class="ch-draw" id="ch-preview-draw"></span>
+                </div>
+                <p class="locker-label">Slots</p>
+                <div id="ch-slots"></div>
+              </div>
+              <div class="ch-controls-col">
+                <label class="admin-select"><span>Style</span>
+                  <select id="ch-style">
+                    <option value="classic">Classic</option>
+                    <option value="static">Classic Static</option>
+                  </select>
+                </label>
+                <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
+                <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
+                <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
+                <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
+                <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
+                <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
+                <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
+                <p class="locker-label">Color</p>
+                <div id="ch-colors"></div>
+                <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
+                <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
+                <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
+                <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
+                <button type="button" id="ch-reset">Reset slot</button>
+              </div>
+            </div>
           </section>
 
           <section class="settings-pane" id="settings-pane-controls" data-settings-pane="controls" aria-labelledby="settings-controls-h" hidden>
@@ -270,9 +292,6 @@
             <p class="admin-hint">Click the game to lock the mouse. Esc unlocks and opens Settings.</p>
           </section>
         </div>
-      </div>
-      <div id="locker-pip" hidden aria-hidden="true">
-        <span class="locker-pip-label">Full body</span>
       </div>
     </div>
 

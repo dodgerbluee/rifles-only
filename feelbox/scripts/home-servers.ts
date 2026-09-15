@@ -32,6 +32,9 @@ check("crosshair is its own section", html.includes('data-settings-section="cros
 check("controls section exists", html.includes('data-settings-section="controls"'));
 check("name lives under player settings", html.includes('id="locker-name"') && html.indexOf('settings-pane-player') < html.indexOf('id="locker-name"'));
 check("locker pip still exists", html.includes('id="locker-pip"'));
+check("model uses full-page layout", html.includes('class="model-layout"') && html.includes('class="model-catalog"') && html.includes('id="locker-detail-stage"'));
+check("crosshair has a live preview stage", html.includes('id="ch-preview"') && html.includes('ch-preview-stage') && html.includes('id="ch-preview-draw"'));
+check("model shell leaves detail view clear", /body\.settings-model\s+\.settings-shell[\s\S]*?background:\s*transparent/.test(css));
 check("html starts the lobby before the game module", html.includes('src="/src/boot.ts"'));
 
 if (failed) {
