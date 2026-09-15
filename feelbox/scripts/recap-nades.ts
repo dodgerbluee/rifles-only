@@ -2,7 +2,7 @@
  * Best-play must hold for the recap, and thrown nades must show up in snapshots.
  */
 import { createSim } from "../src/sim.ts";
-import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
+import { BESTPLAY_HOLD, claimSlot, createMatch, recapHoldFromReel, tickMatch, trySkipBestPlay } from "../src/match.ts";
 import {
   FAST_RATE,
   LAST_POST,
@@ -72,6 +72,10 @@ duo.phase = "bestplay";
 duo.endT = BESTPLAY_HOLD;
 check("two humans stay on the recap", !trySkipBestPlay(duo) && duo.phase === "bestplay", `phase=${duo.phase}`);
 
+check("reel wall shorter than the 22s fallback ends Best Play with the reel", recapHoldFromReel(8) < 9 && recapHoldFromReel(8) > 8);
+check("long reels still cannot exceed the fallback hold", recapHoldFromReel(40) === BESTPLAY_HOLD);
+check("empty reel still gets a short hold, not the 22s leftover", recapHoldFromReel(0) <= 2.4);
+
 const youId = 3;
 const botId = 8;
 check("offline recap drives bot meshes", reelDrivesBotMeshes("offline"));
@@ -87,6 +91,12 @@ for (let i = 0; i < 4; i++) sim.tick(1 / 30);
 const seated = sim.snapshot();
 const me = seated.pawns.find((p) => p.netId === 1);
 check("joined pawn exists", !!me);
+const botGuns = seated.pawns.filter((p) => p.netId === 0);
+check(
+  "dedicated bot snapshots use the iron Kar, never scoped glass",
+  botGuns.length > 0 && botGuns.every((p) => p.weapon === "kar"),
+  `weapons=${botGuns.map((p) => p.weapon).join(",")}`,
+);
 if (!me) {
   console.error("cannot throw without a seated pawn");
   process.exit(1);
@@ -222,6 +232,25 @@ check("multi-kill reel wall time covers the last kill hang", wall > LAST_POST + 
 const cam = killcamWindow(killsTape, 4, 8);
 check("killcam follows the killer", cam.killerId === 2);
 check("killcam lasts 3-5 seconds", cam.end - cam.start >= 3 && cam.end - cam.start <= 5, `span=${(cam.end - cam.start).toFixed(2)}`);
+
+const leftover = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 2, botSkill: "easy" });
+leftover.join(1, "Reed", "ember");
+leftover.join(2, "Pal", "stone");
+for (let i = 0; i < 40; i++) leftover.tick(0.05);
+check("duo reached live", leftover.snapshot().phase === "live", `phase=${leftover.snapshot().phase}`);
+for (const p of leftover.snapshot().pawns) {
+  if (p.team === "ember") leftover.slay(p.id);
+}
+leftover.tick(0.05);
+for (let i = 0; i < 120; i++) leftover.tick(0.05);
+check("duo entered bestplay", leftover.snapshot().phase === "bestplay", `phase=${leftover.snapshot().phase}`);
+leftover.event(1, { kind: "skipRecap" });
+leftover.tick(0.05);
+check(
+  "reel-end skipRecap concludes even with two humans",
+  leftover.snapshot().phase !== "bestplay",
+  `phase=${leftover.snapshot().phase}`,
+);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

@@ -26,7 +26,6 @@ import {
   slotById,
   slotTag,
   tickMatch,
-  trySkipBestPlay,
   type SiteId,
   type Team,
 } from "./match";
@@ -78,7 +77,7 @@ import {
 import { line, noteHit, noteKill, resetStats } from "./stats";
 import { meleeReach, tuning } from "./tuning";
 import { RIFLES, rifleFromWeapon, type RifleId } from "./weapons";
-import { PRIMARY_IDS } from "./loadout";
+import { botRifle } from "./loadout";
 
 const FRAG_R = 6.5;
 const HP = 100;
@@ -318,7 +317,7 @@ export function createSim(opts?: {
       return undefined;
     }
     const bot = bots.find((b) => b.id === id);
-    if (bot) return PRIMARY_IDS[Math.abs(bot.id) % PRIMARY_IDS.length];
+    if (bot) return botRifle(bot.id);
     return undefined;
   }
 
@@ -730,7 +729,7 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "skipRecap") {
-        trySkipBestPlay(match);
+        concludeBestPlay(match);
         return;
       }
       if (event.kind === "shot") {
@@ -808,7 +807,7 @@ export function createSim(opts?: {
             pitch: b.lookPitch,
             hp: b.hp,
             alive: b.hp > 0,
-            weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
+            weapon: botRifle(b.id),
             ads: b.aim && b.stunUntil <= time && !isCowed(b.id),
             crouch: false,
             prone: false,

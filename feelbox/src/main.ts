@@ -67,6 +67,7 @@ import {
   roundFrozen,
   slotById,
   tickMatch,
+  recapHoldFromReel,
   trySkipBestPlay,
   vacateSlot,
   waitingForPlayers,
@@ -208,6 +209,7 @@ import {
   GUN_BLURB,
   PRIMARY_IDS,
   bindKeys,
+  botRifle,
   gunName,
   hudWeaponLine,
   parseLoadout,
@@ -3794,10 +3796,21 @@ function collectPoses(): Pose[] {
         pitch: self ? pitch : p.pitch,
         eye: self ? eyeOff() : 1.52,
         alive: self ? alive : p.alive,
-        weapon: pawnPoseWeapon(self ? (weapon === "rifle" ? rifleKind : weapon) : p.weapon),
+        weapon: pawnPoseWeapon(
+          self ? (weapon === "rifle" ? rifleKind : weapon) : p.netId === 0 ? botRifle(p.id) : p.weapon,
+        ),
         ads: self ? ads && weapon === "rifle" : p.ads,
         bash: self && bashT > 0 ? 1 - bashT / 0.42 : 0,
-        fov: self && ads && weapon === "rifle" ? RIFLES[rifleKind].adsFov : p.ads ? 68 : 90,
+        fov:
+          self && ads && weapon === "rifle"
+            ? RIFLES[rifleKind].adsFov
+            : p.netId === 0
+              ? p.ads
+                ? RIFLES.kar.adsFov
+                : 90
+              : p.ads
+                ? 68
+                : 90,
         kick: self ? gunKickZ : 0,
         punchP: self ? punchP : 0,
         punchY: self ? punchY : 0,
@@ -3835,10 +3848,10 @@ function collectPoses(): Pose[] {
       pitch: b.lookPitch,
       eye: 1.52,
       alive: b.hp > 0,
-      weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
+      weapon: botRifle(b.id),
       ads: b.aim,
       bash: 0,
-      fov: b.aim ? 68 : 90,
+      fov: b.aim ? RIFLES.kar.adsFov : 90,
       kick: b.flash > 0.4 ? 0.06 : 0,
       punchP: b.flash > 0.4 ? 0.8 : 0,
       punchY: 0,
@@ -4044,16 +4057,16 @@ function startReel() {
 
 function holdBestPlay(wall: number) {
   if (net.role === "client" || match.phase !== "bestplay") return;
-  match.endT = Math.max(match.endT, wall + 0.85);
+  match.endT = recapHoldFromReel(wall, match.endT);
 }
 
 function trySkipReel() {
   const solo = humanCount(match) <= 1;
   if (reel && time < reel.skipAt && !solo) return;
   if (!reel && !solo) return;
-  if (solo) net.sendEvent({ kind: "skipRecap" });
   if (reel) stopReel();
   else if (net.role !== "client") trySkipBestPlay(match);
+  else net.sendEvent({ kind: "skipRecap" });
 }
 
 function stopReel() {
@@ -4073,9 +4086,12 @@ function stopReel() {
     r.root.visible = true;
   }
   for (const g of clientPawns.values()) setPawnHeldVisible(g, true);
+  const recapOpen = match.phase === "bestplay";
   reel = null;
   reelPlayed = true;
-  if (net.role !== "client" && match.phase === "bestplay") concludeBestPlay(match);
+  if (!recapOpen) return;
+  if (net.role !== "client") concludeBestPlay(match);
+  else net.sendEvent({ kind: "skipRecap" });
 }
 
 function applyViewSample(t: number, viewId: number, snap: boolean) {

@@ -13,6 +13,7 @@ import {
   type ShirtId,
   type ShoesId,
 } from "./look";
+import { makeWorldKar } from "./weapons";
 
 export { parseLook, packLook, resolveLook, lookFor, looksEqual, type Appearance } from "./look";
 
@@ -234,23 +235,6 @@ function stamp(parts: PawnParts, team: Team, botId?: number) {
   for (const m of parts.hits) mark(m, "body");
 }
 
-function makeWorldRifle() {
-  const rifle = new THREE.Group();
-  const wood = mat(0x6b4a28, 0.68, 0.08);
-  const steel = mat(0x4a5258, 0.38, 0.48);
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.015, 0.58, 7), steel);
-  barrel.rotation.x = Math.PI / 2;
-  barrel.position.set(0, 0.012, -0.16);
-  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.042, 0.22), wood);
-  receiver.position.set(0, 0.002, 0.1);
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.058, 0.2), wood);
-  stock.position.set(0, -0.012, 0.28);
-  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.05, 0.05), steel);
-  mag.position.set(0, -0.028, 0.02);
-  rifle.add(barrel, receiver, stock, mag);
-  return rifle;
-}
-
 function classicPawn(team: Team, look: Appearance): PawnParts {
   const color = teamCloth(team);
   const body = new THREE.Mesh(
@@ -265,7 +249,7 @@ function classicPawn(team: Team, look: Appearance): PawnParts {
     mat(teamHelm(team), 0.6, 0.15),
   );
   helm.position.y = 1.74;
-  const rifle = makeWorldRifle();
+  const rifle = makeWorldKar();
   rifle.position.set(0.22, 1.18, -0.3);
   return { body, head, helm, rifle, cloth: [body], hits: [] };
 }
@@ -351,7 +335,7 @@ function limbsPawn(team: Team, look: Appearance): PawnParts {
   const helm = dressHat(head, look.hat, k, team, cloth);
   dressAccessory(head, look.accessory, k, team, cloth);
 
-  const rifle = makeWorldRifle();
+  const rifle = makeWorldKar();
   rifle.position.set(0.12, 1.14, -0.3);
   rifle.rotation.x = 0.06;
   rifle.rotation.y = 0.1;
