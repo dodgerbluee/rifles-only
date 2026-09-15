@@ -5,6 +5,7 @@ import {
   plantingTeam,
   pickupWire,
   plantWire,
+  inWirePickupReach,
   interruptPlant,
   slotById,
   watchingTeam,
@@ -298,8 +299,9 @@ export function updateBots(
     }
 
     if (match.wire.mode === "ground" && b.team === plant) {
-      const d = Math.hypot(b.x - match.wire.x, b.z - match.wire.z);
-      if (d < 1.2 && Math.abs(b.y - match.wire.y) < 1.8) pickupWire(match, b.id, b.team);
+      if (inWirePickupReach(b.x, b.y, b.z, match.wire.x, match.wire.y, match.wire.z)) {
+        pickupWire(match, b.id, b.team);
+      }
     }
 
     const enemy = nearestVisible(b, fighters, colliders, smokeBlocks);

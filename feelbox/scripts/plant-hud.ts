@@ -13,6 +13,8 @@ import {
   formatTime,
   interruptPlant,
   isPlanting,
+  isWireRooted,
+  inWirePickupReach,
   markDead,
   plantedTag,
   plantingTeam,
@@ -204,6 +206,96 @@ check(
 );
 check("sim pickup input has no KeyF", !noF.keys.includes("KeyF") && noF.use === false);
 
+const step = createMatch({ claimLocal: true });
+step.phase = "live";
+step.timeLeft = 90;
+step.wire.mode = "ground";
+step.wire.carrierId = null;
+step.wire.x = 0;
+step.wire.y = 0.2;
+step.wire.z = 0;
+tickMatch(step, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  actor: { id: 0, team: "ember", x: 1.7, y: 0.2, z: 0.2, alive: true },
+});
+check(
+  "planter a step away still picks up",
+  step.wire.mode === "carried" && step.wire.carrierId === 0,
+  `mode=${step.wire.mode} carrier=${step.wire.carrierId}`,
+);
+
+const staleSeat = createMatch({ claimLocal: true });
+staleSeat.phase = "live";
+staleSeat.timeLeft = 90;
+const selfSeat = staleSeat.slots.find((s) => s.id === 0);
+if (selfSeat) selfSeat.alive = false;
+staleSeat.wire.mode = "ground";
+staleSeat.wire.carrierId = null;
+staleSeat.wire.x = 0.4;
+staleSeat.wire.y = 0.2;
+staleSeat.wire.z = 0;
+tickMatch(staleSeat, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  actor: { id: 0, team: "ember", x: 0.4, y: 0.2, z: 0.2, alive: true },
+});
+check(
+  "living planter still picks up with a stale dead seat",
+  staleSeat.wire.mode === "carried" && staleSeat.wire.carrierId === 0,
+  `mode=${staleSeat.wire.mode}`,
+);
+
+const watchGrab = createMatch({ claimLocal: true });
+watchGrab.phase = "live";
+watchGrab.timeLeft = 90;
+watchGrab.wire.mode = "ground";
+watchGrab.wire.carrierId = null;
+watchGrab.wire.x = 0;
+watchGrab.wire.y = 0.2;
+watchGrab.wire.z = 0;
+tickMatch(watchGrab, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  actor: { id: 5, team: "stone", x: 0.1, y: 0.2, z: 0.1, alive: true },
+});
+check("watchers cannot pick up the grounded Wire", watchGrab.wire.mode === "ground", `mode=${watchGrab.wire.mode}`);
+
+const stacked = createMatch({ claimLocal: true });
+stacked.phase = "live";
+stacked.timeLeft = 90;
+stacked.wire.mode = "ground";
+stacked.wire.carrierId = null;
+stacked.wire.x = 0;
+stacked.wire.y = 0.2;
+stacked.wire.z = 0;
+tickMatch(stacked, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  actor: { id: 0, team: "ember", x: 0.2, y: 3.4, z: 0.2, alive: true },
+});
+check("other floor does not steal the Wire", stacked.wire.mode === "ground", `mode=${stacked.wire.mode}`);
+check("reach helper rejects a storey of height", !inWirePickupReach(0.2, 3.4, 0.2, 0, 0.2, 0));
+
+const freezeGrab = createMatch({ claimLocal: true });
+freezeGrab.phase = "freeze";
+freezeGrab.timeLeft = 2;
+freezeGrab.wire.mode = "ground";
+freezeGrab.wire.carrierId = null;
+freezeGrab.wire.x = 1;
+freezeGrab.wire.y = 0.2;
+freezeGrab.wire.z = 1;
+tickMatch(freezeGrab, 0.05, {
+  ...dummy,
+  holdingUse: false,
+  actor: { id: 0, team: "ember", x: 1.1, y: 0.2, z: 1.1, alive: true },
+});
+check(
+  "freeze still lets planters recover the Wire",
+  freezeGrab.wire.mode === "carried" && freezeGrab.wire.carrierId === 0,
+  `mode=${freezeGrab.wire.mode}`,
+);
+
 const wireAt = { wx: -9, wy: 3.4, wz: 20.5 };
 const cutter = {
   phase: "planted",
@@ -226,6 +318,28 @@ check("release use is not actively cutting", !isActivelyCutting({ ...cutter, hol
 check("walk away is not actively cutting", !isActivelyCutting({ ...cutter, x: 4, z: 0 }));
 check("dead is not actively cutting", !isActivelyCutting({ ...cutter, alive: false }));
 check("round not planted is not actively cutting", !isActivelyCutting({ ...cutter, phase: "live" }));
+
+const cutRoot = createMatch({ claimLocal: true });
+cutRoot.phase = "planted";
+cutRoot.wire.mode = "planted";
+cutRoot.wire.x = -9;
+cutRoot.wire.y = 3.4;
+cutRoot.wire.z = 20.5;
+const rootedCutter = {
+  id: 5,
+  team: watchingTeam(cutRoot),
+  x: -9,
+  y: 3.4,
+  z: 20.5,
+  alive: true,
+  holdingUse: true,
+};
+check("cutting roots movement", isWireRooted(cutRoot, rootedCutter, dummy.inSite));
+check("release F unroots the cut", !isWireRooted(cutRoot, { ...rootedCutter, holdingUse: false }, dummy.inSite));
+check(
+  "planters are not rooted by a cut they are not holding",
+  !isWireRooted(cutRoot, { ...rootedCutter, team: plantingTeam(cutRoot) }, dummy.inSite),
+);
 
 const sound = createHoldSound();
 let starts = 0;
