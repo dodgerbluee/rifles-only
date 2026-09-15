@@ -215,22 +215,19 @@ function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
 }
 
 /**
- * CoD1 iron picture — faceted barrel in the face, dark bore, T-ears on the band.
- * Not a sniper tube.
+ * Open-tangent Kar picture: the eye sits over the bolt shroud, not in a tube.
  */
-function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material) {
+function karIronSight(root: THREE.Group, axisY: number, _steel: THREE.Material) {
   const g = new THREE.Group();
-  g.userData.karAdsCup = true;
+  g.userData.karIronSight = true;
   g.visible = false;
   root.add(g);
 
   const segs = 8;
-  const nearR = 0.04;
-  const wall = 0.011;
-  const hole = 0.0038;
+  const nearR = 0.039;
   const faceZ = 0.024;
-  const eye = 0.078;
-  const lookLift = 0.01;
+  const eye = 0.1;
+  const lookLift = 0.013;
   const blued = new THREE.MeshStandardMaterial({
     color: 0x2a2c26,
     roughness: 0.55,
@@ -261,34 +258,25 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
     metalness: 0.02,
     flatShading: true,
   });
-  const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
+  // Broad bolt sleeve and barrel leave the receiver low in the sight picture.
+  place(g, cylZ(nearR, 0.05, blued, segs), 0, axisY - 0.012, faceZ - 0.022);
+  place(g, cylZ(0.031, 0.035, worn, segs), 0, axisY - 0.012, faceZ - 0.06);
+  place(g, cylZ(0.022, 0.18, blued, segs), 0, axisY + 0.002, faceZ - 0.15);
 
-  const nearLen = 0.07;
-  const inner = nearR - wall;
-  place(g, pipeZ(nearR, nearLen, blued, segs), 0, axisY, faceZ - nearLen * 0.5);
-  place(g, cylZ(0.033, 0.038, worn, segs), 0, axisY, faceZ - nearLen - 0.012);
-  place(g, cylZ(0.027, 0.034, blued, segs), 0, axisY, faceZ - nearLen - 0.046);
-  place(g, cylZ(0.021, 0.036, worn, segs), 0, axisY, faceZ - nearLen - 0.08);
-
-  const lip = ringZ(inner, nearR, blued, segs);
-  lip.userData.karBarrelFace = true;
-  place(g, lip, 0, axisY, faceZ);
-  const plug = ringZ(hole, inner * 0.98, dark, segs);
-  place(g, plug, 0, axisY, faceZ - 0.028);
-
-  const earH = 0.022;
-  const earZ = faceZ - 0.012;
-  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.018), blued);
-  leftEar.position.set(-0.01, axisY + nearR + earH * 0.5, earZ);
+  // Tangent rear: an open notch above the shroud, never a scope ocular.
+  const earH = 0.03;
+  const earZ = faceZ - 0.005;
+  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.006, earH, 0.012), worn);
+  leftEar.position.set(-0.0065, axisY + nearR - 0.004 + earH * 0.5, earZ);
   g.add(leftEar);
-  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.018), blued);
-  rightEar.position.set(0.01, axisY + nearR + earH * 0.5, earZ);
+  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.006, earH, 0.012), worn);
+  rightEar.position.set(0.0065, axisY + nearR - 0.004 + earH * 0.5, earZ);
   g.add(rightEar);
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.005, 0.018), blued);
-  bar.position.set(0, axisY + nearR + earH - 0.002, earZ);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.005, 0.012), blued);
+  bar.position.set(0, axisY + nearR - 0.004, earZ);
   g.add(bar);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.01, 0.012), worn);
-  blade.position.set(0, axisY + nearR + 0.006, earZ + 0.002);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.019, 0.007), worn);
+  blade.position.set(0, axisY + 0.027, faceZ - 0.34);
   g.add(blade);
 
   const lug = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.018, 0.028), worn);
@@ -326,17 +314,12 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   wrapHand(-1);
   wrapHand(1);
 
-  const mask = ringZ(nearR * 1.15, 1.6, maskMat, 32);
-  mask.position.set(0, axisY, faceZ - 0.18);
-  mask.frustumCulled = false;
-  g.add(mask);
-
   return {
     axisY,
     faceZ,
     eye,
     lookY: axisY + lookLift,
-    pitch: -0.34,
+    pitch: -0.2,
     grip: {
       left: new THREE.Vector3(-nearR - 0.01, axisY, faceZ - 0.04),
       right: new THREE.Vector3(nearR + 0.01, axisY, faceZ - 0.04),
@@ -411,7 +394,7 @@ function buildKar98(scoped: boolean, world = false): RifleView {
     const scope = karScope(root, recTop, steel);
     adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
   } else if (ironAds) {
-    const barrel = karIronBarrel(root, axisY, steel);
+    const barrel = karIronSight(root, axisY, steel);
     adsPos = new THREE.Vector3(0, -barrel.lookY, -(barrel.faceZ + barrel.eye));
     adsGrip = barrel.grip;
     adsPitch = barrel.pitch;
@@ -746,7 +729,7 @@ export function rifleWrist(view: RifleView, boltK: number, out = _wrist) {
 
 export function poseAdsMask(view: RifleView, on: boolean) {
   view.root.traverse((c) => {
-    if (c.userData.karAdsCup) c.visible = on;
+    if (c.userData.karIronSight) c.visible = on;
     if (c.userData.karHipBarrel) c.visible = !on;
   });
 }
