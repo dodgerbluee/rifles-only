@@ -44,7 +44,7 @@ check("iron uses the integrated rear leaf", !!ironRear);
 check("iron has the option-3 aiming bar", !!findFlag(iron.root, "karPoiBar"));
 check("scoped has no iron aiming bar", !findFlag(scoped.root, "karPoiBar"));
 const ironFore = findFlag(iron.root, "karIronForeU");
-check("iron has a square U in front of the rear leaf", !!ironFore);
+check("iron has a square boxy U", !!ironFore);
 check("scoped has no iron fore U", !findFlag(scoped.root, "karIronForeU"));
 {
   const mesh = ironRear as THREE.Mesh;
@@ -66,8 +66,12 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   ironFore.geometry.computeBoundingBox();
   const foreBox = ironFore.geometry.boundingBox!;
   const rearBox = (ironRear as THREE.Mesh).geometry.boundingBox!;
-  check("fore U is wider than the rear leaf", foreBox.max.x - foreBox.min.x > rearBox.max.x - rearBox.min.x, `foreW=${foreBox.max.x - foreBox.min.x}`);
-  check("fore U sits ahead of the rear leaf", ironFore.position.z < ironRear.position.z, `z=${ironFore.position.z}`);
+  check("boxy U is wider than the rounded leaf", foreBox.max.x - foreBox.min.x > rearBox.max.x - rearBox.min.x, `foreW=${foreBox.max.x - foreBox.min.x}`);
+  check("rounded U sits in front of the boxy U", ironRear.position.z < ironFore.position.z, `roundZ=${ironRear.position.z} boxyZ=${ironFore.position.z}`);
+  const roundDepth = Number((ironRear as THREE.Mesh).userData.karIronDepth);
+  const boxyDepth = Number(ironFore.userData.karIronDepth);
+  const gap = ironFore.position.z - boxyDepth / 2 - (ironRear.position.z + roundDepth / 2);
+  check("Us are connected", Math.abs(gap) < 0.002, `gap=${gap}`);
 }
 
 let ironFacets = 0;

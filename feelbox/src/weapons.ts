@@ -193,9 +193,9 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Iron rear: option-3 U as a sight block that hugs the receiver.
- * Rounded inner notch, ears and aiming bar 35% shorter. adsPos is unchanged.
+ * Iron rear: option-3 rounded U, 35% shorter. adsPos is unchanged.
  * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
+ * Sits connected in front of the boxy hood.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
@@ -203,8 +203,6 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const sink = 0.011;
   const bw = recW * 0.5 + 0.0012;
   const barW = 0.003;
-  const barH = earH * 0.7;
-  const barD = 0.008;
   const depth = 0.018;
   const cutW = barW + 2 * (2 * barW);
   const botW = cutW * 0.5;
@@ -235,24 +233,18 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   rear.userData.karIronRear = true;
   rear.userData.karIronNotchW = cutW;
   rear.userData.karIronTopW = topW * 2;
+  rear.userData.karIronDepth = depth;
   place(root, rear, 0, floorY, z);
-
-  const aimY = floorY + 0.005;
-  const barY = Math.min(aimY, floorY + earH - barH * 0.5);
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
-  bar.position.set(0, barY, z + 0.001);
-  bar.userData.karPoiBar = true;
-  root.add(bar);
 }
 
 /**
- * Square, wider U just ahead of the rounded rear leaf. CoD1 Kar iron has a
- * blocky hood in front of the near sight; adsPos is unchanged.
+ * Square, wider hood. The aiming bar comes out of this U; the rounded leaf
+ * sits connected in front. adsPos is unchanged.
  */
 function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.012;
-  const bw = 0.026;
-  const nw = 0.016;
+  const bw = 0.031;
+  const nw = 0.019;
   const sink = 0.011;
   const notchFloor = 0.001;
   const depth = 0.014;
@@ -277,7 +269,18 @@ function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE
   geo.translate(0, 0, -depth / 2);
   const hood = new THREE.Mesh(geo, steel);
   hood.userData.karIronForeU = true;
+  hood.userData.karIronDepth = depth;
   place(root, hood, 0, floorY, z);
+
+  const barW = 0.003;
+  const barH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65 * 0.7;
+  const barD = 0.018;
+  const aimY = floorY + 0.005;
+  const barY = Math.min(aimY, floorY + earH - barH * 0.5);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
+  bar.position.set(0, barY, z - depth / 2 - barD * 0.15);
+  bar.userData.karPoiBar = true;
+  root.add(bar);
 }
 
 /** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
@@ -451,8 +454,11 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const uH = scoped ? 0.007 : 0.01;
   if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
   else {
-    karIronRear(root, -0.08, recTop, steel);
-    karIronForeU(root, -0.16, recTop, steel);
+    const boxyZ = -0.08;
+    const boxyDepth = 0.014;
+    const roundDepth = 0.018;
+    karIronForeU(root, boxyZ, recTop, steel);
+    karIronRear(root, boxyZ - boxyDepth / 2 - roundDepth / 2, recTop, steel);
   }
   const postH = uH * 0.5;
   const postZ = -0.5;

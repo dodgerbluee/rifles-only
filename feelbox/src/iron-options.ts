@@ -76,7 +76,7 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
     camera.near = 0.02;
     camera.far = 8;
     camera.position.set(0.1, 0.062, 0.05);
-    camera.lookAt(0, 0.044, -0.12);
+    camera.lookAt(0, 0.044, -0.09);
   }
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -110,9 +110,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose as main. Rounded near U plus a square, wider U in front."),
+    card("ads", "ADS", "Same zoom and eye pose. Boxy hood with the aiming bar coming out of it; rounded U connected in front."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "Square hood sits ahead of the rounded rear leaf."),
+    card("side", "On the rifle", "Rounded U sits connected in front of the wider boxy hood."),
   );
 }
