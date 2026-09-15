@@ -38,6 +38,29 @@ for (const id of ["kar", "karscope", "mosin"] as const) {
   stage.add(rifles[id].root);
 }
 
+{
+  let ocular: THREE.Object3D | undefined;
+  rifles.karscope.root.traverse((c) => {
+    if (c.userData.karOcular) ocular = c;
+  });
+  if (ocular) {
+    const lens = new THREE.Mesh(
+      new THREE.CircleGeometry(0.0046, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x6a8c62,
+        transparent: true,
+        opacity: 0.32,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    lens.rotation.copy(ocular.rotation);
+    lens.position.copy(ocular.position);
+    lens.position.z += 0.0012;
+    rifles.karscope.root.add(lens);
+  }
+}
+
 let knife = makeMelee(prefs.look.melee);
 knife.visible = false;
 stage.add(knife);
@@ -114,11 +137,16 @@ function pose(id: SecondaryId, kind: PreviewKind) {
   if (kind === "sight") {
     hold.root.position.copy(hold.adsPos);
     hold.root.rotation.set(0, 0, 0);
-    camera.fov = RIFLES[id].adsFov;
-    camera.near = 0.02;
     camera.position.set(0, 0, 0);
     camera.rotation.set(0, 0, 0);
     camera.rotation.order = "YXZ";
+    if (RIFLES[id].glass) {
+      camera.fov = 7.4;
+      camera.near = 0.004;
+    } else {
+      camera.fov = RIFLES[id].adsFov;
+      camera.near = 0.02;
+    }
     return;
   }
   hold.root.position.set(0, 0, 0);

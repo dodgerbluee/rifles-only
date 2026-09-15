@@ -1617,13 +1617,13 @@ body.settings #locker-pip[hidden] {
   align-items: center;
   gap: 8px;
   width: min(980px, calc(100% - 36px));
-  max-height: min(72vh, 620px);
+  max-height: min(58vh, 560px);
   overflow: auto;
   padding: 12px 14px 14px;
-  background: rgba(12, 12, 10, 0.42);
-  border: 1px solid rgba(232, 217, 168, 0.22);
+  background: rgba(12, 12, 10, 0.22);
+  border: 1px solid rgba(232, 217, 168, 0.18);
   border-radius: 8px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(5px);
 }
 
 #join-loadout .loadout-label {
@@ -1649,7 +1649,7 @@ body.settings #locker-pip[hidden] {
   max-width: 320px;
   padding: 10px 10px 12px;
   text-align: left;
-  background: rgba(28, 30, 24, 0.72);
+  background: rgba(28, 30, 24, 0.38);
   color: #e6dfd0;
   border: 1px solid rgba(232, 217, 168, 0.28);
   cursor: pointer;
@@ -1671,7 +1671,7 @@ body.settings #locker-pip[hidden] {
 
 .loadout-row button.on {
   border-color: #e8d9a8;
-  background: #26281f;
+  background: rgba(38, 40, 31, 0.52);
 }
 
 .loadout-row button:hover {
@@ -1706,11 +1706,11 @@ body.settings #locker-pip[hidden] {
 
 .gun-pane-stage {
   position: relative;
-  height: 92px;
+  height: 108px;
   border: 1px solid rgba(232, 217, 168, 0.22);
   border-radius: 4px;
   overflow: hidden;
-  background: rgba(8, 8, 6, 0.45);
+  background: rgba(8, 8, 6, 0.22);
 }
 
 .gun-pane-stage canvas {
@@ -1731,9 +1731,10 @@ body.settings #locker-pip[hidden] {
   inset: 0;
   background: radial-gradient(
     circle closest-side at 50% 50%,
-    transparent 48%,
-    rgba(8, 9, 7, 0.42) 70%,
-    #080907 76%
+    rgba(96, 122, 82, 0.14) 0%,
+    rgba(96, 122, 82, 0.08) 46%,
+    rgba(18, 20, 14, 0.22) 78%,
+    rgba(10, 11, 8, 0.38) 100%
   );
 }
 
@@ -1741,12 +1742,14 @@ body.settings #locker-pip[hidden] {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 72%;
-  height: 72%;
-  margin: -36% 0 0 -36%;
-  border: 2px solid #1c1e18;
+  width: 94%;
+  height: 94%;
+  margin: -47% 0 0 -47%;
+  border: 3px solid rgba(28, 30, 24, 0.72);
   border-radius: 50%;
-  box-shadow: inset 0 0 12px 6px rgba(8, 9, 7, 0.5);
+  box-shadow:
+    inset 0 0 10px 3px rgba(8, 9, 7, 0.22),
+    0 0 0 1px rgba(232, 217, 168, 0.16);
 }
 
 .gp-glass .gp-reticle {
@@ -1759,29 +1762,29 @@ body.settings #locker-pip[hidden] {
 
 .gp-glass .gp-bar {
   position: absolute;
-  background: #11140e;
-  box-shadow: 0 0 0 1px rgba(239, 230, 210, 0.35);
+  background: rgba(16, 18, 12, 0.82);
+  box-shadow: 0 0 0 1px rgba(239, 230, 210, 0.28);
 }
 
 .gp-glass .gp-bar-s {
   left: -1px;
-  top: 6px;
+  top: 10%;
   width: 2px;
   height: 38%;
 }
 
 .gp-glass .gp-bar-l {
   top: -1px;
-  right: 6px;
+  right: 10%;
   height: 2px;
-  width: 28%;
+  width: 34%;
 }
 
 .gp-glass .gp-bar-r {
   top: -1px;
-  left: 6px;
+  left: 10%;
   height: 2px;
-  width: 28%;
+  width: 34%;
 }
 
 #loadout-go {
@@ -2905,9 +2908,13 @@ body.locker #vitals {
 
 #join-team-pick {
   position: absolute;
-  inset: 0;
+  left: 20%;
+  top: 20%;
+  width: 60%;
+  height: 60%;
   display: grid;
-  grid-template-columns: minmax(140px, 20%) 1fr minmax(140px, 20%);
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(16px, 4vw, 36px);
   margin: 0;
   pointer-events: none;
 }
@@ -2918,10 +2925,10 @@ body.locker #vitals {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 22px;
   margin: 0;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
   padding: 0;
   cursor: pointer;
   letter-spacing: 0.16em;
@@ -2929,14 +2936,14 @@ body.locker #vitals {
 }
 
 #join-team-pick button[data-team="ember"] {
-  grid-column: 1;
-  background: linear-gradient(90deg, rgba(178, 74, 24, 0.55), rgba(178, 74, 24, 0.08) 78%, transparent);
+  background: linear-gradient(180deg, rgba(178, 74, 24, 0.28), rgba(178, 74, 24, 0.08));
+  border-color: rgba(178, 74, 24, 0.32);
   color: #f6e6d4;
 }
 
 #join-team-pick button[data-team="stone"] {
-  grid-column: 3;
-  background: linear-gradient(-90deg, rgba(42, 104, 168, 0.55), rgba(42, 104, 168, 0.08) 78%, transparent);
+  background: linear-gradient(180deg, rgba(42, 104, 168, 0.28), rgba(42, 104, 168, 0.08));
+  border-color: rgba(42, 104, 168, 0.32);
   color: #e4eef8;
 }
 
