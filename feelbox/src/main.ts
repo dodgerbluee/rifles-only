@@ -221,13 +221,14 @@ import {
 } from "./weapons";
 import {
   GUN_BLURB,
+  LOADOUT_IDS,
   PRIMARY_IDS,
   bindKeys,
   botRifle,
   gunName,
   hudWeaponLine,
+  loadoutFromPicks,
   parseLoadout,
-  secondaryChoices,
   type SecondaryId,
 } from "./loadout";
 import { makeBomb } from "./bomb";
@@ -312,8 +313,7 @@ let world = buildMap(scene, mapId as MapId);
 
 let joinReturn: "lobby" | "play" | "spec" = "lobby";
 let joinStep: "team" | "guns" = "team";
-let pickedPrimary = false;
-let pickedSecondary = false;
+let pickedGuns: SecondaryId[] = [];
 let pauseOpenedAt = 0;
 
 function calloutAt(x: number, z: number, y = 0) {
@@ -568,8 +568,7 @@ function enterPlay() {
   weapon = "rifle";
   joinReturn = "play";
   joinStep = "team";
-  pickedPrimary = false;
-  pickedSecondary = false;
+  pickedGuns = [];
   document.body.classList.add("started", "joined");
   document.body.classList.remove("choosing", "spectating", "paused");
   hideJoinTeam();
@@ -624,8 +623,7 @@ function openPause() {
 
 function beginGunStep() {
   joinStep = "guns";
-  pickedPrimary = false;
-  pickedSecondary = false;
+  pickedGuns = [];
   paintLoadout();
   paintJoin();
 }
@@ -633,8 +631,7 @@ function beginGunStep() {
 function openChooseTeam(from: "lobby" | "play" | "spec" = "lobby") {
   joinReturn = from;
   joinStep = "team";
-  pickedPrimary = false;
-  pickedSecondary = false;
+  pickedGuns = [];
   document.body.classList.add("joined", "choosing");
   document.body.classList.remove("paused", "started", "spectating", "playing");
   closePause();
@@ -687,8 +684,7 @@ function leaveToLobby() {
   freeLook = false;
   joinReturn = "lobby";
   joinStep = "team";
-  pickedPrimary = false;
-  pickedSecondary = false;
+  pickedGuns = [];
   closePause();
   setGunPreviewVisible(false);
   document.body.classList.remove(
@@ -771,7 +767,7 @@ function paintJoin() {
   setGunPreviewVisible(!!gunStep);
   const ask = document.querySelector<HTMLElement>("#join-team .join-ask");
   if (ask) {
-    ask.textContent = !ready ? "Connecting" : gunStep ? "Pick primary and secondary" : "Pick a side";
+    ask.textContent = !ready ? "Connecting" : gunStep ? "Select two weapons" : "Pick a side";
   }
   if (!list) return;
   for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
@@ -1053,7 +1049,7 @@ function gunPane(kind: "sight" | "inspect", id: SecondaryId) {
   return pane;
 }
 
-function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id: SecondaryId) => void) {
+function fillGunRow(sel: string, ids: SecondaryId[], selected: readonly SecondaryId[], pick: (id: SecondaryId) => void) {
   const root = document.querySelector(sel);
   if (!root) return;
   root.replaceChildren();
@@ -1062,15 +1058,16 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
     b.type = "button";
     b.className = "gun-card";
     b.dataset.gun = id;
-    b.classList.toggle("on", id === on);
-    b.setAttribute("aria-pressed", id === on ? "true" : "false");
+    const on = selected.includes(id);
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
     const head = document.createElement("span");
     head.className = "gun-card-head";
     const name = document.createElement("span");
     name.className = "gun-name";
     name.textContent = gunName(id);
     head.append(name);
-    if (id === on) {
+    if (on) {
       const tag = document.createElement("span");
       tag.className = "gun-selected";
       tag.textContent = "Selected";
@@ -1092,47 +1089,33 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
   }
 }
 
+function toggleGunPick(id: SecondaryId) {
+  if (pickedGuns.includes(id)) pickedGuns = pickedGuns.filter((g) => g !== id);
+  else if (pickedGuns.length < 2) pickedGuns = [...pickedGuns, id];
+  else return;
+  paintLoadout();
+  tryEnterFromLoadout();
+}
+
 function tryEnterFromLoadout() {
-  if (!pickedPrimary || !pickedSecondary) return;
-  prefs.loadout = parseLoadout(prefs.loadout);
+  const packed = loadoutFromPicks(pickedGuns);
+  if (!packed) return;
+  prefs.loadout = packed;
   savePrefs();
   enterPlay();
 }
 
 function paintLoadout() {
-  const loadout = parseLoadout(prefs.loadout);
-  prefs.loadout = loadout;
-  const pLab = document.querySelector("#loadout-primary-label");
-  if (pLab) pLab.textContent = `Primary · ${gunName(loadout.primary)}`;
-  const sLab = document.querySelector("#loadout-secondary-label");
-  if (sLab) sLab.textContent = `Secondary · ${gunName(loadout.secondary)}`;
   const hint = document.querySelector("#loadout-hint");
   if (hint) {
     hint.textContent =
-      pickedPrimary && pickedSecondary
+      pickedGuns.length >= 2
         ? "Deploying"
-        : !pickedPrimary && !pickedSecondary
-          ? "Click a primary and a secondary to deploy"
-          : !pickedPrimary
-            ? "Click a primary to deploy"
-            : "Click a secondary to deploy";
+        : pickedGuns.length === 1
+          ? "Select one more"
+          : "Select two weapons";
   }
-  fillGunRow("#loadout-primary", PRIMARY_IDS, loadout.primary, (id) => {
-    if (!isRifleId(id)) return;
-    prefs.loadout.primary = id;
-    if (prefs.loadout.secondary === id) prefs.loadout.secondary = "knife";
-    pickedPrimary = true;
-    savePrefs();
-    paintLoadout();
-    tryEnterFromLoadout();
-  });
-  fillGunRow("#loadout-secondary", secondaryChoices(loadout.primary), loadout.secondary, (id) => {
-    prefs.loadout.secondary = id;
-    pickedSecondary = true;
-    savePrefs();
-    paintLoadout();
-    tryEnterFromLoadout();
-  });
+  fillGunRow("#loadout-picks", LOADOUT_IDS, pickedGuns, toggleGunPick);
   syncGunPreviews(document.querySelector("#join-loadout"));
 }
 
