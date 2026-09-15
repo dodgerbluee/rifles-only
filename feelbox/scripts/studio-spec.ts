@@ -48,6 +48,8 @@ import {
   setAreaName,
   setBuildingRoof,
   setPartitionStoreys,
+  pickWorld,
+  aimGround,
 } from "../src/maps/studio.ts";
 import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } from "../src/maps/studio-lib.ts";
 import { SIDING_SPEC } from "../src/maps/siding.ts";
@@ -698,6 +700,17 @@ const cam = defaultOrbit(lot.bounds);
 const tx0 = cam.tx;
 panDrag(cam, 20, 0);
 check("pan right moves look-at with the cursor", cam.tx > tx0);
+
+const tipHouse = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 });
+const tipWorld = compileLayout(new THREE.Scene(), tipHouse);
+const downHit = pickWorld(new THREE.Vector3(0, 20, 0), new THREE.Vector3(0, -1, 0), tipWorld.colliders);
+check("look down at a roof hits the lid", Math.abs((downHit?.y ?? -1) - STOREY) < 0.25 && Math.abs(downHit?.x ?? 9) < 1);
+const slantOrigin = new THREE.Vector3(22, 8, 0);
+const slantDir = new THREE.Vector3(0, STOREY, 0).sub(slantOrigin).normalize();
+const slantHit = pickWorld(slantOrigin, slantDir, tipWorld.colliders);
+const slantGround = aimGround(slantOrigin, slantDir);
+check("angled at a roof is the lid, not dirt", Math.abs((slantHit?.y ?? -1) - STOREY) < 0.4 && Math.abs(slantHit?.x ?? 99) < 7);
+check("ground-plane pick is behind the house", (slantGround?.x ?? 0) < -10);
 
 const lib = emptyLibrary(blankSpec());
 const named = writeActive(lib, { ...blankSpec(), title: "Yard" });

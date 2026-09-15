@@ -82,13 +82,13 @@ import {
   BUILD_IDS,
   KIT_IDS,
   addOpening,
-  aimGround,
   applyOrbit,
   blankSpec,
   bumpBuildingStoreys,
   bumpPartitionStoreys,
   bumpRampLow,
   bumpRampRise,
+  cameraRay,
   canvasNdc,
   cellKey,
   callName,
@@ -120,9 +120,9 @@ import {
   paletteOf,
   pickAtY,
   pickBuildingWall,
-  pickGround,
   pickResizeHandle,
   pickStudioHit,
+  pickWorld,
   place,
   placeBuildingRect,
   playableSpec,
@@ -1981,7 +1981,7 @@ function walkSpawn() {
   return { x: minX + 4, z: cz };
 }
 
-function enterWalkAt(x: number, z: number) {
+function enterWalkAt(x: number, z: number, y?: number) {
   studio.walk = true;
   studio.painting = false;
   studio.orbiting = false;
@@ -1992,7 +1992,7 @@ function enterWalkAt(x: number, z: number) {
   if (!walkKeepsTool(studio.tool)) setStudioTool(studio.lastKit);
   px = x;
   pz = z;
-  py = interiorYAt(studio.spec, x, z) + 0.08;
+  py = studioStandY(x, z, y ?? 0) + 0.08;
   vy = 0;
   yaw = 0;
   pitch = 0;
@@ -2036,7 +2036,7 @@ function stampOpeningAt(x: number, z: number, y?: number) {
 
 function stampOpening() {
   const ground = studioHit();
-  if (ground) stampOpeningAt(ground.x, ground.z);
+  if (ground) stampOpeningAt(ground.x, ground.z, ground.y);
 }
 
 function placedStudioSel(prev: LayoutSpec, next: LayoutSpec, tool: ToolId): StudioItem[] | undefined {
@@ -2061,7 +2061,7 @@ function finishStudioDrag() {
   if (drag?.mode === "peg") {
     studioPeg.visible = false;
     const hit = studioHit();
-    if (hit) enterWalkAt(hit.x, hit.z);
+    if (hit) enterWalkAt(hit.x, hit.z, hit.y);
     else paintStudio();
     return;
   }
@@ -2108,11 +2108,22 @@ function finishStudioDrag() {
   paintStudio();
 }
 
-function studioStampY(x: number, z: number) {
+function studioStandY(x: number, z: number, hintY = 0) {
   const top = surfaceAt(studio.spec, x, z);
-  if (!studio.walk) return top;
-  if (py >= top - 0.35) return top;
-  return interiorYAt(studio.spec, x, z, py);
+  if (hintY >= top - 0.35) return top;
+  return interiorYAt(studio.spec, x, z, hintY);
+}
+
+function studioStampY(x: number, z: number) {
+  return studio.walk ? studioStandY(x, z, py) : surfaceAt(studio.spec, x, z);
+}
+
+function studioLookDir() {
+  return new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+}
+
+function studioWalkHit() {
+  return pickWorld(camera.position, studioLookDir(), world.colliders);
 }
 
 function studioHit() {
@@ -2128,7 +2139,12 @@ function studioHit() {
       if (p && pickResizeHandle(studio.spec, sel, p.x, p.z)) return p;
     }
   }
-  return pickGround(camera, ndc.x, ndc.y);
+  if (studio.drag?.mode === "move") {
+    const p = pickAtY(camera, ndc.x, ndc.y, studio.drag.y);
+    if (p) return p;
+  }
+  const ray = cameraRay(camera, ndc.x, ndc.y);
+  return pickWorld(ray.origin, ray.dir, world.colliders);
 }
 
 function stampEraseAt(x: number, z: number) {
@@ -2169,7 +2185,7 @@ function stampStudio() {
 }
 
 function stampWalkAccessory() {
-  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const dir = studioLookDir();
   if (isOpeningTool(studio.tool)) {
     const wall = pickBuildingWall(studio.spec, camera.position, dir);
     const status = document.querySelector("#studio-status");
@@ -2181,7 +2197,7 @@ function stampWalkAccessory() {
     if (status) status.textContent = `placed ${studio.tool}`;
     return;
   }
-  const hit = aimGround(camera.position, dir);
+  const hit = studioWalkHit();
   if (studio.tool === "erase") {
     if (!hit) return;
     stampEraseAt(hit.x, hit.z);
@@ -2599,7 +2615,7 @@ paintStatsChrome();
     const hit = studioHit();
     if (hit) {
       studioPeg.visible = true;
-      studioPeg.position.set(hit.x, interiorYAt(studio.spec, hit.x, hit.z) + 0.02, hit.z);
+      studioPeg.position.set(hit.x, studioStandY(hit.x, hit.z, hit.y) + 0.02, hit.z);
     }
   });
   document.querySelector("#studio-server")?.addEventListener("click", (e) => {
@@ -3296,7 +3312,7 @@ addEventListener("mousedown", (e) => {
             z0: hit.z,
             x1: hit.x,
             z1: hit.z,
-            y: 0,
+            y: hit.y,
             item: ptr.item,
             ox: pos?.x ?? hit.x,
             oz: pos?.z ?? hit.z,
@@ -3318,7 +3334,7 @@ addEventListener("mousedown", (e) => {
       }
       if (isRectTool(studio.tool)) {
         studio.base = cloneSpec(studio.spec);
-        const y0 = studio.tool === "wall" ? interiorYAt(studio.spec, hit.x, hit.z) : surfaceAt(studio.spec, gx, gz);
+        const y0 = studio.tool === "wall" ? interiorYAt(studio.spec, hit.x, hit.z, hit.y) : surfaceAt(studio.spec, gx, gz);
         studio.drag = { mode: "rect", x0: hit.x, z0: hit.z, x1: hit.x, z1: hit.z, y: y0 };
         studio.painting = true;
         return;
@@ -3454,7 +3470,7 @@ addEventListener("mousemove", (e) => {
           studio.drag.x1 = hit.x;
           studio.drag.z1 = hit.z;
           studioPeg.visible = true;
-          studioPeg.position.set(hit.x, interiorYAt(studio.spec, hit.x, hit.z) + 0.02, hit.z);
+          studioPeg.position.set(hit.x, studioStandY(hit.x, hit.z, hit.y) + 0.02, hit.z);
         }
       }
     } else if (studio.painting) stampStudio();
@@ -6358,7 +6374,7 @@ function frame(now: number) {
         } else studioGhost.visible = false;
       } else if (studio.tool === "wall") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
-        const ground = aimGround(camera.position, studioAim);
+        const ground = pickWorld(camera.position, studioAim, world.colliders);
         if (ground) {
           const foot = wallFootprint(ground.x, ground.z, ground.x, ground.z, yaw);
           const y = interiorYAt(studio.spec, foot.x, foot.z, py);
@@ -6369,10 +6385,11 @@ function frame(now: number) {
         } else studioGhost.visible = false;
       } else if (studio.tool === "floor" || studio.tool === "cut") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
-        const ground = aimGround(camera.position, studioAim);
-        if (ground) {
-          const gx = snap(ground.x);
-          const gz = snap(ground.z);
+        const wall = studio.tool === "cut" ? pickBuildingWall(studio.spec, camera.position, studioAim) : null;
+        const ground = pickWorld(camera.position, studioAim, world.colliders);
+        if (wall || ground) {
+          const gx = snap(wall ? wall.x : ground!.x);
+          const gz = snap(wall ? wall.z : ground!.z);
           const y = surfaceAt(studio.spec, gx, gz);
           if (studio.tool === "floor") {
             const fit = snapFloor(studio.spec, gx, gz, gx, gz, y);
@@ -6388,7 +6405,7 @@ function frame(now: number) {
         } else studioGhost.visible = false;
       } else if (isAccessoryTool(studio.tool) && studio.tool !== "erase") {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
-        const ground = aimGround(camera.position, studioAim);
+        const ground = pickWorld(camera.position, studioAim, world.colliders);
         if (ground) {
           const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
           const gx = studio.tool === "crate" ? snapCell(ground.x) : snap(ground.x);
@@ -6465,7 +6482,7 @@ function frame(now: number) {
         }
       } else if (isOpeningTool(studio.tool) || studio.tool === "ladder") {
         const ground = studioHit();
-        const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z, surfaceAt(studio.spec, ground.x, ground.z)) : null;
+        const wall = ground ? nearestBuildingWall(studio.spec, ground.x, ground.z, ground.y) : null;
         if (wall) {
           const pose = studio.tool === "ladder" ? ladderPose(wall) : openingPose(wall, studio.tool);
           studioGhost.visible = true;
@@ -6491,7 +6508,7 @@ function frame(now: number) {
             studioGhost.position.set(snap(hit.x), Math.max(SLAB_Y, surfaceAt(studio.spec, hit.x, hit.z)) - 0.08, snap(hit.z));
           } else if (studio.tool === "wall") {
             const foot = wallFootprint(hit.x, hit.z, hit.x, hit.z, studio.faceYaw);
-            const y = interiorYAt(studio.spec, foot.x, foot.z);
+            const y = interiorYAt(studio.spec, foot.x, foot.z, hit.y);
             const h = wallHeightAt(studio.spec, foot.x, foot.z, y);
             studioGhost.scale.set(foot.w, h, foot.d);
             studioGhost.position.set(foot.x, y + h / 2, foot.z);
