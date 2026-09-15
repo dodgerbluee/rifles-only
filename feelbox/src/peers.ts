@@ -68,6 +68,8 @@ export type Remote = {
   ping: number;
   fireQ: FireQueue;
   nades: NadeBag;
+  throw: number;
+  throwDrop: boolean;
   root: THREE.Group;
   skin: PawnSkin;
   look: Appearance;
@@ -115,6 +117,8 @@ export function makeRemote(scene: THREE.Scene, peerId: number, slotId: number, t
     ping: 0,
     fireQ: emptyQueue(),
     nades: fullNades(),
+    throw: 0,
+    throwDrop: false,
     root,
     skin: parseSkin(root.userData.skin) ?? "rifle",
     look,
@@ -137,6 +141,8 @@ export function emptyInput(): PlayerInput {
     mx: 0,
     my: 0,
     ping: 0,
+    throw: 0,
+    throwDrop: false,
   };
 }
 
@@ -315,6 +321,8 @@ export function tickRemote(r: Remote, dt: number, time: number, world: World, fr
   r.crouch = inp.crouch && !inp.prone;
   r.prone = !!inp.prone;
   r.weapon = inp.weapon;
+  r.throw = inp.throw ?? 0;
+  r.throwDrop = !!inp.throwDrop;
   r.ping = inp.ping ?? r.ping;
   const stance = !r.alive ? "down" : r.prone ? "prone" : r.crouch ? "crouch" : "stand";
   if (!r.alive || froze) {
@@ -454,6 +462,8 @@ export function buildSnapshot(
         ping: r.ping,
         skin: r.skin,
         look: packLook(r.look),
+        throw: r.throw,
+        throwDrop: r.throwDrop,
       }),
     ),
     ...bots.map(
@@ -562,6 +572,8 @@ export function collectInput(opts: {
   jump: boolean;
   use: boolean;
   ping?: number;
+  throw?: number;
+  throwDrop?: boolean;
 }): PlayerInput {
   return {
     keys: [...opts.keys],
@@ -578,6 +590,8 @@ export function collectInput(opts: {
     mx: 0,
     my: 0,
     ping: opts.ping ?? 0,
+    throw: opts.throw ?? 0,
+    throwDrop: !!opts.throwDrop,
   };
 }
 

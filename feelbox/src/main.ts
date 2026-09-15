@@ -37,6 +37,8 @@ import {
   nadeColor,
   NADE_MAX,
   NADE_ORDER,
+  nextHeldNade,
+  throwProgress,
   smokeBlocksLos,
   smokeCoverage,
   stunDuration,
@@ -2329,6 +2331,7 @@ let boltDur = RIFLES.kar.cycle;
 let throwT = 0;
 let throwDur = 0.4;
 let throwDrop = false;
+let throwHeld: NadeKind | null = null;
 let flashT = 0;
 let stunT = 0;
 let lastMelee = -10;
@@ -2970,8 +2973,42 @@ function isNade(w: string): w is NadeKind {
   return w === "smoke" || w === "frag" || w === "stun" || w === "flash";
 }
 
-function paintNadeView() {
-  (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(nadeKind));
+function paintNadeView(kind: NadeKind = throwHeld ?? nadeKind) {
+  (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(kind));
+}
+
+function liveThrowK() {
+  return throwProgress(throwT, throwDur);
+}
+
+function livePoseWeapon(): Pose["weapon"] {
+  if (throwT > 0 && throwHeld) return throwHeld;
+  if (weapon === "rifle") return rifleKind;
+  if (weapon === "knife" || isNade(weapon)) return weapon;
+  return rifleKind;
+}
+
+function armThrow(kind: NadeKind, dur: number, drop: boolean) {
+  throwHeld = kind;
+  throwDrop = drop;
+  throwDur = dur;
+  throwT = dur;
+  paintNadeView(kind);
+  recordSnap();
+}
+
+function finishThrow() {
+  const kind = throwHeld;
+  throwHeld = null;
+  if (!kind || !isNade(weapon) || nadeKind !== kind) return;
+  const next = nextHeldNade(nadeBag, kind);
+  if (next === "rifle") {
+    weapon = "rifle";
+    return;
+  }
+  nadeKind = next;
+  weapon = next;
+  paintNadeView(next);
 }
 
 function selectNade() {
@@ -3040,17 +3077,7 @@ function tryThrowSmoke(power = 0.55) {
   }
   liveRifle().root.position.z += 0.02;
   bang(90, 0.07, 0.04);
-  throwDrop = false;
-  throwDur = 0.4;
-  throwT = 0.4;
-  if (isNade(weapon) && nadeBag[nadeKind] <= 0) {
-    const next = NADE_ORDER.find((k) => nadeBag[k] > 0);
-    if (next) {
-      nadeKind = next;
-      weapon = next;
-      paintNadeView();
-    } else weapon = "rifle";
-  }
+  armThrow(kind, 0.4, false);
 }
 
 function tryDropSmoke() {
@@ -3080,17 +3107,7 @@ function tryDropSmoke() {
     dropSmoke(scene, origin, kind);
   }
   bang(70, 0.05, 0.03);
-  throwDrop = true;
-  throwDur = 0.24;
-  throwT = 0.24;
-  if (isNade(weapon) && nadeBag[nadeKind] <= 0) {
-    const next = NADE_ORDER.find((k) => nadeBag[k] > 0);
-    if (next) {
-      nadeKind = next;
-      weapon = next;
-      paintNadeView();
-    } else weapon = "rifle";
-  }
+  armThrow(kind, 0.24, true);
 }
 
 function releaseSmoke() {
@@ -3796,11 +3813,11 @@ function collectPoses(): Pose[] {
         pitch: self ? pitch : p.pitch,
         eye: self ? eyeOff() : 1.52,
         alive: self ? alive : p.alive,
-        weapon: pawnPoseWeapon(
-          self ? (weapon === "rifle" ? rifleKind : weapon) : p.netId === 0 ? botRifle(p.id) : p.weapon,
-        ),
+        weapon: pawnPoseWeapon(self ? livePoseWeapon() : p.netId === 0 ? botRifle(p.id) : p.weapon),
         ads: self ? ads && weapon === "rifle" : p.ads,
         bash: self && bashT > 0 ? 1 - bashT / 0.42 : 0,
+        throw: self ? liveThrowK() : p.throw ?? 0,
+        throwDrop: self ? throwDrop : !!p.throwDrop,
         fov:
           self && ads && weapon === "rifle"
             ? RIFLES[rifleKind].adsFov
@@ -3828,9 +3845,11 @@ function collectPoses(): Pose[] {
       pitch,
       eye: eyeOff(),
       alive,
-      weapon: weapon === "rifle" ? rifleKind : weapon,
+      weapon: livePoseWeapon(),
       ads: ads && weapon === "rifle",
       bash: bashT > 0 ? 1 - bashT / 0.42 : 0,
+      throw: liveThrowK(),
+      throwDrop,
       fov,
       kick: gunKickZ,
       punchP,
@@ -3851,6 +3870,8 @@ function collectPoses(): Pose[] {
       weapon: botRifle(b.id),
       ads: b.aim,
       bash: 0,
+      throw: 0,
+      throwDrop: false,
       fov: b.aim ? RIFLES.kar.adsFov : 90,
       kick: b.flash > 0.4 ? 0.06 : 0,
       punchP: b.flash > 0.4 ? 0.8 : 0,
@@ -3871,6 +3892,8 @@ function collectPoses(): Pose[] {
       weapon: isNade(r.weapon) ? r.weapon : r.weapon === "knife" ? r.weapon : rifleFromWeapon(r.weapon),
       ads: r.ads,
       bash: 0,
+      throw: r.throw,
+      throwDrop: r.throwDrop,
       fov: r.ads ? 64 : 90,
       kick: 0,
       punchP: 0,
@@ -4217,15 +4240,18 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
 
 function applyReelHands(cam: Pose) {
   const bashing = cam.bash > 0.02;
-  const rifleOn = isRifleId(cam.weapon) && !bashing;
+  const throwing = (cam.throw ?? 0) > 0.02;
+  const nadeOn = isNade(cam.weapon as Weapon);
+  const rifleOn = isRifleId(cam.weapon) && !bashing && !throwing;
   const kind: RifleId = rifleFromWeapon(cam.weapon);
   const camFov = cam.fov || (cam.ads ? RIFLES[kind].adsFov : 90);
   const zoom = adsZoomK(kind, camFov);
   const aiming = cam.ads && rifleOn;
   showRifle(kind, rifleOn && !glassHidesRifle(kind, aiming, zoom));
   setKarGlass(kind, aiming, zoom);
-  knife.visible = cam.weapon === "knife" || bashing;
-  nadeView.visible = isNade(cam.weapon as Weapon) && !bashing;
+  knife.visible = (cam.weapon === "knife" || bashing) && !throwing;
+  nadeView.visible = (nadeOn || throwing) && !bashing;
+  if (nadeOn) paintNadeView(cam.weapon as NadeKind);
   if (bashing) poseKnifeSlash(knife, cam.bash);
   else poseKnifeRest(knife);
   const hold = rifles[kind];
@@ -4238,17 +4264,19 @@ function applyReelHands(cam: Pose) {
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
   poseBolt(hold, 0);
   hold.root.updateMatrixWorld(true);
-  if (isNade(cam.weapon as Weapon) && !bashing) {
+  if (throwing) poseThrow(nadeView, cam.throw ?? 0, !!cam.throwDrop);
+  else if (nadeOn && !bashing) {
     nadeView.rotation.set(0, 0, 0);
     nadeView.position.set(0.18, -0.2, -0.2);
+    nadeView.visible = true;
   }
   hideRifleFlash();
   if (rifleOn) hold.flash.visible = cam.flash;
-  const handsOn = !cam.ads && (rifleOn || knife.visible || nadeView.visible);
+  const handsOn = !cam.ads && (rifleOn || knife.visible || nadeView.visible || throwing);
   arm.root.visible = handsOn;
   if (handsOn) {
     if (bashing || cam.weapon === "knife") poseArm(arm, knifeWrist(knife), cam.bash * 0.8);
-    else if (isNade(cam.weapon as Weapon)) poseArm(arm, nadeWrist(nadeView));
+    else if (throwing || nadeOn) poseArm(arm, nadeWrist(nadeView));
     else poseArm(arm, rifleWrist(hold, 0));
   }
   camera.fov = camFov;
@@ -4384,6 +4412,8 @@ function roundSpawn() {
   spawnProtectUntil = time + 1.2;
   nadeBag = { ...NADE_MAX };
   nadeKind = "smoke";
+  throwT = 0;
+  throwHeld = null;
   paintNadeView();
   flashT = 0;
   stunT = 0;
@@ -4404,6 +4434,8 @@ function roundSpawn() {
     r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
     r.root.visible = true;
     r.nades = fullNades();
+    r.throw = 0;
+    r.throwDrop = false;
     restorePawnHead(r.root);
   }
   clearTape(tape);
@@ -4688,7 +4720,10 @@ function frame(now: number) {
   if (diveT > 0) diveT = Math.max(0, diveT - dt);
   if (bashT > 0) bashT = Math.max(0, bashT - dt);
   if (boltT > 0) boltT = Math.max(0, boltT - dt);
-  if (throwT > 0) throwT = Math.max(0, throwT - dt);
+  if (throwT > 0) {
+    throwT = Math.max(0, throwT - dt);
+    if (throwT <= 0) finishThrow();
+  }
   if (flashT > 0) flashT = Math.max(0, flashT - dt);
   if (stunT > 0) stunT = Math.max(0, stunT - dt);
 
@@ -5150,6 +5185,8 @@ function frame(now: number) {
     seenRound = match.round;
     nadeBag = { ...NADE_MAX };
     nadeKind = "smoke";
+    throwT = 0;
+    throwHeld = null;
     predHist.length = 0;
     paintNadeView();
   }
@@ -5293,7 +5330,10 @@ function frame(now: number) {
         nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing) && !cowedSelf;
         if (bashing) poseKnifeSlash(knife, 1 - bashT / 0.42);
         else poseKnifeRest(knife);
-        if (throwing) poseThrow(nadeView, throwK, throwDrop);
+        if (throwing) {
+          if (throwHeld) paintNadeView(throwHeld);
+          poseThrow(nadeView, throwK, throwDrop);
+        }
         else if (isNade(weapon)) {
           nadeView.rotation.x = Math.sin(time * 3) * 0.04;
           nadeView.position.set(0.18, -0.2, -0.2 - smokeCharge * 0.18);
@@ -5515,7 +5555,7 @@ function frame(now: number) {
     nadeKind,
     clouds: lastSnap?.clouds ?? activeClouds(),
     air: lastSnap?.nades ?? activeNades(),
-    weapon: weapon === "rifle" ? rifleKind : weapon,
+    weapon: livePoseWeapon(),
     rifleName: RIFLES[rifleKind].name,
     loadoutKeys: hudWeaponLine(prefs.loadout, nadeKind, nadeBag),
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
@@ -5547,7 +5587,7 @@ function frame(now: number) {
         pitch,
         hp,
         alive,
-        weapon: weapon === "rifle" ? rifleKind : weapon,
+        weapon: livePoseWeapon(),
         ads,
         crouch,
         prone,
@@ -5559,6 +5599,8 @@ function frame(now: number) {
         skin: prefs.skin,
         look: packLook(prefs.look),
         cow: isCow(playerId),
+        throw: liveThrowK(),
+        throwDrop,
       },
       bots,
       remotes,
@@ -5577,12 +5619,14 @@ function frame(now: number) {
         fire: studio.on || locker.on || isCow(playerId) ? false : wantShot,
         ads: studio.on || locker.on ? false : ads,
         lean: studio.on || locker.on ? 0 : lean,
-        weapon: weapon === "rifle" ? rifleKind : weapon,
+        weapon: livePoseWeapon(),
         crouch: studio.on || locker.on ? false : crouch,
         prone: studio.on || locker.on ? false : prone,
         jump: studio.on || locker.on ? false : keys.has("Space"),
         use: studio.on || locker.on ? false : wantUse,
         ping: net.pingMs,
+        throw: liveThrowK(),
+        throwDrop,
       }),
     );
   }

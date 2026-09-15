@@ -14,6 +14,7 @@ import {
   createTape,
   inSlowWindow,
   killcamWindow,
+  lerpTapeWeapon,
   playBounds,
   pushFrame,
   pushKill,
@@ -25,6 +26,7 @@ import {
   sampleTape,
   type Pose,
 } from "../src/replay.ts";
+import { fullNades, nextHeldNade, spendNade, throwProgress } from "../src/smoke.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -232,6 +234,27 @@ check("multi-kill reel wall time covers the last kill hang", wall > LAST_POST + 
 const cam = killcamWindow(killsTape, 4, 8);
 check("killcam follows the killer", cam.killerId === 2);
 check("killcam lasts 3-5 seconds", cam.end - cam.start >= 3 && cam.end - cam.start <= 5, `span=${(cam.end - cam.start).toFixed(2)}`);
+
+const bag = fullNades();
+check("full bag starts with one frag", bag.frag === 1 && bag.smoke === 2);
+spendNade(bag, "frag");
+check("spending the last frag would otherwise swap to smoke", nextHeldNade(bag, "frag") === "smoke");
+check("killcam still holds the frag until the toss finishes", throwProgress(0.4, 0.4) < 0.02);
+check("mid-toss is a real throw pose, not a rest hold", throwProgress(0.2, 0.4) > 0.45 && throwProgress(0.2, 0.4) < 0.55);
+
+const tossTape = createTape();
+pushFrame(tossTape, 0, [{ ...poseAt(2, 0), weapon: "frag", throw: 0.2 }]);
+pushFrame(tossTape, 0.2, [{ ...poseAt(2, 0.2), weapon: "smoke", throw: 0 }]);
+const midToss = sampleTape(tossTape, 0.05).poses.get(2);
+check("tape interpolates throw progress", (midToss?.throw ?? 0) > 0.1, `throw=${midToss?.throw}`);
+check(
+  "killcam keeps the frag during the toss instead of swapping to smoke",
+  lerpTapeWeapon(
+    { ...poseAt(2, 0), weapon: "frag", throw: 0.35 },
+    { ...poseAt(2, 1), weapon: "smoke", throw: 0 },
+    0.8,
+  ) === "frag",
+);
 
 const leftover = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 2, botSkill: "easy" });
 leftover.join(1, "Reed", "ember");

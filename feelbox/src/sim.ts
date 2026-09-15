@@ -791,6 +791,8 @@ export function createSim(opts?: {
             deaths: line(r.homeId).deaths,
             ping: r.ping,
             cow: isCowed(r.slotId) || isCowed(r.homeId),
+            throw: r.throw,
+            throwDrop: r.throwDrop,
           }),
         ),
         ...bots.map(

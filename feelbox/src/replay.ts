@@ -13,6 +13,9 @@ export type Pose = {
   weapon: "kar" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
   ads: boolean;
   bash: number;
+  /** 0 idle, 0–1 toss. Killcam/recap replay the throw instead of a rest hold. */
+  throw?: number;
+  throwDrop?: boolean;
   fov: number;
   kick: number;
   punchP: number;
@@ -168,9 +171,11 @@ export function sampleTape(tape: RoundTape, t: number): { poses: Map<number, Pos
       pitch: pa.pitch + (pb.pitch - pa.pitch) * u,
       eye: pa.eye + (pb.eye - pa.eye) * u,
       alive: u < 0.5 ? pa.alive : pb.alive,
-      weapon: u < 0.5 ? pa.weapon : pb.weapon,
+      weapon: lerpTapeWeapon(pa, pb, u),
       ads: u < 0.5 ? pa.ads : pb.ads,
       bash: pa.bash + (pb.bash - pa.bash) * u,
+      throw: (pa.throw ?? 0) + ((pb.throw ?? 0) - (pa.throw ?? 0)) * u,
+      throwDrop: (pa.throw ?? 0) >= (pb.throw ?? 0) ? !!pa.throwDrop : !!pb.throwDrop,
       fov: pa.fov + (pb.fov - pa.fov) * u,
       kick: pa.kick + (pb.kick - pa.kick) * u,
       punchP: pa.punchP + (pb.punchP - pa.punchP) * u,
@@ -278,6 +283,19 @@ export function killsReached(t: number, clips: KillClip[]) {
   let n = 0;
   for (const k of clips) if (t >= k.t) n += 1;
   return n;
+}
+
+function isTapeNade(w: Pose["weapon"]) {
+  return w === "smoke" || w === "frag" || w === "stun" || w === "flash";
+}
+
+/** Keep the thrown nade while the toss is in flight, even if the next pose already swapped guns. */
+export function lerpTapeWeapon(pa: Pose, pb: Pose, u: number): Pose["weapon"] {
+  const ta = pa.throw ?? 0;
+  const tb = pb.throw ?? 0;
+  if (ta > 0.02 && isTapeNade(pa.weapon)) return pa.weapon;
+  if (tb > 0.02 && isTapeNade(pb.weapon)) return pb.weapon;
+  return u < 0.5 ? pa.weapon : pb.weapon;
 }
 
 function poseMap(poses: Pose[]) {

@@ -70,6 +70,8 @@ export function isDroppableSnapHead(head: string) {
 export function shouldSendInput(prev: PlayerInput | null, next: PlayerInput, now: number, lastAt: number) {
   if (!prev) return true;
   if (next.fire !== prev.fire || next.jump !== prev.jump || next.use !== prev.use) return true;
+  if ((next.throw ?? 0) !== (prev.throw ?? 0) || !!next.throwDrop !== !!prev.throwDrop) return true;
+  if (next.weapon !== prev.weapon) return true;
   return now - lastAt >= 1000 / TICK_HZ - 0.25;
 }
 
@@ -90,7 +92,8 @@ function flags(p: Pawn) {
     (p.prone ? 8 : 0) |
     (p.stun ? 16 : 0) |
     (p.cow ? 32 : 0) |
-    (p.absent ? 64 : 0)
+    (p.absent ? 64 : 0) |
+    (p.throwDrop ? 128 : 0)
   );
 }
 
@@ -137,6 +140,7 @@ function poseRow(p: Pawn): number[] {
     idx(WEAPONS, p.weapon),
     Math.round(p.ping ?? 0),
     packNades(p),
+    q(p.throw ?? 0, 50),
   ];
 }
 
@@ -235,9 +239,11 @@ function applyPose(p: Pawn, row: number[]) {
   p.stun = !!(f & 16);
   p.cow = !!(f & 32);
   p.absent = !!(f & 64);
+  p.throwDrop = !!(f & 128);
   p.weapon = WEAPONS[row[9] ?? 0] ?? p.weapon;
   p.ping = row[10] ?? p.ping;
   p.nades = unpackNades(row[11] ?? 0);
+  p.throw = row[12] ?? 0;
 }
 
 function blankPawn(id: number): Pawn {

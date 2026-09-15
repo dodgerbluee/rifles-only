@@ -26,6 +26,17 @@ export function spendNade(bag: NadeBag, kind: NadeKind): boolean {
   return true;
 }
 
+/** After the toss, swap to another nade only if this kind is gone. */
+export function nextHeldNade(bag: NadeBag, spent: NadeKind): NadeKind | "rifle" {
+  if (bag[spent] > 0) return spent;
+  return NADE_ORDER.find((k) => bag[k] > 0) ?? "rifle";
+}
+
+export function throwProgress(remain: number, dur: number) {
+  if (remain <= 0 || dur <= 0) return 0;
+  return Math.max(0, Math.min(1, 1 - remain / dur));
+}
+
 export const NADE_COLOR: Record<NadeKind, number> = {
   smoke: 0x3a4a32,
   frag: 0x5c3a22,

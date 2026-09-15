@@ -28,6 +28,9 @@ export type PlayerInput = {
   mx: number;
   my: number;
   ping?: number;
+  /** 0 idle, 0–1 toss so killcam can replay the throw. */
+  throw?: number;
+  throwDrop?: boolean;
 };
 
 export type Pawn = {
@@ -60,6 +63,8 @@ export type Pawn = {
   look?: string;
   /** Admin-only identity. Do not show in killfeed. */
   playerKey?: string;
+  throw?: number;
+  throwDrop?: boolean;
 };
 
 /** Admin cow: flaming, no weapons, then explode. */
