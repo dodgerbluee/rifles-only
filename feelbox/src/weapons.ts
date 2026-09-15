@@ -240,15 +240,17 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 
 /**
  * Square hood nested slightly inside the rounded cutout so the full
- * rounded opening stays visible. The aiming bar comes out of this U.
+ * rounded opening stays visible. Taller and 1.5× fatter than the
+ * rounded leaf, extending out the front. adsPos is unchanged.
  */
 function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
-  const earH = 0.0078;
+  const roundEarH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
+  const earH = roundEarH * 1.55;
   const bw = 0.008;
   const nw = 0.0048;
   const sink = 0.011;
   const notchFloor = 0.001;
-  const depth = 0.007;
+  const depth = 0.009 * 1.5 * 1.5;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH);
@@ -274,12 +276,12 @@ function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE
   place(root, hood, 0, floorY, z);
 
   const barW = 0.003;
-  const barH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65 * 0.7;
-  const barD = 0.009;
+  const barH = roundEarH * 0.7;
+  const barD = depth * 0.7;
   const aimY = floorY + 0.005;
   const barY = Math.min(aimY, floorY + earH - barH * 0.5);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
-  bar.position.set(0, barY, z - depth / 2 - barD * 0.15);
+  bar.position.set(0, barY, z - depth / 2 - barD * 0.1);
   bar.userData.karPoiBar = true;
   root.add(bar);
 }
@@ -456,9 +458,9 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
   else {
     const roundZ = -0.08;
-    const boxyDepth = 0.007;
     const roundDepth = 0.009 * 1.5;
-    const inset = boxyDepth * 0.45;
+    const boxyDepth = roundDepth * 1.5;
+    const inset = 0.003;
     karIronRear(root, roundZ, recTop, steel);
     karIronForeU(root, roundZ - roundDepth / 2 + inset - boxyDepth / 2, recTop, steel);
   }

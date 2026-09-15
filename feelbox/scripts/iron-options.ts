@@ -58,7 +58,8 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   const boxyBack = fore.position.z + boxyDepth / 2;
   const roundFront = rear.position.z - roundDepth / 2;
   check("boxy U is nested inside the rounded U", boxyBack > roundFront, `boxyBack=${boxyBack} roundFront=${roundFront}`);
-  check("rounded U body is thicker", roundDepth > 0.012, `roundD=${roundDepth}`);
+  check("boxy U is taller than the rounded U", fore.geometry.boundingBox!.max.y > rear.geometry.boundingBox!.max.y, `boxyH=${fore.geometry.boundingBox!.max.y} roundH=${rear.geometry.boundingBox!.max.y}`);
+  check("boxy U is 1.5× fatter than the rounded U", boxyDepth >= roundDepth * 1.45, `boxyD=${boxyDepth} roundD=${roundDepth}`);
 }
 
 if (failed) {

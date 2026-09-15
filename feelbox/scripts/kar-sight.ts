@@ -72,7 +72,9 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   const boxyBack = ironFore.position.z + boxyDepth / 2;
   const roundFront = ironRear.position.z - roundDepth / 2;
   check("boxy U is nested inside the rounded U", boxyBack > roundFront, `boxyBack=${boxyBack} roundFront=${roundFront}`);
-  check("rounded U body is thicker", roundDepth > 0.012, `roundD=${roundDepth}`);
+  const rearBox = (ironRear as THREE.Mesh).geometry.boundingBox!;
+  check("boxy U is taller than the rounded U", foreBox.max.y > rearBox.max.y, `boxyH=${foreBox.max.y} roundH=${rearBox.max.y}`);
+  check("boxy U is 1.5× fatter than the rounded U", boxyDepth >= roundDepth * 1.45, `boxyD=${boxyDepth} roundD=${roundDepth}`);
 }
 
 let ironFacets = 0;
