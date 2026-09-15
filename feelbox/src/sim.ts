@@ -26,7 +26,6 @@ import {
   slotById,
   slotTag,
   tickMatch,
-  trySkipBestPlay,
   type SiteId,
   type Team,
 } from "./match";
@@ -75,13 +74,34 @@ import {
   updateSmoke,
   type NadeKind,
 } from "./smoke";
-import { line, noteHit, noteKill, resetStats } from "./stats";
+import {
+  line,
+  noteCut,
+  noteDamage,
+  noteDeath,
+  noteHit,
+  noteKill,
+  noteNadeThrow,
+  notePlant,
+  noteRifleHit,
+  noteShot,
+  resetRoundStats,
+  resetStats,
+  roundLine,
+  roundIds,
+  vsAgainst,
+} from "./stats";
 import { meleeReach, tuning } from "./tuning";
 import { RIFLES, rifleFromWeapon, type RifleId } from "./weapons";
-import { PRIMARY_IDS } from "./loadout";
+import { botRifle } from "./loadout";
 
 const FRAG_R = 6.5;
 const HP = 100;
+const BOT_VS = "bot";
+
+function newMatchId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export type SimStatus = {
   id: string;
@@ -94,15 +114,54 @@ export type SimStatus = {
   online: true;
 };
 
+export type CareerVsDelta = { key: string; kills: number; deaths: number; damage: number };
+
+export type CareerRoundLine = {
+  playerKey: string;
+  kills: number;
+  assists: number;
+  deaths: number;
+  won: boolean;
+  shots: number;
+  hits: number;
+  headHits: number;
+  headKills: number;
+  rifleKills: number;
+  damage: number;
+  nadeDamage: number;
+  nadesFrag: number;
+  nadesSmoke: number;
+  nadesStun: number;
+  nadesFlash: number;
+  nadeKills: number;
+  plants: number;
+  cuts: number;
+  knifeKills: number;
+  firstBloods: number;
+  aces: number;
+  vs: CareerVsDelta[];
+};
+
+export type CareerIngest = {
+  gameId: string;
+  matchId: string;
+  round: number;
+  kind: "round" | "match";
+  mapId?: string;
+  lines: Array<Partial<CareerRoundLine> & { playerKey: string; matchWon?: boolean; won?: boolean }>;
+};
+
 export type Sim = {
   tick: (dt: number) => void;
-  join: (peerId: number, name: string, team?: Team, skin?: PawnSkin, look?: string) => void;
+  join: (peerId: number, name: string, team?: Team, skin?: PawnSkin, look?: string, playerKey?: string) => void;
   leave: (peerId: number) => void;
   setInput: (peerId: number, input: PlayerInput) => void;
   event: (peerId: number, event: ClientEvent) => void;
   snapshot: () => Snapshot;
   status: () => SimStatus;
   mapState: () => { mapId: string; spec?: LayoutSpec };
+  drainCareer: () => { round: CareerIngest | null; match: CareerIngest | null };
+  matchId: () => string;
   /** Scripted tests: sit the Wire without walking to a pad. */
   armWire: (site?: SiteId) => boolean;
   /** Scripted tests: drop a body through the same hurt/frag path as a fight. */
@@ -154,6 +213,138 @@ export function createSim(opts?: {
   const roundKills: KillFeedItem[] = [];
   const pendingHeads: number[] = [];
   const cows: { id: number; until: number }[] = [];
+  const peerKeys = new Map<number, string>();
+  const homeKeys = new Map<number, string>();
+  const matchPlayers = new Map<string, Team>();
+  let matchId = newMatchId();
+  let prevPhase = match.phase;
+  let pendingRound: CareerIngest | null = null;
+  let pendingMatch: CareerIngest | null = null;
+  let notedPlant = false;
+  let notedCut = false;
+
+  function bindKey(peerId: number, slotId: number, playerKey?: string) {
+    if (!playerKey) return;
+    const slot = slotById(match, slotId);
+    if (slot) slot.playerKey = playerKey;
+    peerKeys.set(peerId, playerKey);
+    homeKeys.set(slotId, playerKey);
+    matchPlayers.set(playerKey, slot?.team ?? "ember");
+  }
+
+  function keyOf(slotId: number) {
+    const id = credit(slotId);
+    const fromHome = homeKeys.get(id);
+    if (fromHome) return fromHome;
+    const slot = slotById(match, id);
+    if (slot?.playerKey) return slot.playerKey;
+    const remote = [...remotes.values()].find((x) => x.homeId === id || x.slotId === id);
+    if (remote) {
+      const k = peerKeys.get(remote.peerId);
+      if (k) return k;
+    }
+    return BOT_VS;
+  }
+
+  function mergeVs(rows: CareerVsDelta[]) {
+    const map = new Map<string, CareerVsDelta>();
+    for (const row of rows) {
+      const prev = map.get(row.key);
+      if (!prev) {
+        map.set(row.key, { ...row });
+        continue;
+      }
+      prev.kills += row.kills;
+      prev.deaths += row.deaths;
+      prev.damage += row.damage;
+    }
+    return [...map.values()];
+  }
+
+  function humansNow() {
+    const keys = new Map<string, number>();
+    for (const [slot, key] of homeKeys) keys.set(key, slot);
+    for (const r of remotes.values()) {
+      const key = peerKeys.get(r.peerId) || slotById(match, r.homeId)?.playerKey;
+      if (key) keys.set(key, r.homeId);
+    }
+    return keys;
+  }
+
+  function packRoundLine(slotId: number, playerKey: string): CareerRoundLine {
+    const l = roundLine(slotId);
+    const team = slotById(match, slotId)?.team;
+    const vs = mergeVs(
+      vsAgainst(slotId)
+        .map((v) => {
+          const key = keyOf(v.victim);
+          const vTeam = slotById(match, v.victim)?.team;
+          if (key !== BOT_VS && team && vTeam && team === vTeam) return null;
+          return { key, kills: v.kills, deaths: v.deaths, damage: v.damage };
+        })
+        .filter((row): row is CareerVsDelta => !!row),
+    );
+    return {
+      playerKey,
+      kills: l.kills,
+      assists: l.assists,
+      deaths: l.deaths,
+      won: team === match.lastWinner,
+      shots: l.shots,
+      hits: l.hits,
+      headHits: l.headHits,
+      headKills: l.headKills,
+      rifleKills: l.rifleKills,
+      damage: l.damage,
+      nadeDamage: l.nadeDamage,
+      nadesFrag: l.nadesFrag,
+      nadesSmoke: l.nadesSmoke,
+      nadesStun: l.nadesStun,
+      nadesFlash: l.nadesFlash,
+      nadeKills: l.nadeKills,
+      plants: l.plants,
+      cuts: l.cuts,
+      knifeKills: l.knifeKills,
+      firstBloods: l.firstBloods,
+      aces: l.aces,
+      vs,
+    };
+  }
+
+  function buildRoundIngest(): CareerIngest | null {
+    const humans = humansNow();
+    if (humans.size === 0) return null;
+    const lines: CareerRoundLine[] = [];
+    for (const [playerKey, slotId] of humans) lines.push(packRoundLine(slotId, playerKey));
+    for (const id of roundIds()) {
+      const key = keyOf(id);
+      if (key === BOT_VS || humans.has(key)) continue;
+      if (!humansNow().has(key) && homeKeys.get(id) === key) lines.push(packRoundLine(id, key));
+    }
+    return {
+      gameId: id,
+      matchId,
+      round: match.round,
+      kind: "round",
+      mapId,
+      lines,
+    };
+  }
+
+  function buildMatchIngest(): CareerIngest | null {
+    if (matchPlayers.size === 0) return null;
+    return {
+      gameId: id,
+      matchId,
+      round: match.round,
+      kind: "match",
+      mapId,
+      lines: [...matchPlayers.entries()].map(([playerKey, team]) => ({
+        playerKey,
+        matchWon: team === match.lastWinner,
+      })),
+    };
+  }
 
   function nextMapId() {
     if (!rotation.length) return mapId;
@@ -187,11 +378,34 @@ export function createSim(opts?: {
     resetStats();
     roundKills.length = 0;
     pendingHeads.length = 0;
+    pendingRound = null;
+    pendingMatch = null;
+    matchId = newMatchId();
+    notedPlant = false;
+    notedCut = false;
     restartMatch(match, world.plantSpawns[2]!);
     restoreHomeSeats(match, remotes);
     resetBots(bots, world, match);
     roundSpawnHumans();
     seenRound = match.round;
+    prevPhase = match.phase;
+    const live = new Set<string>();
+    for (const r of remotes.values()) {
+      const key = peerKeys.get(r.peerId);
+      if (!key) continue;
+      live.add(key);
+      const slot = slotById(match, r.homeId);
+      if (slot) slot.playerKey = key;
+      homeKeys.set(r.homeId, key);
+      matchPlayers.set(key, r.team);
+    }
+    for (const key of [...matchPlayers.keys()]) {
+      if (!live.has(key)) matchPlayers.delete(key);
+    }
+    for (const slot of [...homeKeys.keys()]) {
+      const key = homeKeys.get(slot);
+      if (!key || !live.has(key)) homeKeys.delete(slot);
+    }
   }
 
   function loadMap(next: string, spec?: LayoutSpec | null) {
@@ -273,8 +487,8 @@ export function createSim(opts?: {
   ) {
     const killer = credit(killerId);
     const victim = credit(victimId);
-    if (killerId >= 0) noteKill(killer, victim, time);
-    else line(victim).deaths += 1;
+    if (killerId >= 0) noteKill(killer, victim, time, { head, way });
+    else noteDeath(victim);
     markDead(match, victimId, x, y, z);
     if (victim !== victimId) markDead(match, victim, x, y, z);
     const remote = [...remotes.values()].find((x) => x.slotId === victimId || x.homeId === victimId);
@@ -318,14 +532,18 @@ export function createSim(opts?: {
       return undefined;
     }
     const bot = bots.find((b) => b.id === id);
-    if (bot) return PRIMARY_IDS[Math.abs(bot.id) % PRIMARY_IDS.length];
+    if (bot) return botRifle(bot.id);
     return undefined;
   }
 
   function hurtRemote(r: Remote, dmg: number, killerId: number, way?: KillWay, head = false) {
     if (!r.alive) return false;
     const amount = oneShot ? Math.max(dmg, 200) : dmg;
+    const applied = Math.min(r.hp, amount);
     if (killerId >= 0) noteHit(credit(killerId), credit(r.slotId), time);
+    if (killerId >= 0 && way !== "bomb" && way !== "cow") {
+      noteDamage(credit(killerId), credit(r.slotId), applied, way === "nade");
+    }
     r.hp = Math.max(0, r.hp - amount);
     if (r.hp <= 0) {
       r.alive = false;
@@ -357,6 +575,9 @@ export function createSim(opts?: {
       const bot = bots.find((b) => b.id === hid);
       if (bot && bot.hp > 0 && (friendlyFire || bot.team !== youTeam)) {
         noteHit(credit(shooterId), bot.id, time);
+        noteRifleHit(credit(shooterId), head);
+        const applied = Math.min(bot.hp, dmg);
+        noteDamage(credit(shooterId), bot.id, applied);
         const killed = hurtBot(bot, dmg, time);
         if (head && killed) pendingHeads.push(bot.id);
         if (killed) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, shotWay(shooterId), head);
@@ -364,6 +585,7 @@ export function createSim(opts?: {
       }
       const remote = [...remotes.values()].find((x) => x.slotId === hid || x.homeId === hid);
       if (remote && remote.alive && (friendlyFire || remote.team !== youTeam)) {
+        noteRifleHit(credit(shooterId), head);
         const killed = hurtRemote(remote, dmg, shooterId, shotWay(shooterId), head);
         if (head && killed) pendingHeads.push(remote.homeId);
         return true;
@@ -376,11 +598,15 @@ export function createSim(opts?: {
     const bot = bots.find((b) => b.id === bodyHit.body.id);
     if (bot && bot.hp > 0) {
       noteHit(credit(shooterId), bot.id, time);
+      noteRifleHit(credit(shooterId), false);
+      const applied = Math.min(bot.hp, gunDmg(false));
+      noteDamage(credit(shooterId), bot.id, applied);
       if (hurtBot(bot, gunDmg(false), time)) frag(shooterId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, shotWay(shooterId));
       return true;
     }
     const remote = [...remotes.values()].find((x) => x.slotId === bodyHit.body.id);
     if (!remote || !remote.alive) return false;
+    noteRifleHit(credit(shooterId), false);
     hurtRemote(remote, gunDmg(false), shooterId);
     return true;
   }
@@ -388,6 +614,7 @@ export function createSim(opts?: {
   function botShoot(from: THREE.Vector3, dir: THREE.Vector3, _target: { id: number; team: string }, shooterId: number) {
     if (isCowed(shooterId)) return;
     interruptPlant(match, shooterId);
+    noteShot(credit(shooterId));
     const worldHit = rayShot(from, dir, 80, world.colliders);
     shotPeople(from, dir, worldHit, shooterId);
   }
@@ -402,6 +629,7 @@ export function createSim(opts?: {
     const bot = bots.find((b) => b.id === body.id);
     if (bot && bot.hp > 0) {
       noteHit(credit(r.slotId), bot.id, time);
+      noteDamage(credit(r.slotId), bot.id, Math.min(bot.hp, 100));
       if (hurtBot(bot, 100, time)) frag(r.slotId, bot.id, slotById(match, bot.id)?.name ?? "Rifle", bot.x, bot.y, bot.z, "knife");
       return true;
     }
@@ -421,6 +649,7 @@ export function createSim(opts?: {
     }
     r.lastFire = time;
     interruptPlant(match, r.slotId);
+    noteShot(credit(r.slotId));
     const worldHit = rayShot(origin, dir, 120, world.colliders);
     shotPeople(origin, dir, worldHit, r.slotId);
     return true;
@@ -448,7 +677,9 @@ export function createSim(opts?: {
       const d = Math.hypot(b.x - pop.x, b.y - pop.y, b.z - pop.z);
       if (d < FRAG_R) {
         const fall = 1 - d / FRAG_R;
-        if (hurtBot(b, Math.round(30 + 90 * fall), time)) {
+        const dmg = Math.round(30 + 90 * fall);
+        if (killer >= 0) noteDamage(credit(killer), b.id, Math.min(b.hp, dmg), true);
+        if (hurtBot(b, dmg, time)) {
           if (killer >= 0) frag(killer, b.id, slotById(match, b.id)?.name ?? "Rifle", b.x, b.y, b.z, "nade");
           else markDead(match, b.id, b.x, b.y, b.z);
         }
@@ -521,8 +752,11 @@ export function createSim(opts?: {
     }
   }
 
-  function reseat(peerId: number, playerName: string, team: Team, skin?: PawnSkin, look?: string) {
-    reseatPeer(scene, world, match, bots, remotes, peerId, playerName, team, parseLook(look) ?? skin);
+  function reseat(peerId: number, playerName: string, team: Team, skin?: PawnSkin, look?: string, playerKey?: string) {
+    const key = playerKey || peerKeys.get(peerId);
+    reseatPeer(scene, world, match, bots, remotes, peerId, playerName, team, parseLook(look) ?? skin, key);
+    const seated = remotes.get(peerId);
+    if (seated && key) bindKey(peerId, seated.homeId, key);
   }
 
   return {
@@ -623,6 +857,26 @@ export function createSim(opts?: {
         },
       });
 
+      if (!notedPlant && match.lastPlanterId != null) {
+        notePlant(credit(match.lastPlanterId));
+        notedPlant = true;
+      }
+      if (!notedCut && match.lastCutterId != null) {
+        noteCut(credit(match.lastCutterId));
+        notedCut = true;
+      }
+
+      if (prevPhase !== "settle" && match.phase === "settle") {
+        pendingRound = buildRoundIngest();
+        const live = new Set<number>();
+        for (const r of remotes.values()) live.add(r.homeId);
+        for (const slot of [...homeKeys.keys()]) {
+          if (!live.has(slot)) homeKeys.delete(slot);
+        }
+      }
+      if (prevPhase !== "matchover" && match.phase === "matchover") pendingMatch = buildMatchIngest();
+      prevPhase = match.phase;
+
       const empty = humanCount(match) === 0;
       if (empty && !vacant) {
         restoreHomeSeats(match, remotes);
@@ -643,6 +897,9 @@ export function createSim(opts?: {
         cows.length = 0;
         roundKills.length = 0;
         pendingHeads.length = 0;
+        notedPlant = false;
+        notedCut = false;
+        resetRoundStats();
         restoreHomeSeats(match, remotes);
         resetBots(bots, world, match);
         roundSpawnHumans();
@@ -658,8 +915,9 @@ export function createSim(opts?: {
       syncWireCarry();
     },
 
-    join(peerId, playerName, team, skin, look) {
-      seatPeer(scene, world, match, bots, remotes, peerId, playerName, team, parseLook(look) ?? parseSkin(skin));
+    join(peerId, playerName, team, skin, look, playerKey) {
+      const seated = seatPeer(scene, world, match, bots, remotes, peerId, playerName, team, parseLook(look) ?? parseSkin(skin), playerKey);
+      bindKey(peerId, seated.homeId, playerKey);
     },
 
     leave(peerId) {
@@ -674,7 +932,7 @@ export function createSim(opts?: {
     event(peerId, event) {
       const r = remotes.get(peerId);
       if (event.kind === "joinTeam") {
-        reseat(peerId, event.name, event.team, parseSkin(event.skin), event.look);
+        reseat(peerId, event.name, event.team, parseSkin(event.skin), event.look, event.playerKey);
         return;
       }
       if (event.kind === "spectate") {
@@ -687,6 +945,7 @@ export function createSim(opts?: {
         const kind = event.nade ?? "smoke";
         if (!spendNade(r.nades, kind)) return;
         r.lastThrow = time;
+        noteNadeThrow(credit(r.slotId), kind);
         const origin = new THREE.Vector3(event.ox, event.oy, event.oz);
         if ((event.power ?? 0.55) <= 0) dropSmoke(scene, origin, kind, r.slotId);
         else throwSmoke(scene, origin, new THREE.Vector3(event.dx, event.dy, event.dz), event.power, kind, r.slotId);
@@ -734,7 +993,7 @@ export function createSim(opts?: {
         return;
       }
       if (event.kind === "skipRecap") {
-        trySkipBestPlay(match);
+        concludeBestPlay(match);
         return;
       }
       if (event.kind === "shot") {
@@ -796,6 +1055,9 @@ export function createSim(opts?: {
             deaths: line(r.homeId).deaths,
             ping: r.ping,
             cow: isCowed(r.slotId) || isCowed(r.homeId),
+            playerKey: peerKeys.get(r.peerId) || slotById(match, r.homeId)?.playerKey,
+            throw: r.throw,
+            throwDrop: r.throwDrop,
           }),
         ),
         ...bots.map(
@@ -812,7 +1074,7 @@ export function createSim(opts?: {
             pitch: b.lookPitch,
             hp: b.hp,
             alive: b.hp > 0,
-            weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
+            weapon: botRifle(b.id),
             ads: b.aim && b.stunUntil <= time && !isCowed(b.id),
             crouch: false,
             prone: false,
@@ -822,6 +1084,7 @@ export function createSim(opts?: {
             kills: line(b.id).kills,
             assists: line(b.id).assists,
             deaths: line(b.id).deaths,
+            playerKey: slotById(match, b.id)?.playerKey,
           }),
         ),
       ];
@@ -884,6 +1147,18 @@ export function createSim(opts?: {
 
     mapState() {
       return { mapId, spec: customSpec ?? undefined };
+    },
+
+    drainCareer() {
+      const round = pendingRound;
+      const matchIngest = pendingMatch;
+      pendingRound = null;
+      pendingMatch = null;
+      return { round, match: matchIngest };
+    },
+
+    matchId() {
+      return matchId;
     },
 
     armWire(site: SiteId = "loft") {

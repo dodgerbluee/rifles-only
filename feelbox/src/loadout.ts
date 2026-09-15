@@ -9,6 +9,11 @@ export type Loadout = {
 
 export const PRIMARY_IDS: RifleId[] = ["kar", "karscope", "mosin"];
 
+/** Bots shoot the iron Kar. Killcam/recap must not fake a scope or Mosin. */
+export function botRifle(_id?: number): RifleId {
+  return "kar";
+}
+
 export const GUN_BLURB: Record<SecondaryId, string> = {
   kar: "Iron sights · the CoD1 rifle",
   karscope: "Glass zoom · hold the line",

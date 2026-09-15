@@ -1,7 +1,7 @@
 /**
  * Iron Kar has no glass. Scoped Kar keeps the CoD1 tube and overlay.
  */
-import { makeKar98, makeKar98Scoped, RIFLES } from "../src/weapons.ts";
+import { makeKar98, makeKar98Scoped, makeWorldKar, RIFLES } from "../src/weapons.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -22,6 +22,14 @@ check("iron Kar is not glass", RIFLES.kar.glass === false);
 check("Kar98k Scoped is glass", RIFLES.karscope.glass === true);
 check("iron zooms less than scoped", RIFLES.kar.adsFov > RIFLES.karscope.adsFov);
 check("names split", RIFLES.kar.name === "Kar98k" && RIFLES.karscope.name === "Kar98k Scoped");
+
+const world = makeWorldKar();
+let worldOcular = false;
+world.traverse((c) => {
+  if (c.userData.karOcular) worldOcular = true;
+});
+check("world Kar is the iron rifle, not scoped glass", !worldOcular);
+check("world Kar is held at the pawn, not the camera hip", world.position.length() < 1e-6);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
