@@ -20,7 +20,7 @@ const game = readFileSync(join(root, "server/game.ts"), "utf8");
 const net = readFileSync(join(root, "src/net.ts"), "utf8");
 
 check("join overlay has a spectate control", html.includes('id="join-spec"') && html.includes(">Spectate<"));
-check("join overlay deploys after both guns are picked", html.includes('id="loadout-hint"') && main.includes("tryEnterFromLoadout()") && main.includes("pickedPrimary") && main.includes("pickedSecondary"));
+check("join overlay deploys after both guns are picked", html.includes('id="loadout-hint"') && html.includes("Select two weapons") && main.includes("tryEnterFromLoadout()") && main.includes("pickedGuns") && main.includes("loadoutFromPicks"));
 check("pause menu lists disconnect, team, weapons, and settings", html.includes('id="pause-disconnect"') && html.includes('id="pause-team"') && html.includes('id="pause-guns"') && html.includes("Switch Weapon") && html.includes('id="pause-settings"'));
 check("join overlay is transparent over the map", /#join-team\s*\{[^}]*background:\s*transparent/.test(css));
 check("team sides are translucent washes", css.includes("rgba(178, 74, 24") && css.includes("rgba(42, 104, 168"));
@@ -39,7 +39,8 @@ check("each rifle card has sight and gun canvases", main.includes('gunPane("sigh
 check("preview renders both panes without a toggle", preview.includes('"sight"') && preview.includes('"inspect"') && !preview.includes("togglePreviewMode"));
 check("join overlay has no inspect/sight toggle", !html.includes("gun-preview-mode"));
 check("selected gun cards are labeled", main.includes('gun-selected') && css.includes(".loadout-row button .gun-selected"));
-check("picking both guns enters play", main.includes("tryEnterFromLoadout()") && /pickedPrimary = true[\s\S]{0,200}tryEnterFromLoadout\(\)/.test(main));
+check("picking both guns enters play", main.includes("tryEnterFromLoadout()") && main.includes("toggleGunPick") && /loadoutFromPicks\(pickedGuns\)/.test(main));
+check("one weapon grid, no primary/secondary rows", html.includes('id="loadout-picks"') && !html.includes("loadout-primary") && !html.includes("loadout-secondary") && !html.includes(">Primary<") && !html.includes(">Secondary<"));
 check("escape opens the pause menu while joined", main.includes("openPause()") && main.includes("leavePauseToGame()") && main.includes("openChooseGuns("));
 
 if (failed) {

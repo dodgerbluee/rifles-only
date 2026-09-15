@@ -1,4 +1,4 @@
-import { parseLoadout, secondaryChoices, hudWeaponLine, bindKeys, DEFAULT_LOADOUT, botRifle } from "../src/loadout.ts";
+import { parseLoadout, secondaryChoices, hudWeaponLine, bindKeys, DEFAULT_LOADOUT, botRifle, loadoutFromPicks, LOADOUT_IDS } from "../src/loadout.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -22,6 +22,15 @@ check(
   "bots always carry the iron Kar, not a scoped or Mosin fake",
   botRifle() === "kar" && botRifle(0) === "kar" && botRifle(1) === "kar" && botRifle(2) === "kar" && botRifle(8) === "kar",
 );
+check("join picker lists four guns", LOADOUT_IDS.join(",") === "kar,karscope,mosin,knife");
+const rifleThenKnife = loadoutFromPicks(["mosin", "knife"]);
+check("rifle then knife packs rifle as 1", !!rifleThenKnife && rifleThenKnife.primary === "mosin" && rifleThenKnife.secondary === "knife");
+const knifeThenRifle = loadoutFromPicks(["knife", "kar"]);
+check("knife then rifle still packs rifle as 1", !!knifeThenRifle && knifeThenRifle.primary === "kar" && knifeThenRifle.secondary === "knife");
+const twoRifles = loadoutFromPicks(["karscope", "kar"]);
+check("two rifles keep first click as 1", !!twoRifles && twoRifles.primary === "karscope" && twoRifles.secondary === "kar");
+check("one pick does not deploy", loadoutFromPicks(["kar"]) === undefined);
+check("two knives do not deploy", loadoutFromPicks(["knife", "knife"]) === undefined);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

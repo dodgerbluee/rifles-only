@@ -9,6 +9,9 @@ export type Loadout = {
 
 export const PRIMARY_IDS: RifleId[] = ["kar", "karscope", "mosin"];
 
+/** Join picker: all four guns in one grid. First two clicks deploy. */
+export const LOADOUT_IDS: SecondaryId[] = [...PRIMARY_IDS, "knife"];
+
 /** Bots shoot the iron Kar. Killcam/recap must not fake a scope or Mosin. */
 export function botRifle(_id?: number): RifleId {
   return "kar";
@@ -49,6 +52,20 @@ export function parseLoadout(raw: unknown): Loadout {
 
 export function secondaryChoices(primary: RifleId): SecondaryId[] {
   return [...PRIMARY_IDS.filter((id) => id !== primary), "knife"];
+}
+
+/**
+ * Pack two join picks into the in-match loadout.
+ * Knife always sits in the 2 slot. Two rifles keep click order (first = 1).
+ */
+export function loadoutFromPicks(picks: readonly SecondaryId[]): Loadout | undefined {
+  if (picks.length !== 2) return undefined;
+  const [a, b] = picks;
+  if (a === b) return undefined;
+  if (isRifleId(a) && !isRifleId(b)) return { primary: a, secondary: b };
+  if (!isRifleId(a) && isRifleId(b)) return { primary: b, secondary: a };
+  if (isRifleId(a) && isRifleId(b)) return { primary: a, secondary: b };
+  return undefined;
 }
 
 export function gunName(id: SecondaryId) {
