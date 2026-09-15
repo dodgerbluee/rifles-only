@@ -463,6 +463,8 @@ function hideJoinTeam() {
   if (guns) guns.hidden = true;
   const list = document.querySelector<HTMLElement>("#server-list");
   if (list) list.hidden = false;
+  const table = document.querySelector<HTMLElement>(".server-table");
+  if (table) table.hidden = false;
 }
 
 function awaitingTeamPick() {
@@ -560,6 +562,8 @@ function paintJoin() {
   const onTeam = picking && joinStep === "team";
   const onGuns = picking && joinStep === "guns";
   if (list) list.hidden = connecting || picking || rejected;
+  const table = document.querySelector<HTMLElement>(".server-table");
+  if (table) table.hidden = connecting || picking || rejected;
   if (pick) pick.hidden = !onTeam;
   const guns = document.querySelector<HTMLElement>("#join-loadout");
   if (guns) guns.hidden = !onGuns;
