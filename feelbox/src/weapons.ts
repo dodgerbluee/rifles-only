@@ -195,7 +195,7 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 /**
  * Iron rear: option-3 rounded U, 35% shorter. adsPos is unchanged.
  * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
- * Thick arms and body; the boxy hood sits slightly inside this cutout.
+ * Thick arms and body; the boxy hood starts in this cutout and sticks out the front.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
@@ -239,18 +239,23 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square hood nested slightly inside the rounded cutout so the full
- * rounded opening stays visible. Taller and 1.5× fatter than the
- * rounded leaf, extending out the front. adsPos is unchanged.
+ * Square hood that starts inside the rounded cutout (so the full
+ * opening stays visible) and finishes ~½ inch past the rounded front.
+ * Taller than the rounded leaf. adsPos is unchanged.
  */
-function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
+function karIronForeU(
+  root: THREE.Group,
+  z: number,
+  floorY: number,
+  steel: THREE.Material,
+  depth: number,
+) {
   const roundEarH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
   const earH = roundEarH * 1.55;
   const bw = 0.008;
   const nw = 0.0048;
   const sink = 0.011;
   const notchFloor = 0.001;
-  const depth = 0.009 * 1.5 * 1.5;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH);
@@ -459,10 +464,11 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   else {
     const roundZ = -0.08;
     const roundDepth = 0.009 * 1.5;
-    const boxyDepth = roundDepth * 1.5;
-    const inset = 0.003;
+    const nest = roundDepth - 0.001;
+    const outside = 0.013;
+    const boxyDepth = nest + outside;
     karIronRear(root, roundZ, recTop, steel);
-    karIronForeU(root, roundZ - roundDepth / 2 + inset - boxyDepth / 2, recTop, steel);
+    karIronForeU(root, roundZ - roundDepth / 2 + nest - boxyDepth / 2, recTop, steel, boxyDepth);
   }
   const postH = uH * 0.5;
   const postZ = -0.5;

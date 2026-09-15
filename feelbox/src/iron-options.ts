@@ -110,9 +110,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose. Thick rounded U; taller, fatter boxy U nested in the cutout."),
+    card("ads", "ADS", "Same zoom and eye pose. Taller boxy U starts in the rounded cutout and finishes outside it."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "Boxy hood sits inside the rounded opening, taller and 1.5× thicker, extending out the front."),
+    card("side", "On the rifle", "Boxy hood starts inside the rounded U and sticks ~½ inch past the front."),
   );
 }
