@@ -43,7 +43,7 @@ import {
   type WallOpening,
   type XzRect,
 } from "./layout";
-import { siteBounds, sitePads, writeSitePads, type SitePad } from "../world";
+import { rayWorld, siteBounds, sitePads, writeSitePads, type Aabb, type SitePad } from "../world";
 
 export const STUDIO_STORE = "rifles-studio-spec";
 /** Quarter of the old 2m cell. Stamps sit in a cell; building edges sit on the lines. */
@@ -477,6 +477,32 @@ export function aimGround(origin: THREE.Vector3, dir: THREE.Vector3) {
   const t = -origin.y / dir.y;
   if (t < 0.4 || t > 90) return null;
   return origin.clone().addScaledVector(dir, t);
+}
+
+/** Camera ray through a canvas NDC point (orbit mouse). */
+export function cameraRay(camera: THREE.Camera, ndcX: number, ndcY: number) {
+  camera.updateMatrixWorld();
+  _ndc.set(ndcX, ndcY);
+  _ray.setFromCamera(_ndc, camera);
+  return { origin: _ray.ray.origin.clone(), dir: _ray.ray.direction.clone() };
+}
+
+/**
+ * Surface under the cursor tip: first collider along the ray, else the lot plane.
+ * Ground-plane picks miss roofs and walls when the camera is not looking straight down.
+ */
+export function pickWorld(
+  origin: THREE.Vector3,
+  dir: THREE.Vector3,
+  colliders: Aabb[] | undefined,
+  maxDist = 220,
+): THREE.Vector3 | null {
+  const n = dir.lengthSq();
+  if (n < 1e-10) return null;
+  const unit = n > 0.999 && n < 1.001 ? dir : dir.clone().normalize();
+  const hit = colliders?.length ? rayWorld(origin, unit, maxDist, colliders) : null;
+  if (hit) return hit.point.clone();
+  return aimGround(origin, unit);
 }
 
 const COVER: CoverKind[] = ["crate", "jumpCrate", "fullCrate", "low", "high", "truck"];
