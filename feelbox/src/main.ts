@@ -5,7 +5,7 @@ import "./style.css";
 import * as THREE from "three";
 import { collideXZ, groundHeight, inSite, rayShot, rayWorld, spawnYaw } from "./world";
 import { buildMap, MAPS, LAYOUT_SPECS, compileLayout, specForMap, type MapId } from "./maps";
-import { asLayoutSpec, buildingFloors, buildingInterior, RAMP_RISE, rampLow, rampRise, type LayoutSpec } from "./maps/layout";
+import { asLayoutSpec, buildingFloors, buildingHasRoof, buildingInterior, partitionFloors, RAMP_RISE, rampLow, rampRise, type LayoutSpec } from "./maps/layout";
 import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, popPawnHead, refillBotPawn, resetBots, restoreHead, restorePawnHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
 import {
   hideDeath,
@@ -86,6 +86,7 @@ import {
   applyOrbit,
   blankSpec,
   bumpBuildingStoreys,
+  bumpPartitionStoreys,
   bumpRampLow,
   bumpRampRise,
   canvasNdc,
@@ -117,8 +118,10 @@ import {
   orbitDrag,
   panDrag,
   paletteOf,
+  pickAtY,
   pickBuildingWall,
   pickGround,
+  pickResizeHandle,
   pickStudioHit,
   place,
   placeBuildingRect,
@@ -131,16 +134,19 @@ import {
   saveStored,
   setLotHandle,
   SLAB_Y,
+  resizePickY,
   rotateBuilding,
   rotateRamp,
   setAreaName,
   setBuildingInterior,
+  setBuildingRoof,
   setRampDir,
   dirFromYaw,
   wallFromClimb,
   snapFloor,
   studioAreaIndex,
   studioBuildingIndex,
+  studioPartitionIndex,
   studioRampIndex,
   surfaceAt,
   interiorYAt,
@@ -1515,8 +1521,16 @@ function paintStudio() {
   fillStudioLists();
   const build = document.querySelector<HTMLElement>("#studio-building");
   const bi = studioBuildingIndex(studio.sels);
+  const pi = studioPartitionIndex(studio.sels);
   const b = bi >= 0 ? studio.spec.buildings?.[bi] : undefined;
-  if (build) build.hidden = !b || studio.tool === "ramp";
+  const part = pi >= 0 ? studio.spec.partitions?.[pi] : undefined;
+  if (build) build.hidden = (!b && !part) || studio.tool === "ramp";
+  const kicker = document.querySelector("#studio-building-kicker");
+  if (kicker) kicker.textContent = part && !b ? "Wall" : "Building";
+  const buildingOnly = [document.querySelector("#studio-interior-floors"), document.querySelector("#studio-interior-empty"), document.querySelector("#studio-rotate"), document.querySelector("#studio-roof"), document.querySelector("#studio-open")];
+  for (const el of buildingOnly) {
+    if (el instanceof HTMLElement) el.hidden = !b;
+  }
   if (b) {
     const floors = buildingFloors(b);
     const n = document.querySelector("#studio-storeys");
@@ -1528,6 +1542,17 @@ function paintStudio() {
     const interior = buildingInterior(b);
     document.querySelector("#studio-interior-floors")?.classList.toggle("on", interior === "floors");
     document.querySelector("#studio-interior-empty")?.classList.toggle("on", interior === "empty");
+    const roof = buildingHasRoof(b);
+    document.querySelector("#studio-roof")?.classList.toggle("on", roof);
+    document.querySelector("#studio-open")?.classList.toggle("on", !roof);
+  } else if (part) {
+    const floors = partitionFloors(part);
+    const n = document.querySelector("#studio-storeys");
+    if (n) n.textContent = String(floors);
+    const sub = document.querySelector<HTMLButtonElement>("#studio-storeys-sub");
+    const add = document.querySelector<HTMLButtonElement>("#studio-storeys-add");
+    if (sub) sub.disabled = floors <= 1;
+    if (add) add.disabled = floors >= 10;
   }
   const rampPanel = document.querySelector<HTMLElement>("#studio-ramp");
   const ri = studioRampIndex(studio.sels, studio.spec, studio.tool);
@@ -2040,6 +2065,9 @@ function placedStudioSel(prev: LayoutSpec, next: LayoutSpec, tool: ToolId): Stud
   if (tool === "building" && (next.buildings?.length ?? 0) > (prev.buildings?.length ?? 0)) {
     return [{ kind: "building", i: next.buildings!.length - 1 }];
   }
+  if (tool === "wall" && (next.partitions?.length ?? 0) > (prev.partitions?.length ?? 0)) {
+    return [{ kind: "partition", i: next.partitions!.length - 1 }];
+  }
   return [];
 }
 
@@ -2099,8 +2127,23 @@ function finishStudioDrag() {
   paintStudio();
 }
 
+function studioStampY(x: number, z: number) {
+  const top = surfaceAt(studio.spec, x, z);
+  if (!studio.walk) return top;
+  if (py >= top - 0.35) return top;
+  return interiorYAt(studio.spec, x, z, py);
+}
+
 function studioHit() {
   const ndc = canvasNdc(canvas, studio.mx, studio.my);
+  if (studio.drag?.mode === "resize" && studio.drag.item) {
+    const p = pickAtY(camera, ndc.x, ndc.y, resizePickY(studio.spec, studio.drag.item));
+    if (p) return p;
+  }
+  for (const sel of studio.sels) {
+    const p = pickAtY(camera, ndc.x, ndc.y, resizePickY(studio.spec, sel));
+    if (p && pickResizeHandle(studio.spec, sel, p.x, p.z)) return p;
+  }
   return pickGround(camera, ndc.x, ndc.y);
 }
 
@@ -2134,7 +2177,7 @@ function stampStudio() {
   studioApply(
     place(studio.spec, studio.tool, gx, gz, {
       yaw: studio.faceYaw,
-      y: surfaceAt(studio.spec, gx, gz),
+      y: studioStampY(gx, gz),
     }),
   );
   const status = document.querySelector("#studio-status");
@@ -2155,21 +2198,24 @@ function stampWalkAccessory() {
     return;
   }
   const hit = aimGround(camera.position, dir);
-  if (!hit) return;
   if (studio.tool === "erase") {
+    if (!hit) return;
     stampEraseAt(hit.x, hit.z);
     return;
   }
   if (studio.tool === "select" || studio.tool === "building") return;
-  const gx = snap(hit.x);
-  const gz = snap(hit.z);
-  const y = surfaceAt(studio.spec, gx, gz);
+  const wall = studio.tool === "cut" ? pickBuildingWall(studio.spec, camera.position, dir) : null;
+  if (!hit && !wall) return;
+  const gx = snap(wall ? wall.x : hit!.x);
+  const gz = snap(wall ? wall.z : hit!.z);
+  const y = studioStampY(gx, gz);
   const status = document.querySelector("#studio-status");
   if (studio.tool === "cut") {
     studioApply(place(studio.spec, "cut", gx, gz));
     if (status) status.textContent = "placed cut";
     return;
   }
+  if (!hit) return;
   if (studio.tool === "floor") {
     const fit = snapFloor(studio.spec, gx, gz, gx, gz, y);
     studioApply(place(studio.spec, "floor", fit.x, fit.z, { bw: fit.w, bd: fit.d, y: fit.y }));
@@ -2466,12 +2512,22 @@ paintStatsChrome();
   document.querySelector("#studio-storeys-sub")?.addEventListener("click", (e) => {
     e.stopPropagation();
     const i = studioBuildingIndex(studio.sels);
-    if (i >= 0) studioApply(bumpBuildingStoreys(studio.spec, i, -1));
+    if (i >= 0) {
+      studioApply(bumpBuildingStoreys(studio.spec, i, -1));
+      return;
+    }
+    const p = studioPartitionIndex(studio.sels);
+    if (p >= 0) studioApply(bumpPartitionStoreys(studio.spec, p, -1));
   });
   document.querySelector("#studio-storeys-add")?.addEventListener("click", (e) => {
     e.stopPropagation();
     const i = studioBuildingIndex(studio.sels);
-    if (i >= 0) studioApply(bumpBuildingStoreys(studio.spec, i, 1));
+    if (i >= 0) {
+      studioApply(bumpBuildingStoreys(studio.spec, i, 1));
+      return;
+    }
+    const p = studioPartitionIndex(studio.sels);
+    if (p >= 0) studioApply(bumpPartitionStoreys(studio.spec, p, 1));
   });
   document.querySelector("#studio-interior-floors")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2487,6 +2543,16 @@ paintStatsChrome();
     e.stopPropagation();
     const i = studioBuildingIndex(studio.sels);
     if (i >= 0) studioApply(setBuildingInterior(studio.spec, i, "empty"));
+  });
+  document.querySelector("#studio-roof")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(setBuildingRoof(studio.spec, i, true));
+  });
+  document.querySelector("#studio-open")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(setBuildingRoof(studio.spec, i, false));
   });
   document.querySelector("#studio-rise-sub")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -3210,7 +3276,7 @@ addEventListener("mousedown", (e) => {
       const gz = snap(hit.z);
       const shift = e.shiftKey;
       const ptr = pickStudioHit(studio.spec, hit.x, hit.z, studio.sels);
-      const grabHandles = studio.tool === "select" && (ptr.type === "lot" || ptr.type === "resize");
+      const grabHandles = ptr.type === "resize" || (studio.tool === "select" && ptr.type === "lot");
       if (grabHandles) {
         studio.base = cloneSpec(studio.spec);
         studio.drag = {
@@ -6343,7 +6409,7 @@ function frame(now: number) {
           const gz = studio.tool === "crate" ? snapCell(ground.z) : snap(ground.z);
           studioGhost.visible = true;
           studioGhost.scale.set(sx, sy, sz);
-          studioGhost.position.set(gx, surfaceAt(studio.spec, gx, gz) + sy / 2, gz);
+          studioGhost.position.set(gx, studioStampY(gx, gz) + sy / 2, gz);
         } else studioGhost.visible = false;
       } else studioGhost.visible = false;
       studioSel.visible = false;
@@ -6462,7 +6528,7 @@ function frame(now: number) {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
             const gx = studio.tool === "crate" ? snapCell(hit.x) : snap(hit.x);
             const gz = studio.tool === "crate" ? snapCell(hit.z) : snap(hit.z);
-            const y = isRectTool(studio.tool) ? surfaceAt(studio.spec, hit.x, hit.z) : 0;
+            const y = studioStampY(gx, gz);
             studioGhost.scale.set(sx, sy, sz);
             studioGhost.position.set(gx, y + sy / 2, gz);
           }

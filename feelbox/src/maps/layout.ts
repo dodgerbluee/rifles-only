@@ -24,9 +24,13 @@ export type BuildingSpec = {
   floors?: number;
   /** Walkable decks between storeys. Omitted = floors (Siding / Yard). */
   interior?: BuildingInterior;
+  /** Walkable lid. Omitted / true = roof on. False = open top (courtyard). */
+  roof?: boolean;
   doors?: WallOpening[];
   windows?: WallOpening[];
   stairs?: DoorWall;
+  /** Holes punched in the roof (and top deck when open). */
+  holes?: XzRect[];
   mat?: "brick" | "plaster" | "wood" | "metal";
 };
 
@@ -43,7 +47,7 @@ export type SlabSpec = {
   holes?: XzRect[];
 };
 
-/** Thin interior wall. Thickness is usually kit T. */
+/** Thin interior wall. Thickness is usually kit T. Height follows storeys like a building. */
 export type PartitionSpec = {
   x: number;
   z: number;
@@ -51,6 +55,7 @@ export type PartitionSpec = {
   d: number;
   y?: number;
   h?: number;
+  floors?: number;
 };
 
 /** Ground slope. Walk height goes from `y0` at the low end to `y0+rise` at `dir`. */
@@ -77,6 +82,8 @@ export type CoverSpec = {
   x: number;
   z: number;
   kind: CoverKind;
+  /** Walk height the box sits on. Omitted = lot (0). */
+  y?: number;
 };
 
 /**
@@ -157,8 +164,8 @@ export type LayoutSpec = {
   ramps?: RampSpec[];
   areas?: AreaSpec[];
   sites: SiteSpec[];
-  plantSpawns: [number, number][];
-  watchSpawns: [number, number][];
+  plantSpawns: [number, number, number?][];
+  watchSpawns: [number, number, number?][];
   routes: [number, number, number?][][];
   lamps?: [number, number][];
   trees?: [number, number][];
@@ -285,10 +292,32 @@ export function buildingHasDecks(b: BuildingSpec) {
   return buildingFloors(b) > 1 && buildingInterior(b) === "floors";
 }
 
-/** Walkable lid on every building, any storey count. Inset so the walls stay a parapet. */
-export function buildingRoof(b: BuildingSpec, wallH = 6.2): SlabSpec {
+export function buildingHasRoof(b: BuildingSpec) {
+  return b.roof !== false;
+}
+
+/** Walk height to stamp on this shell: roof lid, else the top interior deck / ground. */
+export function buildingPlaceY(b: BuildingSpec, wallH = 6.2) {
+  const base = buildingBase(b);
+  if (buildingHasRoof(b)) return base + buildingHeight(b, wallH);
+  if (buildingHasDecks(b)) return base + (buildingFloors(b) - 1) * STOREY;
+  return base;
+}
+
+export function partitionFloors(p: PartitionSpec) {
+  if (p.floors != null) return Math.max(STOREY_MIN, Math.min(STOREY_MAX, Math.round(p.floors)));
+  return Math.max(STOREY_MIN, Math.min(STOREY_MAX, Math.round((p.h ?? STOREY) / STOREY)));
+}
+
+export function partitionHeight(p: PartitionSpec) {
+  return p.h ?? partitionFloors(p) * STOREY;
+}
+
+/** Walkable lid unless `roof: false`. Inset so the walls stay a parapet. */
+export function buildingRoof(b: BuildingSpec, wallH = 6.2): SlabSpec | null {
+  if (!buildingHasRoof(b)) return null;
   const inner = buildingInner(b);
-  return { ...inner, y: buildingBase(b) + buildingHeight(b, wallH) };
+  return { ...inner, y: buildingBase(b) + buildingHeight(b, wallH), holes: b.holes };
 }
 
 /** Interior footprint, inset so a painted floor cannot glow on the walls. */
@@ -299,7 +328,7 @@ export function buildingInner(b: BuildingSpec): XzRect {
 /** Roof, plus interior decks when the shell is not hollow. */
 export function buildingOwnsDeckAt(b: BuildingSpec, y: number, wallH = 6.2, yEps = WALK_Y_EPS) {
   const base = buildingBase(b);
-  if (Math.abs(y - (base + buildingHeight(b, wallH))) <= yEps) return true;
+  if (buildingHasRoof(b) && Math.abs(y - (base + buildingHeight(b, wallH))) <= yEps) return true;
   if (!buildingHasDecks(b)) return false;
   const floors = buildingFloors(b);
   for (let f = 1; f < floors; f++) {
@@ -511,14 +540,15 @@ function coverMat(kit: Kit, kind: CoverKind, h: number) {
 }
 
 function coverAt(kit: Kit, c: CoverSpec) {
+  const y0 = c.y ?? 0;
   if (c.kind === "truck") {
-    kit.box(c.x, 0.7, c.z, 5.2, 1.4, 2.1, kit.mat("metal", 4, 1.4));
-    kit.box(c.x - 1.6, 0.42, c.z, 0.7, 0.84, 0.7, kit.mat("metal", 0.6, 0.6));
-    kit.box(c.x + 1.6, 0.42, c.z, 0.7, 0.84, 0.7, kit.mat("metal", 0.6, 0.6));
+    kit.box(c.x, y0 + 0.7, c.z, 5.2, 1.4, 2.1, kit.mat("metal", 4, 1.4));
+    kit.box(c.x - 1.6, y0 + 0.42, c.z, 0.7, 0.84, 0.7, kit.mat("metal", 0.6, 0.6));
+    kit.box(c.x + 1.6, y0 + 0.42, c.z, 0.7, 0.84, 0.7, kit.mat("metal", 0.6, 0.6));
     return;
   }
   const [sx, sy, sz] = COVER_SIZE[c.kind];
-  kit.box(c.x, sy / 2, c.z, sx, sy, sz, coverMat(kit, c.kind, sy), true, COVER_WALK[c.kind]);
+  kit.box(c.x, y0 + sy / 2, c.z, sx, sy, sz, coverMat(kit, c.kind, sy), true, COVER_WALK[c.kind]);
 }
 
 function addRamp(kit: Kit, r: RampSpec, mat: THREE.Material) {
@@ -691,7 +721,8 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
         }
       }
     }
-    walkDecks.push({ ...buildingRoof(b, H), owner: i });
+    const roof = buildingRoof(b, H);
+    if (roof) walkDecks.push({ ...roof, owner: i });
   }
 
   for (const s of spec.slabs ?? []) walkDecks.push(s);
@@ -713,7 +744,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   }
 
   for (const p of spec.partitions ?? []) {
-    const h = p.h ?? STOREY;
+    const h = partitionHeight(p);
     const y0 = p.y ?? 0;
     kit.box(p.x, y0 + h / 2, p.z, p.w, h, p.d, kit.mat(theme.wall, Math.max(p.w, p.d) / 2, h / 2));
   }
@@ -739,8 +770,8 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     const watchMat = new THREE.MeshLambertMaterial({ color: 0x8a9098 });
     const lampMat = new THREE.MeshLambertMaterial({ color: 0x7a7874 });
     const treeMat = new THREE.MeshLambertMaterial({ color: 0x8a867c });
-    for (const [x, z] of spec.plantSpawns) kit.box(x, 0.12, z, 1.2, 0.24, 1.2, plantMat, false, true, false);
-    for (const [x, z] of spec.watchSpawns) kit.box(x, 0.12, z, 1.2, 0.24, 1.2, watchMat, false, true, false);
+    for (const [x, z, y] of spec.plantSpawns) kit.box(x, (y ?? 0) + 0.12, z, 1.2, 0.24, 1.2, plantMat, false, true, false);
+    for (const [x, z, y] of spec.watchSpawns) kit.box(x, (y ?? 0) + 0.12, z, 1.2, 0.24, 1.2, watchMat, false, true, false);
     for (const [x, z] of spec.lamps ?? []) kit.box(x, 1.6, z, 0.2, 3.2, 0.2, lampMat, false);
     for (const [x, z] of spec.trees ?? []) kit.box(x, 2, z, 1.8, 4, 1.8, treeMat, false);
   } else {
@@ -748,8 +779,8 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     for (const [x, z] of spec.trees ?? []) kit.tree(x, z);
   }
 
-  const plantSpawns = spec.plantSpawns.map(([x, z]) => kit.v(x, z));
-  const watchSpawns = spec.watchSpawns.map(([x, z]) => kit.v(x, z));
+  const plantSpawns = spec.plantSpawns.map(([x, z, y]) => kit.v(x, z, y));
+  const watchSpawns = spec.watchSpawns.map(([x, z, y]) => kit.v(x, z, y));
   const waypoints = spec.routes.map((r) => r.map(([x, z, y]) => kit.v(x, z, y)));
 
   return finish(kit, {
