@@ -133,6 +133,9 @@ check("packed 30 Hz to 4 friends fits the home budget", fourHot <= HOME_BUDGET_K
 check("unpack keeps names", round.pawns[0]?.name === "Reed" && round.pawns[5]?.name === "Ash");
 check("hot snap still knows who Reed is", hotUn.pawns[0]?.name === "Reed");
 check("hot snap moved Reed", Math.abs((hotUn.pawns[0]?.x ?? 0) - (snap.pawns[0]!.x + 0.08)) < 0.02);
+const tossing = packSnap({ ...snap, pawns: snap.pawns.map((p, i) => (i === 0 ? { ...p, weapon: "frag", throw: 0.4, throwDrop: false } : p)) }, createWireBuf(), true);
+const tossed = unpackSnap(tossing, null);
+check("packed snap keeps a frag toss", tossed.pawns[0]?.weapon === "frag" && Math.abs((tossed.pawns[0]?.throw ?? 0) - 0.4) < 0.03);
 check("kill feed survives a full pack", round.feed.length === 1 && round.feed[0]?.killerName === "Reed");
 check("hot snap is droppable", hot.u === 1 && packedFull.u === 0);
 check("droppable head sniffs packed snaps", isDroppableSnapHead(JSON.stringify(hot)));
@@ -144,6 +147,7 @@ check("first input always sends", shouldSendInput(null, blank, 0, 0));
 check("144 Hz look is capped to tick rate", !shouldSendInput(blank, { ...blank, yaw: 1.02 }, 4, 0));
 check("next tick may send look", shouldSendInput(blank, { ...blank, yaw: 1.02 }, 17, 0));
 check("fire edge sends immediately", shouldSendInput(blank, { ...blank, fire: true }, 2, 0));
+check("throw start sends immediately", shouldSendInput(blank, { ...blank, throw: 0.1, weapon: "frag" }, 2, 0));
 
 const emptyClouds = packSnap({ ...snap, clouds: [], nades: [], feed: [] }, createWireBuf(), true);
 const unEmpty = unpackSnap(emptyClouds, round);

@@ -1,4 +1,4 @@
-import { parseLoadout, secondaryChoices, hudWeaponLine, bindKeys, DEFAULT_LOADOUT } from "../src/loadout.ts";
+import { parseLoadout, secondaryChoices, hudWeaponLine, bindKeys, DEFAULT_LOADOUT, botRifle } from "../src/loadout.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -18,6 +18,10 @@ const knifeLine = hudWeaponLine(DEFAULT_LOADOUT, "frag", { smoke: 1, frag: 2, st
 check("knife secondary drops the 3 slot", knifeLine.includes("2 KNIFE") && !knifeLine.includes("3 KNIFE"));
 const keys = bindKeys({ primary: "mosin", secondary: "karscope" });
 check("1/2/3 bind primary, secondary, knife", keys.digit1 === "mosin" && keys.digit2 === "karscope" && keys.digit3 === "knife");
+check(
+  "bots always carry the iron Kar, not a scoped or Mosin fake",
+  botRifle() === "kar" && botRifle(0) === "kar" && botRifle(1) === "kar" && botRifle(2) === "kar" && botRifle(8) === "kar",
+);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
