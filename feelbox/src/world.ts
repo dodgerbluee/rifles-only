@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { makeTextures, surf, type TexPack } from "./textures";
 
-import { type Aabb, hasLos, rayShot, rayWorld } from "./trace";
+import { aabbRampY, type Aabb, hasLos, rayShot, rayWorld } from "./trace";
 
 export type { Aabb };
-export { hasLos, rayShot, rayWorld };
+export { aabbRampY, hasLos, rayShot, rayWorld };
 
 export type SitePad = { x: number; z: number; w: number; d: number };
 
@@ -773,8 +773,14 @@ export const STEP_UP = 0.52;
 /** Thin walk volumes are floors and stair treads, not walls. */
 const WALK_SLAB = 0.4;
 
-function blocksXZ(b: Aabb, y0: number, y1: number) {
+function blocksXZ(b: Aabb, x: number, z: number, y0: number, y1: number) {
   if (y1 < b.min.y || y0 > b.max.y) return false;
+  if (b.ramp) {
+    const ySurf = aabbRampY(b, x, z);
+    if (y1 <= ySurf - 0.02) return true;
+    if (y0 < ySurf - 0.45 && y1 > ySurf) return true;
+    return false;
+  }
   if (b.walk && y0 >= b.max.y - 0.06) return false;
   if (b.walk && b.max.y - b.min.y <= WALK_SLAB) return false;
   return true;
@@ -785,7 +791,7 @@ export function collideXZ(colliders: Aabb[], x: number, z: number, radius: numbe
   let cz = z;
   for (let pass = 0; pass < 4; pass++) {
     for (const b of colliders) {
-      if (!blocksXZ(b, y0, y1)) continue;
+      if (!blocksXZ(b, cx, cz, y0, y1)) continue;
       const closestX = Math.max(b.min.x, Math.min(cx, b.max.x));
       const closestZ = Math.max(b.min.z, Math.min(cz, b.max.z));
       let dx = cx - closestX;
@@ -820,7 +826,7 @@ export function groundHeight(colliders: Aabb[], x: number, z: number, radius: nu
     if (!b.walk) continue;
     if (x + radius < b.min.x || x - radius > b.max.x || z + radius < b.min.z || z - radius > b.max.z)
       continue;
-    const top = b.max.y;
+    const top = b.ramp ? aabbRampY(b, x, z) : b.max.y;
     if (top <= fromY + STEP_UP && top > fromY - 0.28) on = Math.max(on, top);
     else if (top < fromY - 0.28) below = Math.max(below, top);
   }

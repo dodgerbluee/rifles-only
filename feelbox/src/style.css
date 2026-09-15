@@ -3689,7 +3689,8 @@ body.studio.studio-walk.playing #view {
 #studio-palettes,
 #studio-tools,
 #studio-building:not([hidden]),
-#studio-area:not([hidden]) {
+#studio-area:not([hidden]),
+#studio-ramp:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -3727,6 +3728,7 @@ body.studio.studio-walk.playing #view {
 #studio-tools button.on,
 #studio-palettes button.on,
 #studio-building button.on,
+#studio-ramp button.on,
 #studio-walk.on {
   border-color: #e8d9a8;
   color: #e8d9a8;
@@ -3772,18 +3774,29 @@ body.studio.studio-peg #view {
   margin-bottom: 8px;
 }
 
+#studio-ramp {
+  display: none;
+  margin-bottom: 8px;
+}
+
 #studio-area-name {
   min-width: 8em;
 }
 
-#studio-storeys {
+#studio-storeys,
+#studio-rise,
+#studio-low {
   min-width: 1.2em;
   text-align: center;
   color: #e8d9a8;
 }
 
 #studio-storeys-sub:disabled,
-#studio-storeys-add:disabled {
+#studio-storeys-add:disabled,
+#studio-rise-sub:disabled,
+#studio-rise-add:disabled,
+#studio-low-sub:disabled,
+#studio-low-add:disabled {
   opacity: 0.35;
 }
 
