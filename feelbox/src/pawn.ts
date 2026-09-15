@@ -709,9 +709,9 @@ function dressHat(head: THREE.Mesh, id: HatId, k: Kit, _team: Team, cloth: THREE
   if (id === "watch") {
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.158, 0.09, 12), k.helm);
     cap.position.y = 0.09;
-    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), k.helm);
-    crown.position.y = 0.045;
-    crown.scale.y = 0.72;
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.145, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), k.helm);
+    crown.position.y = 0.015;
+    crown.scale.y = 0.45;
     cap.add(crown);
     head.add(cap);
     cloth.push(cap, crown);
