@@ -301,25 +301,25 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   g.add(stock);
 
   function wrapHand(side: 1 | -1) {
-    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 5), skin);
-    palm.scale.set(0.9, 1.15, 1.45);
-    palm.position.set(side * (nearR + 0.004), axisY + 0.008, faceZ - 0.038);
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 5), skin);
+    palm.scale.set(0.85, 1.05, 1.3);
+    palm.position.set(side * (nearR + 0.012), axisY + 0.004, faceZ - 0.042);
     g.add(palm);
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0065, 0.018, 2, 5), skin);
-    thumb.position.set(side * nearR * 0.2, axisY + nearR * 0.72, faceZ - 0.014);
-    thumb.rotation.z = -side * 1.15;
-    thumb.rotation.x = 0.35;
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 0.015, 2, 5), skin);
+    thumb.position.set(side * nearR * 0.82, axisY + nearR * 0.85, faceZ - 0.018);
+    thumb.rotation.z = -side * 0.85;
+    thumb.rotation.x = 0.25;
     g.add(thumb);
     for (let i = 0; i < 4; i++) {
       const t = i / 3;
-      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0052, 0.02, 2, 5), skin);
+      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0048, 0.016, 2, 5), skin);
       f.position.set(
-        side * (nearR * 0.55 - t * 0.012),
-        axisY + nearR * 0.55 - t * 0.006,
-        faceZ - 0.02 - t * 0.01,
+        side * (nearR + 0.004 - t * 0.004),
+        axisY + nearR * 0.35 - t * 0.008,
+        faceZ - 0.028 - t * 0.008,
       );
-      f.rotation.z = -side * (1.1 - t * 0.25);
-      f.rotation.x = 0.55 + t * 0.2;
+      f.rotation.z = -side * 0.95;
+      f.rotation.x = 0.45;
       g.add(f);
     }
   }
