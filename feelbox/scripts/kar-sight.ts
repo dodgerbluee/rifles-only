@@ -65,14 +65,14 @@ check("scoped has no iron fore U", !findFlag(scoped.root, "karIronForeU"));
 if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   ironFore.geometry.computeBoundingBox();
   const foreBox = ironFore.geometry.boundingBox!;
-  const rearBox = (ironRear as THREE.Mesh).geometry.boundingBox!;
-  check("boxy U is wider than the rounded leaf", foreBox.max.x - foreBox.min.x > rearBox.max.x - rearBox.min.x, `foreW=${foreBox.max.x - foreBox.min.x}`);
+  check("boxy U sits inside the rounded cutout", foreBox.max.x - foreBox.min.x < Number((ironRear as THREE.Mesh).userData.karIronTopW), `foreW=${foreBox.max.x - foreBox.min.x}`);
   check("boxy U sits in front of the rounded U", ironFore.position.z < ironRear.position.z, `roundZ=${ironRear.position.z} boxyZ=${ironFore.position.z}`);
   const roundDepth = Number((ironRear as THREE.Mesh).userData.karIronDepth);
   const boxyDepth = Number(ironFore.userData.karIronDepth);
-  const gap = ironRear.position.z - roundDepth / 2 - (ironFore.position.z + boxyDepth / 2);
-  check("Us are connected", Math.abs(gap) < 0.002, `gap=${gap}`);
-  check("Us are half as thick in side view", roundDepth < 0.011 && boxyDepth < 0.009, `roundD=${roundDepth} boxyD=${boxyDepth}`);
+  const boxyBack = ironFore.position.z + boxyDepth / 2;
+  const roundFront = ironRear.position.z - roundDepth / 2;
+  check("boxy U is nested inside the rounded U", boxyBack > roundFront, `boxyBack=${boxyBack} roundFront=${roundFront}`);
+  check("rounded U body is thicker", roundDepth > 0.012, `roundD=${roundDepth}`);
 }
 
 let ironFacets = 0;

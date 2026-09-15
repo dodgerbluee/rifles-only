@@ -195,18 +195,19 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 /**
  * Iron rear: option-3 rounded U, 35% shorter. adsPos is unchanged.
  * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
- * Sits at the rear; the boxy hood is connected in front of it.
+ * Thick arms and body; the boxy hood sits slightly inside this cutout.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
   const recW = 0.026;
   const sink = 0.011;
-  const bw = recW * 0.5 + 0.0012;
   const barW = 0.003;
-  const depth = 0.009;
+  const depth = 0.009 * 1.5;
   const cutW = barW + 2 * (2 * barW);
   const botW = cutW * 0.5;
   const topW = botW * 1.32;
+  const earThick = recW * 0.5 + 0.0012 - topW;
+  const bw = topW + earThick * 1.5;
   const notchFloor = 0.001;
   const roundH = (earH - notchFloor) * 0.38;
   const leaf = new THREE.Shape();
@@ -238,13 +239,13 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square, wider hood connected in front of the rounded leaf.
- * The aiming bar comes out of this U. adsPos is unchanged.
+ * Square hood nested slightly inside the rounded cutout so the full
+ * rounded opening stays visible. The aiming bar comes out of this U.
  */
 function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
-  const earH = 0.012;
-  const bw = 0.0185;
-  const nw = 0.012;
+  const earH = 0.0078;
+  const bw = 0.008;
+  const nw = 0.0048;
   const sink = 0.011;
   const notchFloor = 0.001;
   const depth = 0.007;
@@ -261,8 +262,8 @@ function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE
   const geo = new THREE.ExtrudeGeometry(leaf, {
     depth,
     bevelEnabled: true,
-    bevelThickness: 0.0005,
-    bevelSize: 0.0004,
+    bevelThickness: 0.0004,
+    bevelSize: 0.0003,
     bevelSegments: 1,
     curveSegments: 1,
   });
@@ -456,9 +457,10 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   else {
     const roundZ = -0.08;
     const boxyDepth = 0.007;
-    const roundDepth = 0.009;
+    const roundDepth = 0.009 * 1.5;
+    const inset = boxyDepth * 0.45;
     karIronRear(root, roundZ, recTop, steel);
-    karIronForeU(root, roundZ - roundDepth / 2 - boxyDepth / 2, recTop, steel);
+    karIronForeU(root, roundZ - roundDepth / 2 + inset - boxyDepth / 2, recTop, steel);
   }
   const postH = uH * 0.5;
   const postZ = -0.5;

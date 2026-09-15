@@ -110,9 +110,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose. Rounded U at the rear; wider boxy U connected in front, aiming bar coming out of it."),
+    card("ads", "ADS", "Same zoom and eye pose. Thick rounded U; smaller boxy U nested inside the cutout."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "Boxy hood sits connected in front of the rounded rear leaf."),
+    card("side", "On the rifle", "Boxy hood sits slightly inside the rounded leaf so the full cutout shows."),
   );
 }
