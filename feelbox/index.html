@@ -97,6 +97,7 @@
     <div id="start">
       <div id="home-chrome">
         <button type="button" id="home-studio">Map studio</button>
+        <button type="button" id="home-stats" hidden>Player Stats</button>
         <button type="button" id="open-settings" aria-label="Settings" title="Settings">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
             <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.81 8.48a.5.5 0 0 0 .12.64L4.96 10.7c-.04.31-.06.63-.06.94s.02.63.06.94L2.93 14.16a.5.5 0 0 0-.12.64l1.92 3.32c.13.23.4.32.6.22l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.23.1.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
@@ -128,6 +129,36 @@
             <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="stats-page" hidden>
+      <div class="stats-shell">
+        <button type="button" id="stats-back">Back to server list</button>
+        <header class="stats-hero">
+          <p class="kicker">Rifles Only</p>
+          <h1 class="title" id="stats-title">Player Stats</h1>
+          <p class="stats-lead" id="stats-lead">Your career across every Last Wire box on this lobby.</p>
+        </header>
+        <p class="stats-empty" id="stats-empty" hidden>Play a match while logged in to start a record.</p>
+        <div id="stats-body" hidden>
+          <section class="stats-panel" aria-labelledby="stats-overview-h">
+            <h2 class="stats-panel-title" id="stats-overview-h">Overview</h2>
+            <div class="stats-heroes" id="stats-overview"></div>
+          </section>
+          <section class="stats-panel" aria-labelledby="stats-combat-h">
+            <h2 class="stats-panel-title" id="stats-combat-h">Combat</h2>
+            <div class="stats-grid" id="stats-combat"></div>
+          </section>
+          <section class="stats-panel" aria-labelledby="stats-utility-h">
+            <h2 class="stats-panel-title" id="stats-utility-h">Utility &amp; Last Wire</h2>
+            <div class="stats-grid" id="stats-utility"></div>
+          </section>
+          <section class="stats-panel" aria-labelledby="stats-rivals-h">
+            <h2 class="stats-panel-title" id="stats-rivals-h">Rivals</h2>
+            <div id="stats-rivals"></div>
+          </section>
+        </div>
       </div>
     </div>
 

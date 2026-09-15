@@ -156,6 +156,7 @@ export function seatPeer(
   name: string,
   teamHint?: Team,
   kit?: PawnSkin | Appearance | string,
+  playerKey?: string,
 ) {
   if (remotes.has(peerId)) return remotes.get(peerId)!;
   const emberH = match.slots.filter((s) => s.kind === "human" && s.team === "ember").length;
@@ -169,6 +170,7 @@ export function seatPeer(
     extra.occupant = undefined;
     slot = extra;
   }
+  if (playerKey) slot.playerKey = playerKey;
   despawnBot(scene, bots, slot.id);
   const planter = plantingTeam(match);
   const list = slot.team === planter ? world.plantSpawns : world.watchSpawns;
@@ -189,15 +191,19 @@ export function reseatPeer(
   name: string,
   team: Team,
   kit?: PawnSkin | Appearance | string,
+  playerKey?: string,
 ) {
   const cur = remotes.get(peerId);
   if (cur?.team === team) {
     if (kit) dressRemote(cur, kit);
+    const slot = slotById(match, cur.homeId);
+    if (playerKey && slot) slot.playerKey = playerKey;
     return cur;
   }
   const oldId = cur?.homeId ?? cur?.slotId;
+  const oldKey = playerKey || (oldId != null ? slotById(match, oldId)?.playerKey : undefined);
   if (cur) dropPeer(scene, world, match, bots, remotes, peerId);
-  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team, kit ?? cur?.look);
+  const seated = seatPeer(scene, world, match, bots, remotes, peerId, name, team, kit ?? cur?.look, oldKey);
   if (oldId != null && oldId !== seated.slotId) swapLines(oldId, seated.slotId);
   return seated;
 }
@@ -423,6 +429,7 @@ export function fillAbsentSlots(match: Match, pawns: Pawn[], remotes?: Map<numbe
       deaths: line(s.id).deaths,
       skin: occ?.skin,
       look: occ?.look ? packLook(occ.look) : undefined,
+      playerKey: s.playerKey,
     });
   }
 }

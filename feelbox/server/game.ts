@@ -16,6 +16,7 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 const PORT = Number(process.env.PORT ?? 8081);
 const LOBBY_URL = process.env.LOBBY_URL ?? "";
 const GAME_ID = process.env.GAME_ID ?? "default";
+const INGEST_TOKEN = process.env.INGEST_TOKEN ?? "";
 const cfg = loadServerConfig();
 const GAME_NAME = process.env.GAME_NAME ?? cfg.name;
 const HEARTBEAT_MS = 15_000;
@@ -191,7 +192,7 @@ wss.on("connection", (ws) => {
       peer.playerKey = playerKey;
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
-      sim.join(id, peer.name, undefined, msg.skin, msg.look);
+      sim.join(id, peer.name, undefined, msg.skin, msg.look, playerKey);
       wireFull = true;
       send(ws, { type: "welcome", id, role: "client" });
       const map = sim.mapState();
@@ -244,6 +245,9 @@ setInterval(() => {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   sim.tick(dt);
+  const drain = sim.drainCareer();
+  if (drain.round) void ingestCareer(drain.round);
+  if (drain.match) void ingestCareer(drain.match);
 }, 1000 / TICK_HZ).unref?.();
 
 setInterval(() => {
@@ -264,6 +268,22 @@ setInterval(() => {
     send(p.ws, { type: "ping", t: now });
   }
 }, HEARTBEAT_MS).unref?.();
+
+async function ingestCareer(body) {
+  if (!LOBBY_URL) return;
+  try {
+    await fetch(new URL("/api/career/ingest", LOBBY_URL), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(INGEST_TOKEN ? { "x-ingest-token": INGEST_TOKEN } : {}),
+      },
+      body: JSON.stringify({ ...body, token: INGEST_TOKEN }),
+    });
+  } catch {
+    /* lobby may be restarting */
+  }
+}
 
 async function beatLobby() {
   if (!LOBBY_URL) return;
