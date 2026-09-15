@@ -1531,6 +1531,7 @@ body.settings #locker-pip[hidden] {
 #join-status[hidden],
 #join-team-pick[hidden],
 #join-loadout[hidden],
+#join-spec[hidden],
 #register[hidden] {
   display: none !important;
 }
@@ -1542,20 +1543,31 @@ body.settings #locker-pip[hidden] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 10px;
   margin: 0;
   padding: 28px;
-  background: #0e0e0c;
+  background: transparent;
+  pointer-events: none;
   text-align: center;
 }
 
+#join-team > * {
+  pointer-events: auto;
+}
+
 #join-team .join-kicker {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
   margin: 0;
-  color: #e6dfd0;
+  color: #f4eee2;
   font-weight: 650;
   letter-spacing: 0.06em;
   font-size: 18px;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
 }
 
 #join-team .join-ask {
@@ -1563,15 +1575,26 @@ body.settings #locker-pip[hidden] {
 }
 
 #join-team.pick .join-kicker,
-#join-team.pick #join-status {
-  display: none !important;
+#join-team.loadout .join-kicker {
+  display: block;
+}
+
+#join-team.pick #join-status:not([hidden]),
+#join-team.loadout #join-status:not([hidden]) {
+  display: block;
+  position: absolute;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
 }
 
 #join-team.pick .join-ask,
 #join-team.loadout .join-ask {
   display: block;
   position: absolute;
-  top: 28px;
+  top: 72px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -1583,26 +1606,31 @@ body.settings #locker-pip[hidden] {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
-#join-team.loadout .join-kicker,
-#join-team.loadout #join-status {
-  display: none !important;
-}
-
 #join-loadout {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  width: min(720px, 100%);
-  padding-top: 36px;
+  gap: 8px;
+  width: min(640px, calc(100% - 340px));
+  padding: 12px 14px 14px;
+  background: rgba(12, 12, 10, 0.42);
+  border: 1px solid rgba(232, 217, 168, 0.22);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
 }
 
 #join-loadout .loadout-label {
-  margin: 12px 0 0;
+  margin: 4px 0 0;
   color: #f4eee2;
-  font-size: 13px;
+  font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
 .loadout-row {
@@ -1614,12 +1642,12 @@ body.settings #locker-pip[hidden] {
 }
 
 .loadout-row button {
-  min-width: 168px;
-  flex: 1 1 160px;
-  max-width: 220px;
-  padding: 14px 16px;
+  min-width: 120px;
+  flex: 1 1 110px;
+  max-width: 180px;
+  padding: 10px 12px;
   text-align: left;
-  background: #1c1e18;
+  background: rgba(28, 30, 24, 0.72);
   color: #e6dfd0;
   border: 1px solid rgba(232, 217, 168, 0.28);
   cursor: pointer;
@@ -1649,27 +1677,165 @@ body.settings #locker-pip[hidden] {
 }
 
 #loadout-go {
-  margin: 18px 0 8px;
-  padding: 12px 28px;
-  background: #e8d9a8;
-  color: #14140f;
-  border: 0;
-  font-weight: 650;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  display: none;
+}
+
+#gun-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(420px, 100%);
+}
+
+#gun-preview-stage {
+  position: relative;
+  width: 100%;
+  height: 168px;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(8, 8, 6, 0.35);
   cursor: pointer;
 }
 
-#loadout-go:hover {
-  background: #f4eee2;
+#gun-preview-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#gun-preview-glass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#gun-preview-glass.on {
+  opacity: 1;
+}
+
+#gun-preview-glass .gp-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle closest-side at 50% 50%,
+    transparent 48%,
+    rgba(8, 9, 7, 0.42) 70%,
+    #080907 76%
+  );
+}
+
+#gun-preview-glass .gp-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 72%;
+  height: 72%;
+  margin: -36% 0 0 -36%;
+  border: 2px solid #1c1e18;
+  border-radius: 50%;
+  box-shadow: inset 0 0 12px 6px rgba(8, 9, 7, 0.5);
+}
+
+#gun-preview-glass .gp-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
+#gun-preview-glass .gp-bar {
+  position: absolute;
+  background: #11140e;
+  box-shadow: 0 0 0 1px rgba(239, 230, 210, 0.35);
+}
+
+#gun-preview-glass .gp-bar-s {
+  left: -1px;
+  top: 6px;
+  width: 2px;
+  height: 38%;
+}
+
+#gun-preview-glass .gp-bar-l {
+  top: -1px;
+  right: 6px;
+  height: 2px;
+  width: 28%;
+}
+
+#gun-preview-glass .gp-bar-r {
+  top: -1px;
+  left: 6px;
+  height: 2px;
+  width: 28%;
+}
+
+#gun-preview-name {
+  margin: 0;
+  color: #f4eee2;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+
+#gun-preview-mode {
+  background: transparent;
+  color: #e8d9a8;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  padding: 6px 12px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+#gun-preview-mode:hover {
+  border-color: #e8d9a8;
+}
+
+#join-spec {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  margin: 0;
+  padding: 10px 22px;
+  background: rgba(8, 8, 6, 0.5);
+  color: #f4eee2;
+  border: 1px solid rgba(232, 217, 168, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 650;
+}
+
+#join-spec:hover {
+  border-color: #e8d9a8;
+  background: rgba(16, 17, 12, 0.7);
+}
+
+#join-spec:disabled,
+#join-team-pick button:disabled {
+  opacity: 0.45;
+  cursor: wait;
 }
 
 #join-cancel {
-  z-index: 2;
-  margin: 8px 0 0;
-  background: transparent;
-  color: #8d8676;
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  z-index: 3;
+  margin: 0;
+  background: rgba(8, 8, 6, 0.45);
+  color: #f4eee2;
   border: 0;
+  border-radius: 4px;
   padding: 8px 14px;
   cursor: pointer;
   letter-spacing: 0.08em;
@@ -1678,16 +1844,13 @@ body.settings #locker-pip[hidden] {
 #join-team.pick #join-cancel,
 #join-team.loadout #join-cancel {
   position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
-  color: #f4eee2;
-  background: rgba(8, 8, 6, 0.45);
-  border-radius: 4px;
+  top: 18px;
+  left: 18px;
+  bottom: auto;
+  transform: none;
 }
 
-body.started #join-team {
+body.started:not(.choosing) #join-team {
   display: none !important;
 }
 
@@ -1697,7 +1860,11 @@ body.started #join-team {
   font-size: 12px;
 }
 
-body.started #start {
+body.started #start,
+body.joined #start,
+body.choosing #start,
+body.spectating #start,
+body.paused #start {
   display: none;
 }
 
@@ -1706,8 +1873,14 @@ body:not(.started) #letterbox {
   display: none !important;
 }
 
-body.started:not(.playing) #view {
+body.started:not(.playing) #view,
+body.choosing #view,
+body.paused #view {
   cursor: default;
+}
+
+body.choosing.orbiting #view {
+  cursor: grabbing;
 }
 
 #letterbox {
@@ -1940,7 +2113,7 @@ body.admin #admin {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 22;
+  z-index: 28;
   pointer-events: none;
 }
 
@@ -2724,11 +2897,13 @@ body.locker #vitals {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(140px, 20%) 1fr minmax(140px, 20%);
   margin: 0;
+  pointer-events: none;
 }
 
 #join-team-pick button.team-side {
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2744,12 +2919,14 @@ body.locker #vitals {
 }
 
 #join-team-pick button[data-team="ember"] {
-  background: #b24a18;
+  grid-column: 1;
+  background: linear-gradient(90deg, rgba(178, 74, 24, 0.55), rgba(178, 74, 24, 0.08) 78%, transparent);
   color: #f6e6d4;
 }
 
 #join-team-pick button[data-team="stone"] {
-  background: #2a68a8;
+  grid-column: 3;
+  background: linear-gradient(-90deg, rgba(42, 104, 168, 0.55), rgba(42, 104, 168, 0.08) 78%, transparent);
   color: #e4eef8;
 }
 
@@ -3646,7 +3823,92 @@ body.settings #round-result,
 body.settings #join-team,
 body.settings #roster,
 body.settings #join-note,
-body.settings #vitals {
+body.settings #vitals,
+body.settings #pause {
+  display: none !important;
+}
+
+#pause[hidden] {
+  display: none !important;
+}
+
+#pause {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 8, 6, 0.48);
+}
+
+.pause-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 260px;
+  padding: 28px 24px;
+  background: rgba(16, 17, 12, 0.88);
+  border: 1px solid rgba(232, 217, 168, 0.35);
+}
+
+.pause-kicker {
+  margin: 0 0 8px;
+  color: #8d8676;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px;
+  text-align: center;
+}
+
+.pause-panel button {
+  padding: 12px 18px;
+  background: #1c1e18;
+  color: #e6dfd0;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 650;
+}
+
+.pause-panel button:hover {
+  border-color: #e8d9a8;
+  color: #e8d9a8;
+}
+
+body.choosing #hud-left,
+body.choosing #hud-right,
+body.choosing #match-bar,
+body.choosing #round-tag,
+body.choosing #killfeed,
+body.choosing #crosshair,
+body.choosing #death,
+body.choosing #prompt,
+body.choosing #use-bar,
+body.choosing #cook-bar,
+body.choosing #roster,
+body.choosing #join-note,
+body.paused #hud-left,
+body.paused #hud-right,
+body.paused #match-bar,
+body.paused #round-tag,
+body.paused #killfeed,
+body.paused #crosshair,
+body.paused #death,
+body.paused #prompt,
+body.paused #use-bar,
+body.paused #cook-bar,
+body.paused #roster,
+body.paused #join-note,
+body.spectating #hud-left,
+body.spectating #hud-right,
+body.spectating #crosshair,
+body.spectating #death {
+  display: none !important;
+}
+
+body.paused #join-team {
   display: none !important;
 }
 

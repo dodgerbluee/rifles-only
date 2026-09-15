@@ -192,7 +192,6 @@ wss.on("connection", (ws) => {
       peer.playerKey = playerKey;
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
-      sim.join(id, peer.name, undefined, msg.skin, msg.look, playerKey);
       wireFull = true;
       send(ws, { type: "welcome", id, role: "client" });
       const map = sim.mapState();
