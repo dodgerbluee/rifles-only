@@ -195,7 +195,7 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 /**
  * Iron rear: option-3 U as a sight block that hugs the receiver.
  * Rounded inner notch, ears and aiming bar 35% shorter. adsPos is unchanged.
- * Inner cutout is 2× the aiming rectangle on each side of the bar.
+ * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
@@ -207,14 +207,18 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const barD = 0.008;
   const depth = 0.018;
   const cutW = barW + 2 * (2 * barW);
-  const nw = cutW * 0.5;
+  const botW = cutW * 0.5;
+  const topW = botW * 1.32;
   const notchFloor = 0.001;
+  const roundH = (earH - notchFloor) * 0.38;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH);
-  leaf.lineTo(-nw, earH);
-  leaf.quadraticCurveTo(-nw, notchFloor, 0, notchFloor);
-  leaf.quadraticCurveTo(nw, notchFloor, nw, earH);
+  leaf.lineTo(-topW, earH);
+  leaf.lineTo(-botW, notchFloor + roundH);
+  leaf.quadraticCurveTo(-botW, notchFloor, 0, notchFloor);
+  leaf.quadraticCurveTo(botW, notchFloor, botW, notchFloor + roundH);
+  leaf.lineTo(topW, earH);
   leaf.lineTo(bw, earH);
   leaf.lineTo(bw, -sink);
   leaf.closePath();
@@ -230,6 +234,7 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const rear = new THREE.Mesh(geo, steel);
   rear.userData.karIronRear = true;
   rear.userData.karIronNotchW = cutW;
+  rear.userData.karIronTopW = topW * 2;
   place(root, rear, 0, floorY, z);
 
   const aimY = floorY + 0.005;
