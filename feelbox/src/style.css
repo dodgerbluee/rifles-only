@@ -3479,12 +3479,25 @@ body.podium #scoreboard {
   color: #d8cfc0;
 }
 
+body.podium #end-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  pointer-events: none;
+  gap: 12px;
+  padding: 0 18px 16px;
+  background: linear-gradient(to top, rgba(12, 13, 10, 0.9) 0%, rgba(12, 13, 10, 0.46) 36%, transparent 58%);
+}
+
 body.podium #scoreboard {
+  position: relative;
   inset: auto;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: min(420px, 40vw);
+  transform: none;
+  width: min(1180px, 100%);
   background: none;
   place-items: stretch;
   z-index: 26;
@@ -3492,42 +3505,47 @@ body.podium #scoreboard {
 
 body.podium #scoreboard .board-panel {
   width: 100%;
-  padding: 10px 10px 8px;
+  padding: 10px 12px 8px;
 }
 
 body.podium #scoreboard .board-top {
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 8px;
   padding-bottom: 8px;
 }
 
 body.podium #scoreboard .board-side {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
 }
 
 body.podium #scoreboard #board-ember-score,
 body.podium #scoreboard #board-stone-score {
-  font-size: 28px;
+  font-size: 34px;
 }
 
 body.podium #scoreboard #board-map {
-  font-size: 13px;
+  font-size: 15px;
   letter-spacing: 0.12em;
 }
 
 body.podium #scoreboard #board-round {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 body.podium #scoreboard .board-cols {
-  grid-template-columns: 1fr;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+body.podium #scoreboard .board-col {
+  max-height: 28vh;
+  overflow-y: auto;
 }
 
 body.podium #scoreboard .board-row,
 body.podium #scoreboard .board-head {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 body.podium #scoreboard .board-row {
@@ -3536,8 +3554,8 @@ body.podium #scoreboard .board-row {
 
 body.podium #scoreboard .board-you,
 body.podium #scoreboard .board-dead {
-  font-size: 8px;
-  padding: 0 4px;
+  font-size: 9px;
+  padding: 0 5px;
 }
 
 @media (max-height: 800px) {
@@ -3557,6 +3575,42 @@ body.podium #scoreboard .board-dead {
   .board-row {
     font-size: 16px;
     padding: 6px 10px;
+  }
+
+  body.podium #end-stack {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+
+  .stand .who,
+  .stand.gold .who {
+    font-size: 18px;
+  }
+
+  .stand.silver .block {
+    height: 36px;
+  }
+
+  .stand.gold .block {
+    height: 52px;
+  }
+
+  .stand.bronze .block {
+    height: 28px;
+  }
+
+  .stand .place {
+    font-size: 20px;
+  }
+
+  body.podium #scoreboard #board-ember-score,
+  body.podium #scoreboard #board-stone-score {
+    font-size: 26px;
+  }
+
+  body.podium #scoreboard .board-row {
+    font-size: 12px;
+    padding: 3px 8px;
   }
 }
 
@@ -3578,68 +3632,179 @@ body.podium #scoreboard .board-dead {
 
 body.podium #podium {
   display: flex;
+  position: relative;
+  inset: auto;
+  background: none;
+  padding: 0;
+  width: min(720px, 100%);
+  align-items: center;
+  z-index: 26;
 }
 
 body.podium #crosshair,
 body.podium #hitmark,
-body.podium #death {
+body.podium #death,
+body.podium #hud-left,
+body.podium #hud-right,
+body.podium #match-bar,
+body.podium #round-tag,
+body.podium #killfeed,
+body.podium #prompt,
+body.podium #roster,
+body.podium #join-note,
+body.podium #round-result {
   display: none !important;
+}
+
+#podium .kicker {
+  margin: 0 0 8px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #e8d9a8;
 }
 
 .stands {
   display: flex;
   align-items: flex-end;
-  gap: 48px;
-  margin: 8px 0 18px;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
 }
 
 .stand {
-  width: 160px;
+  flex: 1;
+  min-width: 0;
+  max-width: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   text-align: center;
 }
 
-.stand .block {
+.stand .plate {
+  padding: 10px 12px 12px;
+  background: rgba(10, 11, 9, 0.82);
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  border-bottom: 0;
+  box-shadow: inset 0 1px 0 rgba(232, 217, 168, 0.08);
+}
+
+.stand.ember .plate {
+  box-shadow:
+    inset 4px 0 0 #c45a30,
+    inset 0 1px 0 rgba(232, 217, 168, 0.08);
+}
+
+.stand.stone .plate {
+  box-shadow:
+    inset 4px 0 0 #6a90b4,
+    inset 0 1px 0 rgba(232, 217, 168, 0.08);
+}
+
+.stand.you .plate {
+  background: rgba(232, 217, 168, 0.16);
+  border-color: rgba(232, 217, 168, 0.7);
+}
+
+.stand .who {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 750;
+  color: #efe8d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stand.gold .who {
+  font-size: 28px;
+  letter-spacing: 0.02em;
+}
+
+.stand .you-tag {
   display: none;
+  margin: 6px auto 0;
+  width: fit-content;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #1a160e;
+  background: #e8d9a8;
+}
+
+.stand.you .you-tag {
+  display: inline-block;
+}
+
+.stand .side {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #cfc6b2;
+}
+
+.stand.ember .side {
+  color: #e07048;
+}
+
+.stand.stone .side {
+  color: #8ab4d8;
+}
+
+.stand .stat {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #cfc6b2;
+}
+
+.stand .block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+}
+
+.stand.silver .block {
+  height: 56px;
+  background: linear-gradient(180deg, #d8e0e8 0%, #8a949c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.stand.gold .block {
+  height: 88px;
+  background: linear-gradient(180deg, #f4e08a 0%, #c49a28 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 248, 210, 0.45);
+}
+
+.stand.bronze .block {
+  height: 40px;
+  background: linear-gradient(180deg, #d49a62 0%, #8a4a22 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 170, 0.28);
 }
 
 .stand .place {
   margin: 0;
-  font-size: 22px;
-  color: #e8d9a8;
+  font-size: 28px;
+  font-weight: 800;
+  color: #1a160e;
+  text-shadow: none;
 }
 
-.stand .who {
-  margin: 4px 0 0;
-  font-size: 15px;
-}
-
-.stand .stat {
-  margin: 2px 0 0;
-  font-size: 11px;
+.stand.empty .who,
+.stand.empty .stat,
+.stand.empty .side {
   color: #8d8676;
 }
 
-#podium-first {
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-  text-align: center;
-}
-
-#podium-first.on {
-  opacity: 1;
-  transform: none;
-}
-
-#podium-name {
-  margin: 6px 0 0;
-  font-size: 42px;
-  letter-spacing: 0.08em;
-}
-
-#podium-line {
-  color: #e8d9a8;
-  font-size: 16px;
+.stand.empty .plate {
+  opacity: 0.72;
 }
 
 #roster {

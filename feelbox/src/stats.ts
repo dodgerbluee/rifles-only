@@ -232,7 +232,12 @@ export function kd(l: Pick<Line, "kills" | "deaths">) {
   return (l.kills / l.deaths).toFixed(2);
 }
 
-export function topThree(ids: { id: number; name: string }[]) {
+export function podiumStat(p?: Pick<Line, "kills" | "assists" | "deaths"> | null) {
+  if (!p) return "";
+  return `${p.kills} K · ${p.assists} A · ${p.deaths} D · ${kd(p)}`;
+}
+
+export function topThree<T extends { id: number; name: string }>(ids: T[]) {
   return [...ids]
     .map((p) => ({ ...p, ...line(p.id) }))
     .sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)

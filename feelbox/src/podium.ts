@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Team } from "./match";
+import { podiumWho } from "./match";
 import { buildPawn, poseStance, parseLook, type Appearance } from "./pawn";
 import type { World } from "./world";
 
@@ -10,6 +11,8 @@ export type PodiumPlace = {
   kills: number;
   assists: number;
   deaths: number;
+  occupant?: string | null;
+  you?: boolean;
   skin?: string;
   look?: string | Appearance;
 };
@@ -44,6 +47,11 @@ export function mountPodium(scene: THREE.Scene, world: World, places: PodiumPlac
     fig.rotation.y = Math.PI;
     fig.scale.setScalar(1.35);
     group.add(fig);
+    const plate = nameplate(s.place);
+    if (plate) {
+      plate.position.set(s.x, s.h + 2.55, 0.2);
+      group.add(plate);
+    }
   }
   group.position.set(cx, 0, cz);
   group.scale.setScalar(3.4);
@@ -59,11 +67,75 @@ export function podiumLookAt(world: World) {
   };
 }
 
+/** Close front view of the gold/silver/bronze figures, above the bottom HUD. */
+export function podiumCam(world: World, t: number) {
+  const at = podiumLookAt(world);
+  const swing = Math.sin(t * 0.16) * 4.8;
+  return {
+    x: at.x + swing,
+    y: 16.5,
+    z: at.z - 30,
+    lookX: at.x,
+    lookY: 17.5,
+    lookZ: at.z,
+  };
+}
+
 export function clearPodium(scene: THREE.Scene) {
   if (!group) return;
   scene.remove(group);
   group.traverse((obj) => {
-    if (obj instanceof THREE.Mesh) obj.geometry.dispose();
+    if (obj instanceof THREE.Mesh || obj instanceof THREE.Sprite) {
+      obj.geometry.dispose();
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) {
+        if (!m) continue;
+        const map = "map" in m ? m.map : null;
+        if (map && map instanceof THREE.Texture) map.dispose();
+        m.dispose();
+      }
+    }
   });
   group = null;
+}
+
+function nameplate(place: PodiumPlace) {
+  if (typeof document === "undefined") return null;
+  const who = podiumWho(place.name, place.occupant);
+  const c = document.createElement("canvas");
+  c.width = 768;
+  c.height = 192;
+  const g = c.getContext("2d");
+  if (!g) return null;
+  g.fillStyle = "rgba(10, 11, 9, 0.86)";
+  roundRect(g, 8, 16, 752, 160, 18);
+  g.fill();
+  g.fillStyle = place.team === "ember" ? "#c45a30" : "#6a90b4";
+  g.fillRect(8, 16, 18, 160);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 64px sans-serif";
+  g.fillStyle = "#efe8d8";
+  g.fillText(who, 384, place.you ? 78 : 96, 680);
+  if (place.you) {
+    g.font = "800 32px sans-serif";
+    g.fillStyle = "#e8d9a8";
+    g.fillText("YOU", 384, 136);
+  }
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
+  sprite.scale.set(2.4, 0.6, 1);
+  return sprite;
+}
+
+function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.min(r, w / 2, h / 2);
+  g.beginPath();
+  g.moveTo(x + rr, y);
+  g.arcTo(x + w, y, x + w, y + h, rr);
+  g.arcTo(x + w, y + h, x, y + h, rr);
+  g.arcTo(x, y + h, x, y, rr);
+  g.arcTo(x, y, x + w, y, rr);
+  g.closePath();
 }

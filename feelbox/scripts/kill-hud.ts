@@ -1,13 +1,16 @@
 /**
  * Kill labels, team-switch stats, and planted copy without naming the site.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as THREE from "three";
-import { actorTag, claimSlot, createMatch, displayName, formatTime, plantedTag, plantWire, slotById } from "../src/match.ts";
+import { actorTag, claimSlot, createMatch, displayName, formatTime, plantedTag, plantWire, podiumSide, podiumWho, slotById } from "../src/match.ts";
 import { killWayIcons, killWayLabel } from "../src/net.ts";
 import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
 import { reseatPeer, seatPeer } from "../src/peers.ts";
-import { holdScoreboard, line, noteKill, swapLines } from "../src/stats.ts";
+import { holdScoreboard, line, noteKill, podiumStat, swapLines } from "../src/stats.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -102,6 +105,31 @@ check("studio walk does not open the match board", !holdScoreboard(new Set(["Tab
 check("locker does not steal Tab", !holdScoreboard(new Set(["Tab"]), { started: true, locker: true }));
 check("settings does not steal Tab", !holdScoreboard(new Set(["Tab"]), { started: true, settings: true }));
 check("home does not open a board", !holdScoreboard(new Set(["Tab"]), { started: false }));
+
+check("podium blank is a dash", podiumWho() === "—");
+check("podium uses actor tags", podiumWho("Cal", "Reed") === "Cal (Reed)");
+check("podium does not print You", podiumWho("You") === "Rifle");
+check("podium side names the faction", podiumSide("ember") === "Ember" && podiumSide("stone") === "Stone");
+check("podium stats spell out K/A/D", podiumStat({ kills: 12, assists: 3, deaths: 4 }) === "12 K · 3 A · 4 D · 3.00");
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const html = readFileSync(join(root, "index.html"), "utf8");
+const css = readFileSync(join(root, "src/style.css"), "utf8");
+const main = readFileSync(join(root, "src/main.ts"), "utf8");
+const podiumHtml = html.slice(html.indexOf('id="end-stack"'), html.indexOf('id="letterbox"'));
+check("end stack wraps podium then scoreboard", /id="end-stack"[\s\S]*id="podium"[\s\S]*id="scoreboard"/.test(podiumHtml));
+check("olympic plates carry the player name", podiumHtml.includes('class="who"') && podiumHtml.includes('class="you-tag"') && podiumHtml.includes('class="side"'));
+check("matchover camera is a close podium view", main.includes("applyPodiumCam") && main.includes("podiumCam("));
+check("join camera stays the high orbit", /camera\.position\.set\([^;]*40/.test(main) && main.includes("applyMatchOverviewCam"));
+check(
+  "end-game board sits under the medals",
+  /body\.podium #end-stack\s*\{[^}]*flex-direction:\s*column/.test(css) &&
+    /body\.podium #end-stack\s*\{[^}]*justify-content:\s*flex-end/.test(css) &&
+    !/body\.podium #scoreboard\s*\{[^}]*right:\s*16px/.test(css),
+);
+check("olympic stands show gold silver bronze blocks", css.includes(".stand.gold .block") && css.includes(".stand.silver .block") && css.includes(".stand.bronze .block") && !css.includes(".stand .block {\n  display: none"));
+const hud = readFileSync(join(root, "src/hud.ts"), "utf8");
+check("scoreboard rows mark You", hud.includes('class="board-you">You'));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
