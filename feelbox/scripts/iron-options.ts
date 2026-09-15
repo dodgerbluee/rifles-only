@@ -53,10 +53,10 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   const foreW = fore.geometry.boundingBox!.max.x - fore.geometry.boundingBox!.min.x;
   const rearW = rear.geometry.boundingBox!.max.x - rear.geometry.boundingBox!.min.x;
   check("boxy U is wider than the rounded leaf", foreW > rearW, `foreW=${foreW} rearW=${rearW}`);
-  check("rounded U sits in front of the boxy U", rear.position.z < fore.position.z, `roundZ=${rear.position.z} boxyZ=${fore.position.z}`);
+  check("boxy U sits in front of the rounded U", fore.position.z < rear.position.z, `roundZ=${rear.position.z} boxyZ=${fore.position.z}`);
   const roundDepth = Number(rear.userData.karIronDepth);
   const boxyDepth = Number(fore.userData.karIronDepth);
-  const gap = fore.position.z - boxyDepth / 2 - (rear.position.z + roundDepth / 2);
+  const gap = rear.position.z - roundDepth / 2 - (fore.position.z + boxyDepth / 2);
   check("Us are connected", Math.abs(gap) < 0.002, `gap=${gap}`);
 }
 

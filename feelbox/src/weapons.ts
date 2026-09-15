@@ -195,7 +195,7 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 /**
  * Iron rear: option-3 rounded U, 35% shorter. adsPos is unchanged.
  * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
- * Sits connected in front of the boxy hood.
+ * Sits at the rear; the boxy hood is connected in front of it.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
@@ -238,8 +238,8 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square, wider hood. The aiming bar comes out of this U; the rounded leaf
- * sits connected in front. adsPos is unchanged.
+ * Square, wider hood connected in front of the rounded leaf.
+ * The aiming bar comes out of this U. adsPos is unchanged.
  */
 function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.012;
@@ -454,11 +454,11 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const uH = scoped ? 0.007 : 0.01;
   if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
   else {
-    const boxyZ = -0.08;
+    const roundZ = -0.08;
     const boxyDepth = 0.014;
     const roundDepth = 0.018;
-    karIronForeU(root, boxyZ, recTop, steel);
-    karIronRear(root, boxyZ - boxyDepth / 2 - roundDepth / 2, recTop, steel);
+    karIronRear(root, roundZ, recTop, steel);
+    karIronForeU(root, roundZ - roundDepth / 2 - boxyDepth / 2, recTop, steel);
   }
   const postH = uH * 0.5;
   const postZ = -0.5;
