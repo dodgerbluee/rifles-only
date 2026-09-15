@@ -23,7 +23,7 @@ export type Bot = {
   body: THREE.Mesh;
   head: THREE.Mesh;
   helm: THREE.Mesh;
-  rifle: THREE.Mesh;
+  rifle: THREE.Object3D;
   cloth: THREE.Mesh[];
   hits: THREE.Mesh[];
   hp: number;

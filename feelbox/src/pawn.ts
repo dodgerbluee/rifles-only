@@ -37,7 +37,7 @@ export type PawnParts = {
   body: THREE.Mesh;
   head: THREE.Mesh;
   helm: THREE.Mesh;
-  rifle: THREE.Mesh;
+  rifle: THREE.Object3D;
   cloth: THREE.Mesh[];
   hits: THREE.Mesh[];
   walk?: WalkRig;
@@ -114,6 +114,7 @@ export function buildPawn(root: THREE.Group, team: Team, botId?: number, kit?: P
   root.userData.cloth = parts.cloth;
   root.userData.head = parts.head;
   root.userData.helm = parts.helm;
+  root.userData.rifle = parts.rifle;
   root.userData.walk = parts.walk ?? null;
   root.userData.skin = skinFromLook(look);
   root.userData.look = look;
@@ -159,17 +160,24 @@ export function stepWalk(root: THREE.Group, dist: number, moving: boolean) {
   poseWalk(rig, gait, moving, root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined);
 }
 
+export function setPawnHeldVisible(root: THREE.Object3D, on: boolean) {
+  const rifle = root.userData.rifle as THREE.Object3D | undefined;
+  if (rifle) rifle.visible = on;
+}
+
 export function poseStance(root: THREE.Group, stance: Stance) {
   root.userData.stance = stance;
   const body = root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined;
   const rest = typeof root.userData.bodyRestY === "number" ? root.userData.bodyRestY : BODY_REST_Y;
   const rig = root.userData.walk as WalkRig | null | undefined;
+  root.rotation.order = "YXZ";
+  const yaw = root.rotation.y;
   if (stance === "down") {
-    root.rotation.x = 1.25;
+    root.rotation.set(1.25, yaw, 0);
     return;
   }
   if (stance === "prone") {
-    root.rotation.x = 1.08;
+    root.rotation.set(1.08, yaw, 0);
     if (body) body.position.y = rest;
     if (rig) {
       rig.lHip.rotation.x = 0.18;
@@ -179,7 +187,7 @@ export function poseStance(root: THREE.Group, stance: Stance) {
     }
     return;
   }
-  root.rotation.x = 0;
+  root.rotation.set(0, yaw, 0);
   if (stance === "crouch") {
     if (body) body.position.y = rest - 0.34;
     if (rig) {
@@ -226,6 +234,23 @@ function stamp(parts: PawnParts, team: Team, botId?: number) {
   for (const m of parts.hits) mark(m, "body");
 }
 
+function makeWorldRifle() {
+  const rifle = new THREE.Group();
+  const wood = mat(0x6b4a28, 0.68, 0.08);
+  const steel = mat(0x4a5258, 0.38, 0.48);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.015, 0.58, 7), steel);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.012, -0.16);
+  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.042, 0.22), wood);
+  receiver.position.set(0, 0.002, 0.1);
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.058, 0.2), wood);
+  stock.position.set(0, -0.012, 0.28);
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.05, 0.05), steel);
+  mag.position.set(0, -0.028, 0.02);
+  rifle.add(barrel, receiver, stock, mag);
+  return rifle;
+}
+
 function classicPawn(team: Team, look: Appearance): PawnParts {
   const color = teamCloth(team);
   const body = new THREE.Mesh(
@@ -240,7 +265,7 @@ function classicPawn(team: Team, look: Appearance): PawnParts {
     mat(teamHelm(team), 0.6, 0.15),
   );
   helm.position.y = 1.74;
-  const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.62), mat(STEEL, 0.5, 0.3));
+  const rifle = makeWorldRifle();
   rifle.position.set(0.22, 1.18, -0.3);
   return { body, head, helm, rifle, cloth: [body], hits: [] };
 }
@@ -326,13 +351,10 @@ function limbsPawn(team: Team, look: Appearance): PawnParts {
   const helm = dressHat(head, look.hat, k, team, cloth);
   dressAccessory(head, look.accessory, k, team, cloth);
 
-  const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.72), k.plate);
-  rifle.position.set(0.08, 1.15, -0.28);
-  rifle.rotation.x = 0.08;
-  rifle.rotation.y = 0.12;
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.16), mat(0x5a3a22, 0.55, 0.08));
-  rifle.add(stock);
-  stock.position.set(0, -0.01, 0.28);
+  const rifle = makeWorldRifle();
+  rifle.position.set(0.12, 1.14, -0.3);
+  rifle.rotation.x = 0.06;
+  rifle.rotation.y = 0.1;
 
   return {
     body,

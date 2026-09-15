@@ -63,7 +63,7 @@ export type WireActor = {
 
 export const FREEZE_TIME = 2.8;
 export const END_HOLD = 4.2;
-export const BESTPLAY_HOLD = 10;
+export const BESTPLAY_HOLD = 22;
 export const FIRST_TO = 6;
 export const SWAP_AFTER = 5;
 export const CHAMPIONS_HOLD = 20;

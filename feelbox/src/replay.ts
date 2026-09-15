@@ -20,6 +20,21 @@ export type Pose = {
   flash: boolean;
 };
 
+export type TapeNade = { x: number; y: number; z: number; kind: "smoke" | "frag" | "stun" | "flash" };
+export type TapeCloud = { x: number; y: number; z: number; radius: number; opacity: number };
+
+export type TapeFx = {
+  nades: TapeNade[];
+  clouds: TapeCloud[];
+};
+
+export type TapeFrame = {
+  t: number;
+  poses: Pose[];
+  nades: TapeNade[];
+  clouds: TapeCloud[];
+};
+
 export type KillClip = {
   t: number;
   killerId: number;
@@ -28,18 +43,24 @@ export type KillClip = {
 };
 
 export type RoundTape = {
-  frames: { t: number; poses: Pose[] }[];
+  frames: TapeFrame[];
   kills: KillClip[];
 };
 
 export const PRE_SLOW = 1.55;
 export const POST_SLOW = 0.8;
+/** Extra hang after the MVP's last kill so the reel does not cut on the shot. */
+export const LAST_POST = 2.2;
 export const REEL_LEAD = 3.2;
 export const PLAY_RATE = 1;
 /** Skip between kill windows. Multiplier, not a tick rate. */
 export const FAST_RATE = 10;
 /** Keep 60 Hz poses. 0.02 was half a 30 Hz tick and collapsed every 60 Hz frame. */
 export const TAPE_MIN_DT = 0.5 / 60;
+export const KILLCAM_PRE = 3.4;
+export const KILLCAM_POST = 1.15;
+export const KILLCAM_MIN = 3;
+export const KILLCAM_MAX = 5;
 
 export function createTape(): RoundTape {
   return { frames: [], kills: [] };
@@ -50,14 +71,18 @@ export function clearTape(tape: RoundTape) {
   tape.kills.length = 0;
 }
 
-export function pushFrame(tape: RoundTape, t: number, poses: Pose[]) {
+export function pushFrame(tape: RoundTape, t: number, poses: Pose[], fx?: Partial<TapeFx>) {
+  const nades = fx?.nades ? fx.nades.map(copyNade) : [];
+  const clouds = fx?.clouds ? fx.clouds.map(copyCloud) : [];
   const last = tape.frames[tape.frames.length - 1];
   if (last && t - last.t < TAPE_MIN_DT) {
     last.t = t;
     last.poses = poses;
+    last.nades = nades;
+    last.clouds = clouds;
     return;
   }
-  tape.frames.push({ t, poses });
+  tape.frames.push({ t, poses, nades, clouds });
 }
 
 export function pushKill(tape: RoundTape, kill: KillClip) {
@@ -68,9 +93,9 @@ export function watchLabel(_viewId: number, _youId: number, name?: string | null
   return displayName(name);
 }
 
-/** Recap camera already has a first-person viewmodel. Hide the subject's world pawn/rifle. */
-export function reelWorldPawnVisible(id: number, mvpId: number) {
-  return id !== mvpId;
+/** Recap / killcam camera already has a first-person viewmodel. Hide the subject's world pawn/rifle. */
+export function reelWorldPawnVisible(id: number, viewId: number) {
+  return id !== viewId;
 }
 
 /** Offline and host own bot meshes. Dedicated clients replay other people via clientPawns. */
@@ -98,17 +123,27 @@ export function pickMvp(tape: RoundTape, match: Match, preferId: number) {
 }
 
 export function samplePoses(tape: RoundTape, t: number): Map<number, Pose> {
+  return sampleTape(tape, t).poses;
+}
+
+export function sampleTape(tape: RoundTape, t: number): { poses: Map<number, Pose> } & TapeFx {
   const frames = tape.frames;
-  const out = new Map<number, Pose>();
-  if (frames.length === 0) return out;
+  const empty = { poses: new Map<number, Pose>(), nades: [] as TapeNade[], clouds: [] as TapeCloud[] };
+  if (frames.length === 0) return empty;
   if (t <= frames[0]!.t) {
-    for (const p of frames[0]!.poses) out.set(p.id, { ...p });
-    return out;
+    return {
+      poses: poseMap(frames[0]!.poses),
+      nades: frames[0]!.nades.map(copyNade),
+      clouds: frames[0]!.clouds.map(copyCloud),
+    };
   }
   const last = frames[frames.length - 1]!;
   if (t >= last.t) {
-    for (const p of last.poses) out.set(p.id, { ...p });
-    return out;
+    return {
+      poses: poseMap(last.poses),
+      nades: last.nades.map(copyNade),
+      clouds: last.clouds.map(copyCloud),
+    };
   }
   let i = 1;
   while (i < frames.length && frames[i]!.t < t) i += 1;
@@ -117,13 +152,14 @@ export function samplePoses(tape: RoundTape, t: number): Map<number, Pose> {
   const span = b.t - a.t || 1;
   const u = Math.max(0, Math.min(1, (t - a.t) / span));
   const bMap = new Map(b.poses.map((p) => [p.id, p]));
+  const poses = new Map<number, Pose>();
   for (const pa of a.poses) {
     const pb = bMap.get(pa.id);
     if (!pb) {
-      out.set(pa.id, { ...pa });
+      poses.set(pa.id, { ...pa });
       continue;
     }
-    out.set(pa.id, {
+    poses.set(pa.id, {
       id: pa.id,
       x: pa.x + (pb.x - pa.x) * u,
       y: pa.y + (pb.y - pa.y) * u,
@@ -142,22 +178,41 @@ export function samplePoses(tape: RoundTape, t: number): Map<number, Pose> {
       flash: u < 0.5 ? pa.flash : pb.flash,
     });
   }
-  return out;
+  return {
+    poses,
+    nades: lerpNades(a.nades, b.nades, u),
+    clouds: lerpClouds(a.clouds, b.clouds, u),
+  };
+}
+
+export function clipPost(clips: KillClip[], i: number) {
+  return i === clips.length - 1 ? LAST_POST : POST_SLOW;
 }
 
 export function inSlowWindow(t: number, clips: KillClip[]) {
-  return clips.some((k) => t >= k.t - PRE_SLOW && t <= k.t + POST_SLOW);
+  return clips.some((k, i) => t >= k.t - PRE_SLOW && t <= k.t + clipPost(clips, i));
 }
 
 export function nextWindowStart(t: number, clips: KillClip[]) {
   let best = Infinity;
-  for (const k of clips) {
+  for (let i = 0; i < clips.length; i++) {
+    const k = clips[i]!;
     const s = k.t - PRE_SLOW;
-    const e = k.t + POST_SLOW;
+    const e = k.t + clipPost(clips, i);
     if (t < s) best = Math.min(best, s);
     else if (t <= e) return null;
   }
   return best === Infinity ? null : best;
+}
+
+/** Advance tape time, without skipping past the next kill window. */
+export function advancePlayT(playT: number, dt: number, clips: KillClip[]) {
+  const live = inSlowWindow(playT, clips);
+  const next = playT + dt * (live ? PLAY_RATE : FAST_RATE);
+  if (live) return next;
+  const start = nextWindowStart(playT, clips);
+  if (start != null && next > start) return start;
+  return next;
 }
 
 export function recapWindow(tape: RoundTape) {
@@ -171,13 +226,103 @@ export function playBounds(clips: KillClip[], tape?: RoundTape) {
   const first = clips[0]!;
   const last = clips[clips.length - 1]!;
   const t0 = tape?.frames[0]?.t ?? 0;
-  return { start: Math.max(t0, first.t - REEL_LEAD), end: last.t + POST_SLOW + 0.45 };
+  const t1 = tape?.frames[tape.frames.length - 1]?.t;
+  const end = last.t + LAST_POST + 0.65;
+  return { start: Math.max(t0, first.t - REEL_LEAD), end: t1 != null ? Math.max(end, Math.min(t1 + 0.35, end + 1)) : end };
+}
+
+export function reelWallTime(clips: KillClip[], tape: RoundTape, dt = 1 / 60) {
+  if (clips.length === 0) {
+    const recap = recapWindow(tape);
+    if (!recap) return 2.4;
+    return Math.max(0.2, recap.end - recap.start);
+  }
+  const bounds = playBounds(clips, tape);
+  let playT = bounds.start;
+  let wall = 0;
+  let steps = 0;
+  while (playT < bounds.end - 1e-9 && steps < 30_000) {
+    playT = advancePlayT(playT, dt, clips);
+    wall += dt;
+    steps += 1;
+  }
+  return wall;
+}
+
+export function lastKillOf(tape: RoundTape, victimId: number) {
+  for (let i = tape.kills.length - 1; i >= 0; i--) {
+    const k = tape.kills[i]!;
+    if (k.victimId === victimId) return k;
+  }
+  return null;
+}
+
+export function killcamWindow(tape: RoundTape, victimId: number, now: number) {
+  const clip = lastKillOf(tape, victimId);
+  const killT = clip?.t ?? now;
+  const t0 = tape.frames[0]?.t ?? killT - KILLCAM_PRE;
+  const t1 = tape.frames[tape.frames.length - 1]?.t ?? killT;
+  let start = Math.max(t0, killT - KILLCAM_PRE);
+  let end = Math.min(Math.max(t1, killT), killT + KILLCAM_POST);
+  if (end < start + KILLCAM_MIN) end = start + KILLCAM_MIN;
+  if (end > start + KILLCAM_MAX) start = end - KILLCAM_MAX;
+  if (end < start + KILLCAM_MIN) end = start + KILLCAM_MIN;
+  return {
+    killerId: clip?.killerId ?? victimId,
+    start,
+    end,
+  };
 }
 
 export function killsReached(t: number, clips: KillClip[]) {
   let n = 0;
   for (const k of clips) if (t >= k.t) n += 1;
   return n;
+}
+
+function poseMap(poses: Pose[]) {
+  const out = new Map<number, Pose>();
+  for (const p of poses) out.set(p.id, { ...p });
+  return out;
+}
+
+function copyNade(n: TapeNade): TapeNade {
+  return { x: n.x, y: n.y, z: n.z, kind: n.kind };
+}
+
+function copyCloud(c: TapeCloud): TapeCloud {
+  return { x: c.x, y: c.y, z: c.z, radius: c.radius, opacity: c.opacity };
+}
+
+function lerpNades(a: TapeNade[], b: TapeNade[], u: number): TapeNade[] {
+  if (a.length === b.length && a.every((n, i) => n.kind === b[i]?.kind)) {
+    return a.map((n, i) => {
+      const p = b[i]!;
+      return {
+        x: n.x + (p.x - n.x) * u,
+        y: n.y + (p.y - n.y) * u,
+        z: n.z + (p.z - n.z) * u,
+        kind: n.kind,
+      };
+    });
+  }
+  return (u < 0.5 ? a : b).map(copyNade);
+}
+
+function lerpClouds(a: TapeCloud[], b: TapeCloud[], u: number): TapeCloud[] {
+  if (a.length === b.length) {
+    return a.map((c, i) => {
+      const p = b[i]!;
+      return {
+        x: c.x + (p.x - c.x) * u,
+        y: c.y + (p.y - c.y) * u,
+        z: c.z + (p.z - c.z) * u,
+        radius: c.radius + (p.radius - c.radius) * u,
+        opacity: c.opacity + (p.opacity - c.opacity) * u,
+      };
+    });
+  }
+  return (u < 0.5 ? a : b).map(copyCloud);
 }
 
 function lerpAngle(a: number, b: number, u: number) {
