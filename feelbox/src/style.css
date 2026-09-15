@@ -3796,8 +3796,15 @@ body.studio.studio-peg #view {
   cursor: grabbing;
 }
 
+#studio-building-only[hidden] {
+  display: none !important;
+}
+
+#studio-building-only {
+  display: contents;
+}
+
 #studio-building {
-  display: none;
   margin-bottom: 8px;
 }
 

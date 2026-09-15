@@ -1527,10 +1527,8 @@ function paintStudio() {
   if (build) build.hidden = (!b && !part) || studio.tool === "ramp";
   const kicker = document.querySelector("#studio-building-kicker");
   if (kicker) kicker.textContent = part && !b ? "Wall" : "Building";
-  const buildingOnly = [document.querySelector("#studio-interior-floors"), document.querySelector("#studio-interior-empty"), document.querySelector("#studio-rotate"), document.querySelector("#studio-roof"), document.querySelector("#studio-open")];
-  for (const el of buildingOnly) {
-    if (el instanceof HTMLElement) el.hidden = !b;
-  }
+  const buildingOnly = document.querySelector<HTMLElement>("#studio-building-only");
+  if (buildingOnly) buildingOnly.hidden = !b;
   if (b) {
     const floors = buildingFloors(b);
     const n = document.querySelector("#studio-storeys");
