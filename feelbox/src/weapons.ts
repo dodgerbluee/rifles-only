@@ -240,9 +240,10 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square hood whose black arms sit outside the rounded U. The near
- * end starts in the rounded leaf; the far end goes toward the muzzle
- * so the rounded U stays in front. adsPos is unchanged.
+ * Square hood whose black arms sit outside the rounded U. 5% shorter
+ * and 10% wider than the previous hood. The near end starts in the
+ * rounded leaf; the far end goes toward the muzzle so the rounded U
+ * stays in front. adsPos is unchanged.
  */
 function karIronForeU(
   root: THREE.Group,
@@ -252,7 +253,7 @@ function karIronForeU(
   depth: number,
 ) {
   const roundEarH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
-  const earH = roundEarH * 1.55;
+  const earH = roundEarH * 1.55 * 0.95;
   const recW = 0.026;
   const barW = 0.003;
   const cutW = barW + 2 * (2 * barW);
@@ -260,7 +261,7 @@ function karIronForeU(
   const topW = botW * 1.32;
   const earThick = recW * 0.5 + 0.0012 - topW;
   const roundBw = topW + earThick * 1.5;
-  const bw = roundBw + 0.013;
+  const bw = (roundBw + 0.013) * 1.1;
   const nw = topW + 0.0012;
   const sink = 0.011;
   const notchFloor = 0.001;

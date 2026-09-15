@@ -79,6 +79,8 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   check("boxy U starts inside the rounded U", boxyNear > roundFront && boxyNear < roundBack, `boxyNear=${boxyNear} roundFront=${roundFront} roundBack=${roundBack}`);
   check("boxy U finishes outside the rounded U", roundFront - boxyFar >= 0.018, `stickOut=${roundFront - boxyFar}`);
   check("boxy U is taller than the rounded U", foreBox.max.y > rearBox.max.y, `boxyH=${foreBox.max.y} roundH=${rearBox.max.y}`);
+  check("boxy U is 5% shorter", foreBox.max.y < 0.0144, `maxY=${foreBox.max.y}`);
+  check("boxy U is 10% wider", foreBox.max.x - foreBox.min.x > 0.064, `foreW=${foreBox.max.x - foreBox.min.x}`);
 }
 
 let ironFacets = 0;
