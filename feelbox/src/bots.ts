@@ -50,7 +50,14 @@ export type Bot = {
   stuckT: number;
   nades: NadeBag;
   stunUntil: number;
+  role: BotRole;
+  anchor: THREE.Vector3;
+  taskPath: THREE.Vector3[];
+  taskWp: number;
+  taskGoal: THREE.Vector3 | null;
 };
+
+export type BotRole = "route" | "escort" | "hold" | "recover" | "plant" | "cut";
 
 export type BotSkill = "easy" | "normal" | "hard";
 
@@ -152,6 +159,11 @@ function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bo
     stuckT: 0,
     nades: fullNades(),
     stunUntil: 0,
+    role: "route",
+    anchor: spawn.clone(),
+    taskPath: [],
+    taskWp: 0,
+    taskGoal: null,
   };
 }
 
@@ -243,6 +255,8 @@ export function updateBots(
   const aim = BOT_AIM[skill] ?? BOT_AIM.normal;
   let cutting = false;
 
+  assignTactics(bots, world, match);
+
   for (const b of bots) {
     if (b.hp <= 0) {
       if (!b.stayUp) b.root.rotation.x = Math.min(1.25, b.root.rotation.x + dt * 2.6);
@@ -279,8 +293,8 @@ export function updateBots(
     const enemy = nearestVisible(b, fighters, colliders, smokeBlocks);
     const enemyDist = enemy ? Math.hypot(enemy.x - b.x, enemy.z - b.z) : 99;
     const wirePos = wireAim(match, world, b);
-    const onCutDuty = match.wire.mode === "planted" && b.team === watch;
-    const onPlantDuty = match.wire.mode === "carried" && match.wire.carrierId === b.id;
+    const onCutDuty = b.role === "cut";
+    const onPlantDuty = b.role === "plant";
     const closeThreat = !!enemy && enemyDist < (onCutDuty || onPlantDuty ? 5.5 : 16);
     if (closeThreat) b.seeT += dt;
     else b.seeT = 0;
@@ -323,7 +337,7 @@ export function updateBots(
         cutting = true;
         b.yaw = dampAngle(b.yaw, b.yaw + Math.sin(time * 0.8 + b.id) * 0.2, dt);
       } else {
-        seek(b, wirePos, dt, colliders, time);
+        moveTo(b, wirePos, dt, colliders, time, world);
       }
     } else if (onPlantDuty) {
       if (inSite(world, b.site, b.x, b.z, b.y)) {
@@ -332,8 +346,12 @@ export function updateBots(
       } else {
         roam(b, dt, colliders, time, world);
       }
-    } else if (match.wire.mode === "ground" && b.team === plant) {
-      seek(b, new THREE.Vector3(match.wire.x, match.wire.y, match.wire.z), dt, colliders, time);
+    } else if (b.role === "recover") {
+      moveTo(b, new THREE.Vector3(match.wire.x, match.wire.y, match.wire.z), dt, colliders, time, world);
+    } else if (b.role === "escort" || b.role === "hold") {
+      const end = b.path[b.path.length - 1] ?? b.spawn;
+      if (Math.hypot(end.x - b.x, end.z - b.z) > 2.5) roam(b, dt, colliders, time, world);
+      else moveTo(b, b.anchor, dt, colliders, time, world);
     } else {
       b.lookPitch = 0.04;
       roam(b, dt, colliders, time, world);
@@ -357,6 +375,82 @@ export function updateBots(
 
   if (cutting) match.wire.cutHold += dt;
   return { cutting };
+}
+
+function assignTactics(bots: Bot[], world: World, match: Match) {
+  const living = bots.filter((b) => b.hp > 0 && slotById(match, b.id)?.alive);
+  const plant = plantingTeam(match);
+  const watch = watchingTeam(match);
+  for (const b of living) {
+    b.role = "route";
+    b.anchor.copy(siteAnchor(world, b.site, b.id));
+  }
+
+  const setSupport = (team: Team, site: "loft" | "well", role: "escort" | "hold") => {
+    const teamBots = living.filter((b) => b.team === team).sort((a, b) => a.id - b.id);
+    teamBots.forEach((b, i) => {
+      b.role = role;
+      b.anchor.copy(siteAnchor(world, site, i));
+    });
+  };
+
+  if (match.wire.mode === "planted") {
+    const site = match.wire.site ?? "loft";
+    setSupport(plant, site, "hold");
+    const cutters = living
+      .filter((b) => b.team === watch)
+      .sort((a, b) => distanceToWire(a, match) - distanceToWire(b, match) || a.id - b.id);
+    cutters.forEach((b, i) => {
+      b.role = i === 0 ? "cut" : "hold";
+      b.anchor.copy(i === 0 ? wirePoint(match) : siteAnchor(world, site, i - 1));
+    });
+    return;
+  }
+
+  if (match.wire.mode === "ground") {
+    const recoverers = living
+      .filter((b) => b.team === plant)
+      .sort((a, b) => distanceToWire(a, match) - distanceToWire(b, match) || a.id - b.id);
+    recoverers.forEach((b, i) => {
+      b.role = i === 0 ? "recover" : "escort";
+      b.anchor.copy(i === 0 ? wirePoint(match) : siteAnchor(world, b.site, i - 1));
+    });
+    setSupport(watch, recoverers[0]?.site ?? "loft", "hold");
+    return;
+  }
+
+  const carrier = living.find((b) => b.id === match.wire.carrierId);
+  if (carrier) {
+    carrier.role = "plant";
+    carrier.anchor.copy(sitePoint(world, carrier.site));
+    const escorts = living.filter((b) => b.team === plant && b.id !== carrier.id).sort((a, b) => a.id - b.id);
+    escorts.forEach((b, i) => {
+      b.role = "escort";
+      b.anchor.copy(siteAnchor(world, carrier.site, i));
+    });
+    setSupport(watch, carrier.site, "hold");
+  }
+}
+
+function distanceToWire(b: Bot, match: Match) {
+  return Math.hypot(b.x - match.wire.x, b.z - match.wire.z) + Math.abs(b.y - match.wire.y) * 2;
+}
+
+function wirePoint(match: Match) {
+  return new THREE.Vector3(match.wire.x, match.wire.y, match.wire.z);
+}
+
+function sitePoint(world: World, site: "loft" | "well") {
+  const s = world.sites.find((candidate) => candidate.id === site)!;
+  return new THREE.Vector3(s.x, s.y, s.z);
+}
+
+function siteAnchor(world: World, site: "loft" | "well", index: number) {
+  const s = world.sites.find((candidate) => candidate.id === site)!;
+  const radius = Math.max(1.2, Math.min(3.2, s.r * 0.72));
+  const a = index * 2.399963229728653;
+  const candidate = new THREE.Vector3(s.x + Math.cos(a) * radius, s.y, s.z + Math.sin(a) * radius);
+  return openPoint(world.colliders, candidate) ?? sitePoint(world, site);
 }
 
 function wireAim(match: Match, world: World, b: Bot) {
@@ -422,6 +516,28 @@ function seek(b: Bot, target: THREE.Vector3, dt: number, colliders: Aabb[], time
   const want = Math.atan2(-(target.x - b.x), -(target.z - b.z));
   b.yaw = dampAngle(b.yaw, want, dt * 5);
   slideToward(b, target.x, target.z, dt, colliders, time);
+}
+
+/** Follow a cached path for changing tactical goals; never make objective work rely on local steering alone. */
+function moveTo(b: Bot, goal: THREE.Vector3, dt: number, colliders: Aabb[], time: number, world: World) {
+  if (!b.taskGoal || b.taskGoal.distanceToSquared(goal) > 1.2 * 1.2) {
+    b.taskGoal = goal.clone();
+    b.taskPath = walkPath(colliders, world.bounds, new THREE.Vector3(b.x, b.y, b.z), goal) ?? [goal.clone()];
+    b.taskWp = b.taskPath.length > 1 ? 1 : 0;
+  }
+  while (b.taskWp < b.taskPath.length - 1) {
+    const waypoint = b.taskPath[b.taskWp]!;
+    if (Math.hypot(waypoint.x - b.x, waypoint.z - b.z) >= 0.6) break;
+    b.taskWp += 1;
+  }
+  const target = b.taskPath[b.taskWp] ?? goal;
+  if (Math.hypot(target.x - b.x, target.z - b.z) < 0.45 && Math.abs(target.y - b.y) < 1.7) return;
+  if (b.stuckT > 0.65) {
+    b.taskGoal = null;
+    b.taskPath = [];
+    b.taskWp = 0;
+  }
+  seek(b, target, dt, colliders, time);
 }
 
 function roam(b: Bot, dt: number, colliders: Aabb[], time: number, world: World) {
@@ -555,6 +671,11 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     b.seeT = 0;
     b.stuckT = 0;
     b.stunUntil = 0;
+    b.role = "route";
+    b.anchor.copy(spawn);
+    b.taskPath = [];
+    b.taskWp = 0;
+    b.taskGoal = null;
     setPawnCloth(b.cloth, teamCloth(b.team));
     b.nades = fullNades();
   }
