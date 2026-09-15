@@ -24,7 +24,7 @@ check("join overlay has enter-match after weapons", html.includes('id="loadout-g
 check("pause menu lists disconnect, team, and settings", html.includes('id="pause-disconnect"') && html.includes('id="pause-team"') && html.includes('id="pause-settings"'));
 check("join overlay is transparent over the map", /#join-team\s*\{[^}]*background:\s*transparent/.test(css));
 check("team sides are translucent washes", css.includes("rgba(178, 74, 24") && css.includes("rgba(42, 104, 168"));
-check("team selector is three-fifths of the page", /#join-team-pick\s*\{[^}]*width:\s*60%/.test(css) && /#join-team-pick\s*\{[^}]*height:\s*60%/.test(css));
+check("team and rifle selectors share the three-fifths frame", /#join-team-pick,\s*#join-loadout\s*\{[^}]*width:\s*60%/.test(css) && /#join-team-pick,\s*#join-loadout\s*\{[^}]*height:\s*60%/.test(css) && /#join-team-pick,\s*#join-loadout\s*\{[^}]*left:\s*20%/.test(css) && /#join-team-pick,\s*#join-loadout\s*\{[^}]*top:\s*20%/.test(css));
 check("scoped preview glass is not a solid blackout", !css.includes("#080907 76%"));
 check("hello does not seat a pawn", !/msg\.type === "hello"[\s\S]{0,900}sim\.join\(/.test(game));
 check("clients can send spectate", net.includes('{ kind: "spectate" }'));

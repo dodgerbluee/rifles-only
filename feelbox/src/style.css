@@ -1606,23 +1606,28 @@ body.settings #locker-pip[hidden] {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
+#join-team-pick,
 #join-loadout {
   position: absolute;
-  left: 50%;
-  bottom: 20px;
-  transform: translateX(-50%);
+  left: 20%;
+  top: 20%;
+  width: 60%;
+  height: 60%;
+  margin: 0;
+}
+
+#join-loadout {
   z-index: 3;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 8px;
-  width: min(980px, calc(100% - 36px));
-  max-height: min(58vh, 560px);
-  overflow: auto;
   padding: 12px 14px 14px;
+  overflow: auto;
   background: rgba(12, 12, 10, 0.22);
   border: 1px solid rgba(232, 217, 168, 0.18);
-  border-radius: 8px;
+  border-radius: 10px;
   backdrop-filter: blur(5px);
 }
 
@@ -1639,14 +1644,19 @@ body.settings #locker-pip[hidden] {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: stretch;
   gap: 10px;
   width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .loadout-row button.gun-card {
-  min-width: 220px;
-  flex: 1 1 220px;
-  max-width: 320px;
+  min-width: 180px;
+  flex: 1 1 180px;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
   padding: 10px 10px 12px;
   text-align: left;
   background: rgba(28, 30, 24, 0.38);
@@ -1684,6 +1694,8 @@ body.settings #locker-pip[hidden] {
   gap: 6px;
   width: 100%;
   margin-top: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .gun-views.solo {
@@ -1695,6 +1707,7 @@ body.settings #locker-pip[hidden] {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  min-height: 0;
 }
 
 .gun-pane-label {
@@ -1706,7 +1719,9 @@ body.settings #locker-pip[hidden] {
 
 .gun-pane-stage {
   position: relative;
-  height: 108px;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 72px;
   border: 1px solid rgba(232, 217, 168, 0.22);
   border-radius: 4px;
   overflow: hidden;
@@ -1788,7 +1803,8 @@ body.settings #locker-pip[hidden] {
 }
 
 #loadout-go {
-  margin-top: 6px;
+  align-self: center;
+  margin-top: auto;
   padding: 10px 28px;
   background: rgba(232, 217, 168, 0.16);
   color: #f4eee2;
@@ -2907,15 +2923,9 @@ body.locker #vitals {
 }
 
 #join-team-pick {
-  position: absolute;
-  left: 20%;
-  top: 20%;
-  width: 60%;
-  height: 60%;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: clamp(16px, 4vw, 36px);
-  margin: 0;
   pointer-events: none;
 }
 
