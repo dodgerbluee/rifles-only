@@ -40,7 +40,24 @@ check("scoped ADS is centered on X", Math.abs(scoped.adsPos.x) < 1e-6);
 check("scoped ADS sits on the tube height", scopedOcular ? Math.abs(scoped.adsPos.y + scopedOcular.position.y) < 1e-6 : false, `y=${scoped.adsPos.y}`);
 check("scoped has no wrap grips", !scoped.adsGrip);
 check("iron ADS uses the standard rifle pose", !iron.adsGrip);
-check("iron uses the broad rounded-notched rear leaf", !!ironRear);
+check("iron uses the integrated rear leaf", !!ironRear);
+check("iron has the option-3 aiming bar", !!findFlag(iron.root, "karPoiBar"));
+check("scoped has no iron aiming bar", !findFlag(scoped.root, "karPoiBar"));
+{
+  const mesh = ironRear as THREE.Mesh;
+  mesh.geometry.computeBoundingBox();
+  const minY = mesh.geometry.boundingBox!.min.y;
+  check("iron rear sinks into the receiver", minY < -0.004, `minY=${minY}`);
+  const maxY = mesh.geometry.boundingBox!.max.y;
+  check("iron U is 35% shorter", maxY > 0.008 && maxY < 0.012, `maxY=${maxY}`);
+  const notchW = Number(mesh.userData.karIronNotchW);
+  const bar = findFlag(iron.root, "karPoiBar") as THREE.Mesh;
+  bar.geometry.computeBoundingBox();
+  const barW = bar.geometry.boundingBox!.max.x - bar.geometry.boundingBox!.min.x;
+  const barH = bar.geometry.boundingBox!.max.y - bar.geometry.boundingBox!.min.y;
+  check("iron U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
+  check("iron aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
+}
 
 let ironFacets = 0;
 iron.root.traverse((c) => {

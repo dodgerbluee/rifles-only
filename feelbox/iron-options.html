@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kar98k iron sight options</title>
+    <style>
+      html, body {
+        margin: 0;
+        background: #070806;
+        color: #e6e2d6;
+        font: 15px/1.4 "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+      header {
+        padding: 22px 28px 8px;
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+      h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+      .lead { color: #b7b3a6; margin: 0 0 14px; max-width: 70ch; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        max-width: 1280px;
+        margin: 0 auto 40px;
+        padding: 0 24px 24px;
+      }
+      .card {
+        background: #10120f;
+        border: 1px solid #2a2c26;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .card h2 {
+        margin: 0;
+        padding: 12px 14px 0;
+        font-size: 16px;
+      }
+      .card p {
+        margin: 4px 14px 10px;
+        color: #b7b3a6;
+        font-size: 13px;
+        min-height: 2.8em;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #000;
+        aspect-ratio: 16 / 9;
+      }
+      body.solo header, body.solo .grid { display: none; }
+      body.solo .solo-wrap {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      body.solo .solo-wrap canvas {
+        flex: 1;
+        aspect-ratio: auto;
+        height: 100vh;
+      }
+      body.solo .solo-label {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        background: rgba(0,0,0,.55);
+        padding: 8px 12px;
+        border-radius: 6px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Iron Kar98k sights</h1>
+      <p class="lead">
+        Same ADS pose and zoom. Rounded U, ears and aiming bar 35% shorter, cutout 2× the bar on each side.
+      </p>
+    </header>
+    <div class="grid" id="grid"></div>
+    <div class="solo-wrap" id="solo" hidden></div>
+    <script type="module" src="/src/iron-options.ts"></script>
+  </body>
+</html>

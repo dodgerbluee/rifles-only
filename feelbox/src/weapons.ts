@@ -192,22 +192,52 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   if (hipOnly) for (const m of parts) m.userData.karHipBarrel = true;
 }
 
-/** Broad Kar98k rear leaf with the reference's deep, rounded U-notch. */
+/**
+ * Iron rear: option-3 U as a sight block that hugs the receiver.
+ * Rounded inner notch, ears and aiming bar 35% shorter. adsPos is unchanged.
+ * Inner cutout is 2× the aiming rectangle on each side of the bar.
+ */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
+  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
+  const recW = 0.026;
+  const sink = 0.011;
+  const bw = recW * 0.5 + 0.0012;
+  const barW = 0.003;
+  const barH = earH * 0.7;
+  const barD = 0.008;
+  const depth = 0.018;
+  const cutW = barW + 2 * (2 * barW);
+  const nw = cutW * 0.5;
+  const notchFloor = 0.001;
   const leaf = new THREE.Shape();
-  leaf.moveTo(-0.024, 0);
-  leaf.lineTo(-0.024, 0.026);
-  leaf.lineTo(-0.008, 0.026);
-  leaf.lineTo(-0.008, 0.016);
-  leaf.quadraticCurveTo(-0.008, 0.006, 0, 0.006);
-  leaf.quadraticCurveTo(0.008, 0.006, 0.008, 0.016);
-  leaf.lineTo(0.008, 0.026);
-  leaf.lineTo(0.024, 0.026);
-  leaf.lineTo(0.024, 0);
+  leaf.moveTo(-bw, -sink);
+  leaf.lineTo(-bw, earH);
+  leaf.lineTo(-nw, earH);
+  leaf.quadraticCurveTo(-nw, notchFloor, 0, notchFloor);
+  leaf.quadraticCurveTo(nw, notchFloor, nw, earH);
+  leaf.lineTo(bw, earH);
+  leaf.lineTo(bw, -sink);
   leaf.closePath();
-  const rear = extrude(leaf, 0.01, steel, 8);
+  const geo = new THREE.ExtrudeGeometry(leaf, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.0005,
+    bevelSize: 0.0004,
+    bevelSegments: 1,
+    curveSegments: 8,
+  });
+  geo.translate(0, 0, -depth / 2);
+  const rear = new THREE.Mesh(geo, steel);
   rear.userData.karIronRear = true;
+  rear.userData.karIronNotchW = cutW;
   place(root, rear, 0, floorY, z);
+
+  const aimY = floorY + 0.005;
+  const barY = Math.min(aimY, floorY + earH - barH * 0.5);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
+  bar.position.set(0, barY, z + 0.001);
+  bar.userData.karPoiBar = true;
+  root.add(bar);
 }
 
 /** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
@@ -385,11 +415,17 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const postZ = -0.5;
   const rampH = recTop - barTop;
   place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
-  place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
-  const wingH = postH + (scoped ? 0.004 : 0.006);
-  place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
-  place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
-  if (!scoped) place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ);
+  if (scoped) {
+    place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
+    const wingH = postH + 0.004;
+    place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
+    place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
+  } else {
+    const front = new THREE.Mesh(new THREE.BoxGeometry(0.0022, postH + 0.007, 0.0045), steel);
+    front.position.set(0, recTop + postH, postZ);
+    front.userData.karIronFront = true;
+    root.add(front);
+  }
 
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
   let adsPos = new THREE.Vector3(0, -(recTop + postH), -0.15);
