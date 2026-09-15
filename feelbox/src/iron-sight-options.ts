@@ -1,7 +1,13 @@
 import * as THREE from "three";
 import { makeKar98, type RifleView } from "./weapons";
 
-/** ADS pictures for the iron Kar98k. Zoom, scoped Kar, and hip fire stay on main. */
+/**
+ * Iron Kar sight pictures only. Every option keeps makeKar98()'s adsPos / adsPitch /
+ * adsFov — no cups, no pitch-down, no closer eye.
+ *
+ * Base: previous option 3 U-leaf, width and height cut by 40%, plus a vertical
+ * rectangle on the bore line whose top is the bullet point of aim.
+ */
 export type IronOptionId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export type IronPreview = {
@@ -13,111 +19,103 @@ export type IronPreview = {
   adsPitch: number;
 };
 
+/** Option 3 leaf was the main rear * 1.85. These are that size * 0.6. */
+const OPT3 = 1.85;
+const SHRINK = 0.6;
+const LEAF_W = 0.048 * OPT3 * SHRINK;
+const LEAF_H = 0.026 * OPT3 * SHRINK;
+const NOTCH_W = 0.016 * OPT3 * SHRINK;
+const REAR_Z = -0.08;
+const POST_Z = -0.5;
+const AXIS_Y = 0.034;
+const REC_R = 0.013;
+const REC_TOP = AXIS_Y + REC_R;
+const POST_H = 0.01 * 0.5;
+const AIM_Y = REC_TOP + POST_H;
+
 export const IRON_OPTION_META: { id: IronOptionId; name: string; blurb: string }[] = [
   {
     id: 1,
-    name: "CoD1 barrel cup",
-    blurb: "Faceted barrel in your face, T-ears on the near band, wrap hands, walnut left. Closest copy of the reference.",
+    name: "Thin bar in rounded U",
+    blurb: "Option 3’s U, 40% smaller. Thin vertical rectangle in the notch; top is the point of aim.",
   },
   {
     id: 2,
-    name: "Open U on the cup",
-    blurb: "Same close barrel mass, but a deep rounded Kar98k U-leaf instead of T-ears. World shows through the notch.",
+    name: "Medium bar in rounded U",
+    blurb: "Same U. Wider aiming rectangle so the bullet line is easier to pick up.",
   },
   {
     id: 3,
-    name: "Bigger leaf, same rifle",
-    blurb: "Keeps the slim Kar. Scales up the tangent rear leaf and sits the eye closer so the U fills more of the view.",
+    name: "Thick bar in rounded U",
+    blurb: "Same U. Chunky center rectangle — the whole bar is the aiming reference.",
   },
   {
     id: 4,
-    name: "Open pipe",
-    blurb: "Thick-walled octagon you look down. T-ears on the rim, world in the bore — a tube, not a plugged muzzle.",
+    name: "Square notch + bar",
+    blurb: "Square-cut notch instead of a rounded U. Medium rectangle in the middle.",
   },
   {
     id: 5,
-    name: "Protective V-ears",
-    blurb: "Two tall ears, no floor bar. You aim through the V with the front blade in the gap.",
+    name: "V-notch + bar",
+    blurb: "V-cut ears. Medium rectangle centered in the V.",
   },
   {
     id: 6,
-    name: "GoldSrc chunky",
-    blurb: "Fewer sides, fatter barrel, bigger hands, darker metal. The low-poly CoD1 read, pushed further.",
+    name: "Bar with square bead",
+    blurb: "Thin rectangle with a small square on top. The bead is the bullet spot.",
   },
   {
     id: 7,
-    name: "Receiver close-up",
-    blurb: "You sit over a faceted receiver, not inside a giant muzzle. U-leaf on top, barrel running away smaller.",
+    name: "Tight slot + bar",
+    blurb: "Narrower notch hugging the rectangle so the bar fills the opening.",
   },
   {
     id: 8,
-    name: "Semi-hooded U",
-    blurb: "Rounded hood around the rear notch on a close barrel. Still an iron, not ZF glass — open at the top.",
+    name: "Two ears + bar",
+    blurb: "Separate left/right ears and a floor, option-3 size, with the aiming rectangle between them.",
   },
   {
     id: 9,
-    name: "Classic FPS irons",
-    blurb: "No cup. A large close U and a small distant post, world filling the rest of the screen.",
+    name: "Clean U, front rectangle",
+    blurb: "Open rounded U with no rear bar. The aiming rectangle is the front post, top = POI.",
   },
   {
     id: 10,
-    name: "Metal only",
-    blurb: "Option 1’s barrel and T-ears, no wrap hands and no stock. Tests whether the CoD1 look is the metal or the whole pose.",
+    name: "Rear and front bars",
+    blurb: "Aligned rectangles at the rear notch and the front post. Same line as the bullet.",
   },
 ];
 
-type RearKind = "t-ears" | "u-leaf" | "v-ears" | "hood";
-type BoreKind = "pinhole" | "open" | "plug";
+type Notch = "round" | "square" | "vee" | "tight" | "ears";
 
-type CupSpec = {
-  segs: number;
-  nearR: number;
-  lookLift: number;
-  pitch: number;
-  eye: number;
-  rear: RearKind;
-  bore: BoreKind;
-  hands: boolean;
-  stock: boolean;
-  lug: boolean;
-  slimBarrel: boolean;
+type SightSpec = {
+  notch: Notch;
+  barW: number;
+  rearBar: boolean;
+  frontBar: boolean;
+  bead: boolean;
+  frontScale: number;
 };
 
-function mats() {
-  const blued = new THREE.MeshLambertMaterial({ color: 0x2a2c26, flatShading: true });
-  const worn = new THREE.MeshLambertMaterial({ color: 0x3a3c36, flatShading: true });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x141512, flatShading: true });
-  const face = new THREE.MeshLambertMaterial({ color: 0x32342e, flatShading: true });
-  const skin = new THREE.MeshLambertMaterial({ color: 0xb08968, flatShading: true });
-  const stock = new THREE.MeshLambertMaterial({ color: 0x5a3824, flatShading: true });
-  return { blued, worn, dark, face, skin, stock };
-}
-
-function place(parent: THREE.Object3D, mesh: THREE.Mesh, x: number, y: number, z: number) {
-  mesh.position.set(x, y, z);
-  parent.add(mesh);
-  return mesh;
-}
-
-function cylZ(r: number, len: number, mat: THREE.Material, segs: number) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, segs), mat);
-  m.rotation.x = Math.PI / 2;
-  return m;
-}
-
-function pipeZ(r: number, len: number, mat: THREE.Material, segs: number) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, segs, 1, true), mat.clone());
-  m.rotation.x = Math.PI / 2;
-  (m.material as THREE.Material).side = THREE.DoubleSide;
-  return m;
-}
+const SPECS: Record<IronOptionId, SightSpec> = {
+  1: { notch: "round", barW: 0.0022, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  2: { notch: "round", barW: 0.0034, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  3: { notch: "round", barW: 0.005, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  4: { notch: "square", barW: 0.0034, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  5: { notch: "vee", barW: 0.0034, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  6: { notch: "round", barW: 0.0022, rearBar: true, frontBar: true, bead: true, frontScale: 0.72 },
+  7: { notch: "tight", barW: 0.0034, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  8: { notch: "ears", barW: 0.0034, rearBar: true, frontBar: true, bead: false, frontScale: 0.72 },
+  9: { notch: "round", barW: 0.0034, rearBar: false, frontBar: true, bead: false, frontScale: 1 },
+  10: { notch: "round", barW: 0.0034, rearBar: true, frontBar: true, bead: false, frontScale: 1 },
+};
 
 function extrude(shape: THREE.Shape, depth: number, mat: THREE.Material, curveSegments = 8) {
   const geo = new THREE.ExtrudeGeometry(shape, {
     depth,
     bevelEnabled: true,
-    bevelThickness: depth * 0.12,
-    bevelSize: depth * 0.1,
+    bevelThickness: depth * 0.1,
+    bevelSize: depth * 0.08,
     bevelSegments: 1,
     curveSegments,
   });
@@ -125,16 +123,16 @@ function extrude(shape: THREE.Shape, depth: number, mat: THREE.Material, curveSe
   return new THREE.Mesh(geo, mat);
 }
 
-function uLeaf(width: number, height: number, notchW: number, notchFloor: number) {
+function roundU(width: number, height: number, notchW: number, notchFloor: number) {
   const hw = width * 0.5;
   const nw = notchW * 0.5;
   const leaf = new THREE.Shape();
   leaf.moveTo(-hw, 0);
   leaf.lineTo(-hw, height);
   leaf.lineTo(-nw, height);
-  leaf.lineTo(-nw, notchFloor + (height - notchFloor) * 0.35);
+  leaf.lineTo(-nw, notchFloor + (height - notchFloor) * 0.32);
   leaf.quadraticCurveTo(-nw, notchFloor, 0, notchFloor);
-  leaf.quadraticCurveTo(nw, notchFloor, nw, notchFloor + (height - notchFloor) * 0.35);
+  leaf.quadraticCurveTo(nw, notchFloor, nw, notchFloor + (height - notchFloor) * 0.32);
   leaf.lineTo(nw, height);
   leaf.lineTo(hw, height);
   leaf.lineTo(hw, 0);
@@ -142,306 +140,120 @@ function uLeaf(width: number, height: number, notchW: number, notchFloor: number
   return leaf;
 }
 
-function wrapHands(
-  g: THREE.Group,
-  axisY: number,
-  nearR: number,
-  faceZ: number,
-  skin: THREE.Material,
-  chunk = 1,
-) {
-  const r = nearR;
-  function hand(side: 1 | -1) {
-    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.016 * chunk, 6, 5), skin);
-    palm.scale.set(0.85, 1.05, 1.3);
-    palm.position.set(side * (r + 0.012 * chunk), axisY + 0.004, faceZ - 0.042);
-    g.add(palm);
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.006 * chunk, 0.015 * chunk, 2, 5), skin);
-    thumb.position.set(side * r * 0.82, axisY + r * 0.85, faceZ - 0.018);
-    thumb.rotation.z = -side * 0.85;
-    thumb.rotation.x = 0.25;
-    g.add(thumb);
-    for (let i = 0; i < 4; i++) {
-      const t = i / 3;
-      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0048 * chunk, 0.016 * chunk, 2, 5), skin);
-      f.position.set(
-        side * (r + 0.004 - t * 0.004),
-        axisY + r * 0.35 - t * 0.008,
-        faceZ - 0.028 - t * 0.008,
-      );
-      f.rotation.z = -side * 0.95;
-      f.rotation.x = 0.45;
-      g.add(f);
-    }
-  }
-  hand(-1);
-  hand(1);
+function squareU(width: number, height: number, notchW: number, notchFloor: number) {
+  const hw = width * 0.5;
+  const nw = notchW * 0.5;
+  const leaf = new THREE.Shape();
+  leaf.moveTo(-hw, 0);
+  leaf.lineTo(-hw, height);
+  leaf.lineTo(-nw, height);
+  leaf.lineTo(-nw, notchFloor);
+  leaf.lineTo(nw, notchFloor);
+  leaf.lineTo(nw, height);
+  leaf.lineTo(hw, height);
+  leaf.lineTo(hw, 0);
+  leaf.closePath();
+  return leaf;
 }
 
-function rearOnCup(
-  g: THREE.Group,
-  kind: RearKind,
-  axisY: number,
-  nearR: number,
-  faceZ: number,
-  blued: THREE.Material,
-  worn: THREE.Material,
-) {
-  const earZ = faceZ - 0.005;
-  const top = axisY + nearR - 0.003;
-  if (kind === "t-ears") {
-    const earH = 0.028;
-    const left = new THREE.Mesh(new THREE.BoxGeometry(0.007, earH, 0.012), worn);
-    left.position.set(-0.007, top + earH * 0.5, earZ);
-    g.add(left);
-    const right = new THREE.Mesh(new THREE.BoxGeometry(0.007, earH, 0.012), worn);
-    right.position.set(0.007, top + earH * 0.5, earZ);
-    g.add(right);
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.005, 0.012), blued);
-    bar.position.set(0, top, earZ);
-    g.add(bar);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0032, 0.018, 0.006), worn);
-    blade.position.set(0, top + 0.016, earZ - 0.01);
-    g.add(blade);
-    return;
-  }
-  if (kind === "v-ears") {
-    const earH = 0.034;
-    const left = new THREE.Mesh(new THREE.BoxGeometry(0.006, earH, 0.011), worn);
-    left.position.set(-0.01, top + earH * 0.45, earZ);
-    left.rotation.z = 0.18;
-    g.add(left);
-    const right = new THREE.Mesh(new THREE.BoxGeometry(0.006, earH, 0.011), worn);
-    right.position.set(0.01, top + earH * 0.45, earZ);
-    right.rotation.z = -0.18;
-    g.add(right);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.02, 0.006), worn);
-    blade.position.set(0, top + 0.014, faceZ - 0.22);
-    g.add(blade);
-    return;
-  }
-  if (kind === "u-leaf") {
-    const leaf = extrude(uLeaf(0.046, 0.028, 0.016, 0.007), 0.01, worn, 8);
-    place(g, leaf, 0, top, earZ);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.016, 0.006), worn);
-    blade.position.set(0, top + 0.02, faceZ - 0.28);
-    g.add(blade);
-    return;
-  }
-  const leaf = extrude(uLeaf(0.04, 0.022, 0.014, 0.006), 0.01, worn, 8);
-  place(g, leaf, 0, top, earZ);
-  const hood = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.0036, 6, 10, Math.PI), blued);
-  hood.rotation.x = Math.PI / 2;
-  hood.rotation.z = Math.PI;
-  hood.position.set(0, top + 0.01, earZ);
-  g.add(hood);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.016, 0.006), worn);
-  blade.position.set(0, top + 0.018, faceZ - 0.26);
-  g.add(blade);
+function veeU(width: number, height: number, notchW: number, notchFloor: number) {
+  const hw = width * 0.5;
+  const nw = notchW * 0.5;
+  const leaf = new THREE.Shape();
+  leaf.moveTo(-hw, 0);
+  leaf.lineTo(-hw, height);
+  leaf.lineTo(-nw, height);
+  leaf.lineTo(0, notchFloor);
+  leaf.lineTo(nw, height);
+  leaf.lineTo(hw, height);
+  leaf.lineTo(hw, 0);
+  leaf.closePath();
+  return leaf;
 }
 
-function boreOnCup(
-  g: THREE.Group,
-  kind: BoreKind,
-  axisY: number,
-  nearR: number,
-  faceZ: number,
-  segs: number,
-  dark: THREE.Material,
-  worn: THREE.Material,
-  face: THREE.Material,
-) {
-  const inner = nearR * 0.55;
-  const lip = new THREE.Mesh(new THREE.RingGeometry(inner, nearR, segs), face);
-  lip.material.side = THREE.DoubleSide;
-  lip.position.set(0, axisY, faceZ + 0.0008);
-  g.add(lip);
-  const step = new THREE.Mesh(new THREE.RingGeometry(inner * 1.08, nearR * 0.82, segs), worn);
-  step.material.side = THREE.DoubleSide;
-  step.position.set(0, axisY, faceZ - 0.006);
-  g.add(step);
-  place(g, pipeZ(inner, 0.04, dark, segs), 0, axisY, faceZ - 0.02);
-  if (kind === "open") {
-    place(g, pipeZ(inner * 0.92, 0.18, dark, segs), 0, axisY, faceZ - 0.1);
-    return;
-  }
-  const hole = kind === "pinhole" ? inner * 0.32 : inner * 0.14;
-  const plug = new THREE.Mesh(new THREE.RingGeometry(hole, inner * 0.98, segs), dark);
-  plug.material.side = THREE.DoubleSide;
-  plug.position.set(0, axisY, faceZ - 0.036);
-  g.add(plug);
-}
-
-function buildCup(spec: CupSpec) {
-  const g = new THREE.Group();
-  const { blued, worn, dark, face, skin, stock } = mats();
-  const axisY = 0.034;
-  const faceZ = 0.024;
-  const nearR = spec.nearR;
-  const segs = spec.segs;
-  const barrelY = axisY - 0.012;
-
-  place(g, pipeZ(nearR, 0.055, blued, segs), 0, barrelY, faceZ - 0.024);
-  place(g, pipeZ(nearR * 0.82, 0.04, worn, segs), 0, barrelY, faceZ - 0.062);
-  if (spec.slimBarrel) {
-    place(g, pipeZ(0.016, 0.2, blued, segs), 0, axisY + 0.004, faceZ - 0.18);
-  } else {
-    place(g, pipeZ(nearR * 0.55, 0.18, blued, segs), 0, axisY + 0.002, faceZ - 0.15);
-  }
-
-  boreOnCup(g, spec.bore, barrelY, nearR, faceZ, segs, dark, worn, face);
-  rearOnCup(g, spec.rear, barrelY, nearR, faceZ, blued, worn);
-
-  if (spec.lug) {
-    const lug = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.018, 0.028), worn);
-    lug.position.set(-nearR * 0.65, axisY - nearR * 0.45, faceZ - 0.02);
-    g.add(lug);
-  }
-  if (spec.stock) {
-    const wood = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.042, 0.2), stock);
-    wood.position.set(-0.062, axisY - 0.05, faceZ - 0.02);
-    wood.rotation.z = 0.28;
-    g.add(wood);
-  }
-  if (spec.hands) wrapHands(g, axisY - 0.012, nearR, faceZ, skin, spec.segs <= 6 ? 1.18 : 1);
-
-  const lookY = axisY - 0.012 + spec.lookLift;
-  return {
-    group: g,
-    adsPos: new THREE.Vector3(0, -lookY, -(faceZ + spec.eye)),
-    adsPitch: spec.pitch,
-  };
-}
-
-function scaleRearLeaf(root: THREE.Object3D, s: number) {
+function steelOf(root: THREE.Object3D) {
+  let mat: THREE.Material | undefined;
   root.traverse((c) => {
-    if (c.userData.karIronRear) c.scale.set(s, s, 1.15);
+    if (mat) return;
+    const mesh = c as THREE.Mesh;
+    if (mesh.userData.karIronRear && mesh.isMesh) mat = mesh.material as THREE.Material;
   });
+  return (mat ?? new THREE.MeshStandardMaterial({ color: 0x1c1e1a, roughness: 0.3, metalness: 0.7 })).clone();
 }
 
-function fromRifle(closerZ: number, leafScale: number, pitch: number) {
-  const view = makeKar98();
-  view.flash.visible = false;
-  scaleRearLeaf(view.root, leafScale);
-  const adsPos = view.adsPos.clone();
-  adsPos.z = closerZ;
-  return { root: view.root, adsPos, adsPitch: pitch, view };
+function hideDefaultSights(root: THREE.Object3D) {
+  const hide: THREE.Object3D[] = [];
+  root.traverse((c) => {
+    if (c.userData.karIronRear) hide.push(c);
+    if (!(c instanceof THREE.Mesh)) return;
+    if (Math.abs(c.position.z - POST_Z) > 1e-4) return;
+    const geo = c.geometry as THREE.CylinderGeometry;
+    if (geo.type !== "CylinderGeometry") return;
+    if ((geo.parameters.radiusTop ?? 1) >= 0.003) return;
+    hide.push(c);
+  });
+  for (const o of hide) o.visible = false;
 }
 
-const CUPS: Record<1 | 2 | 4 | 5 | 6 | 7 | 8 | 10, CupSpec> = {
-  1: {
-    segs: 8,
-    nearR: 0.039,
-    lookLift: 0.013,
-    pitch: -0.22,
-    eye: 0.082,
-    rear: "t-ears",
-    bore: "pinhole",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: false,
-  },
-  2: {
-    segs: 8,
-    nearR: 0.039,
-    lookLift: 0.02,
-    pitch: -0.18,
-    eye: 0.1,
-    rear: "u-leaf",
-    bore: "open",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: false,
-  },
-  4: {
-    segs: 8,
-    nearR: 0.04,
-    lookLift: 0.01,
-    pitch: -0.16,
-    eye: 0.095,
-    rear: "t-ears",
-    bore: "open",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: false,
-  },
-  5: {
-    segs: 8,
-    nearR: 0.038,
-    lookLift: 0.018,
-    pitch: -0.14,
-    eye: 0.1,
-    rear: "v-ears",
-    bore: "open",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: false,
-  },
-  6: {
-    segs: 6,
-    nearR: 0.05,
-    lookLift: 0.012,
-    pitch: -0.26,
-    eye: 0.072,
-    rear: "t-ears",
-    bore: "pinhole",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: false,
-  },
-  7: {
-    segs: 8,
-    nearR: 0.022,
-    lookLift: 0.016,
-    pitch: -0.1,
-    eye: 0.12,
-    rear: "u-leaf",
-    bore: "open",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: true,
-  },
-  8: {
-    segs: 8,
-    nearR: 0.037,
-    lookLift: 0.018,
-    pitch: -0.17,
-    eye: 0.1,
-    rear: "hood",
-    bore: "pinhole",
-    hands: true,
-    stock: true,
-    lug: true,
-    slimBarrel: false,
-  },
-  10: {
-    segs: 8,
-    nearR: 0.039,
-    lookLift: 0.013,
-    pitch: -0.22,
-    eye: 0.082,
-    rear: "t-ears",
-    bore: "pinhole",
-    hands: false,
-    stock: false,
-    lug: true,
-    slimBarrel: false,
-  },
-};
+function poiBar(mat: THREE.Material, width: number, height: number, depth: number, z: number, bead: boolean) {
+  const g = new THREE.Group();
+  g.userData.karPoiBar = true;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mat);
+  bar.position.set(0, AIM_Y, z);
+  g.add(bar);
+  if (bead) {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(width * 1.7, width * 1.7, depth * 1.15), mat);
+    cap.position.set(0, AIM_Y, z + 0.0005);
+    g.add(cap);
+  }
+  return g;
+}
 
-function currentPreview(): IronPreview {
+function addEars(root: THREE.Group, mat: THREE.Material) {
+  const thick = 0.0032;
+  const gap = NOTCH_W * 0.5;
+  const left = new THREE.Mesh(new THREE.BoxGeometry(thick, LEAF_H, 0.01), mat);
+  left.position.set(-gap - thick * 0.5, REC_TOP + LEAF_H * 0.5, REAR_Z);
+  root.add(left);
+  const right = new THREE.Mesh(new THREE.BoxGeometry(thick, LEAF_H, 0.01), mat);
+  right.position.set(gap + thick * 0.5, REC_TOP + LEAF_H * 0.5, REAR_Z);
+  root.add(right);
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(LEAF_W, thick, 0.01), mat);
+  floor.position.set(0, REC_TOP + thick * 0.5, REAR_Z);
+  root.add(floor);
+}
+
+function installSight(root: THREE.Group, spec: SightSpec) {
+  hideDefaultSights(root);
+  const steel = steelOf(root);
+  const notchW = spec.notch === "tight" ? Math.max(spec.barW + 0.0024, NOTCH_W * 0.55) : NOTCH_W;
+  const notchFloor = 0.0016;
+  if (spec.notch === "ears") {
+    addEars(root, steel);
+  } else {
+    const shape =
+      spec.notch === "square"
+        ? squareU(LEAF_W, LEAF_H, notchW, notchFloor)
+        : spec.notch === "vee"
+          ? veeU(LEAF_W, LEAF_H, notchW, notchFloor)
+          : roundU(LEAF_W, LEAF_H, notchW, notchFloor);
+    const leaf = extrude(shape, 0.01, steel, spec.notch === "round" || spec.notch === "tight" ? 8 : 2);
+    leaf.userData.karIronRear = true;
+    leaf.position.set(0, REC_TOP, REAR_Z);
+    root.add(leaf);
+  }
+  if (spec.rearBar) root.add(poiBar(steel, spec.barW, LEAF_H * 0.68, 0.008, REAR_Z + 0.001, spec.bead));
+  if (spec.frontBar) root.add(poiBar(steel, spec.barW * spec.frontScale, POST_H + 0.008, 0.005, POST_Z, spec.bead && !spec.rearBar));
+}
+
+function riflePreview(id: IronOptionId | "current", name: string, blurb: string): IronPreview {
   const view = makeKar98();
   view.flash.visible = false;
+  if (id !== "current") installSight(view.root, SPECS[id]);
   return {
-    id: "current",
-    name: "Current (main)",
-    blurb: "Broad rounded U-leaf on the slim rifle. Unchanged until you pick an option.",
+    id,
+    name,
+    blurb,
     root: view.root,
     adsPos: view.adsPos.clone(),
     adsPitch: view.adsPitch ?? 0,
@@ -449,49 +261,14 @@ function currentPreview(): IronPreview {
 }
 
 export function makeIronPreview(id: IronOptionId | "current"): IronPreview {
-  if (id === "current") return currentPreview();
+  if (id === "current") {
+    return riflePreview("current", "Current (main)", "Main’s U-leaf and post. Aim pose unchanged.");
+  }
   const meta = IRON_OPTION_META.find((m) => m.id === id)!;
-  if (id === 3) {
-    const built = fromRifle(-0.1, 1.85, -0.08);
-    return { id, name: meta.name, blurb: meta.blurb, root: built.root, adsPos: built.adsPos, adsPitch: built.adsPitch };
-  }
-  if (id === 9) {
-    const built = fromRifle(-0.055, 2.45, -0.05);
-    return { id, name: meta.name, blurb: meta.blurb, root: built.root, adsPos: built.adsPos, adsPitch: built.adsPitch };
-  }
-  const cup = buildCup(CUPS[id]);
-  return {
-    id,
-    name: meta.name,
-    blurb: meta.blurb,
-    root: cup.group,
-    adsPos: cup.adsPos,
-    adsPitch: cup.adsPitch,
-  };
+  return riflePreview(id, meta.name, meta.blurb);
 }
 
-/** Attach a cup option onto an existing iron Kar. No-op for rifle-mesh options 3 and 9 (those mutate ads pose only). */
+/** Swap only the iron meshes. Never touches adsPos, adsPitch, adsGrip, or FOV. */
 export function applyIronOption(view: RifleView, id: IronOptionId) {
-  if (id === 3) {
-    scaleRearLeaf(view.root, 1.85);
-    view.adsPos.z = -0.1;
-    view.adsPitch = -0.08;
-    return;
-  }
-  if (id === 9) {
-    scaleRearLeaf(view.root, 2.45);
-    view.adsPos.z = -0.055;
-    view.adsPitch = -0.05;
-    return;
-  }
-  const cup = buildCup(CUPS[id]);
-  cup.group.userData.karIronSight = true;
-  cup.group.visible = false;
-  view.root.add(cup.group);
-  view.adsPos.copy(cup.adsPos);
-  view.adsPitch = cup.adsPitch;
-  view.adsGrip = {
-    left: new THREE.Vector3(-0.05, 0.03, 0.0),
-    right: new THREE.Vector3(0.05, 0.03, 0.0),
-  };
+  installSight(view.root, SPECS[id]);
 }

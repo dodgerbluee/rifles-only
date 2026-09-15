@@ -76,8 +76,7 @@ function renderOne(
   key.position.set(-0.55, 0.7, 0.35);
   scene.add(key);
   scene.add(new THREE.AmbientLight(0x5a5850, 0.35));
-  const openWorld = id === "current" || id === 2 || id === 3 || id === 4 || id === 5 || id === 7 || id === 9;
-  if (openWorld) scene.add(worldBackdrop());
+  scene.add(worldBackdrop());
 
   const preview = makeIronPreview(id);
   const camera = new THREE.PerspectiveCamera(IRON_FOV, width / height, 0.02, 24);
