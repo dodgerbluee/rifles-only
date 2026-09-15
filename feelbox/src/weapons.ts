@@ -225,12 +225,12 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   root.add(g);
 
   const segs = 8;
-  const nearR = 0.038;
-  const boreR = 0.014;
-  const hole = 0.0042;
-  const faceZ = 0.02;
-  const eye = 0.082;
-  const lookLift = 0.012;
+  const nearR = 0.04;
+  const wall = 0.011;
+  const hole = 0.0038;
+  const faceZ = 0.024;
+  const eye = 0.078;
+  const lookLift = 0.01;
   const blued = new THREE.MeshStandardMaterial({
     color: 0x2a2c26,
     roughness: 0.55,
@@ -249,6 +249,13 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
     metalness: 0.18,
     flatShading: true,
   });
+  const darkIn = new THREE.MeshStandardMaterial({
+    color: 0x151613,
+    roughness: 0.78,
+    metalness: 0.18,
+    flatShading: true,
+    side: THREE.BackSide,
+  });
   const skin = new THREE.MeshStandardMaterial({
     color: 0xb08968,
     roughness: 0.78,
@@ -263,16 +270,20 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   });
   const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
 
-  const nearLen = 0.055;
-  const near = cylZ(nearR, nearLen, blued, segs);
-  near.userData.karBarrelFace = true;
-  place(g, near, 0, axisY, faceZ - nearLen * 0.5);
-  place(g, cylZ(0.032, 0.04, worn, segs), 0, axisY, faceZ - nearLen - 0.018);
-  place(g, cylZ(0.026, 0.036, blued, segs), 0, axisY, faceZ - nearLen - 0.054);
-  place(g, cylZ(0.02, 0.04, worn, segs), 0, axisY, faceZ - nearLen - 0.09);
+  const nearLen = 0.07;
+  const inner = nearR - wall;
+  place(g, pipeZ(nearR, nearLen, blued, segs), 0, axisY, faceZ - nearLen * 0.5);
+  const lining = pipeZ(inner, nearLen * 0.96, darkIn, segs);
+  lining.position.set(0, axisY, faceZ - nearLen * 0.5);
+  g.add(lining);
+  place(g, cylZ(0.033, 0.038, worn, segs), 0, axisY, faceZ - nearLen - 0.012);
+  place(g, cylZ(0.027, 0.034, blued, segs), 0, axisY, faceZ - nearLen - 0.046);
+  place(g, cylZ(0.021, 0.036, worn, segs), 0, axisY, faceZ - nearLen - 0.08);
 
-  place(g, ringZ(hole, boreR, dark, segs), 0, axisY, faceZ - 0.001);
-  place(g, ringZ(hole * 0.25, boreR * 0.98, dark, segs), 0, axisY, faceZ - 0.008);
+  const lip = ringZ(inner, nearR, blued, segs);
+  lip.userData.karBarrelFace = true;
+  place(g, lip, 0, axisY, faceZ);
+  place(g, ringZ(hole, inner, dark, segs), 0, axisY, faceZ - 0.018);
 
   const earH = 0.022;
   const earZ = faceZ - 0.012;
@@ -293,9 +304,9 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   lug.position.set(-nearR * 0.65, axisY - nearR * 0.45, faceZ - 0.02);
   g.add(lug);
 
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.055, 0.28), stockMat);
-  stock.position.set(-0.075, axisY - 0.055, faceZ + 0.01);
-  stock.rotation.z = 0.32;
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.042, 0.2), stockMat);
+  stock.position.set(-0.062, axisY - 0.05, faceZ - 0.02);
+  stock.rotation.z = 0.28;
   g.add(stock);
 
   function wrapHand(side: 1 | -1) {
@@ -334,7 +345,7 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
     faceZ,
     eye,
     lookY: axisY + lookLift,
-    pitch: -0.28,
+    pitch: -0.34,
     grip: {
       left: new THREE.Vector3(-nearR - 0.01, axisY, faceZ - 0.04),
       right: new THREE.Vector3(nearR + 0.01, axisY, faceZ - 0.04),
