@@ -113,9 +113,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose. Square U is 5% shorter and 10% wider. Rounded U in front."),
+    card("ads", "ADS", "Same zoom and eye pose. Dark grey square U with small clipped corners. Rounded U in front."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "Rounded leaf in front. Square hood 5% shorter, 10% wider, black outside."),
+    card("side", "On the rifle", "Rounded leaf in front. Dark grey square hood, small diagonal corner cuts."),
   );
 }
