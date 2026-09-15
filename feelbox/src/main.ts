@@ -2574,6 +2574,12 @@ function hideArms() {
   leftArm.root.visible = false;
   arm.root.scale.setScalar(1);
   leftArm.root.scale.setScalar(1);
+  arm.hand.scale.setScalar(1);
+  leftArm.hand.scale.setScalar(1);
+  arm.sleeve.visible = true;
+  arm.forearm.visible = true;
+  leftArm.sleeve.visible = true;
+  leftArm.forearm.visible = true;
 }
 
 function poseHeldHands(
@@ -2591,12 +2597,14 @@ function poseHeldHands(
   const handsOn = (opts.rifleOn || opts.knifeOn || opts.nadeOn) && (!opts.aiming || wrap);
   arm.root.visible = handsOn;
   leftArm.root.visible = wrap;
-  arm.root.scale.setScalar(wrap ? 0.4 : 1);
-  leftArm.root.scale.setScalar(wrap ? 0.4 : 1);
+  arm.root.scale.setScalar(1);
+  leftArm.root.scale.setScalar(1);
   arm.sleeve.visible = !wrap;
   arm.forearm.visible = !wrap;
   leftArm.sleeve.visible = !wrap;
   leftArm.forearm.visible = !wrap;
+  arm.hand.scale.setScalar(wrap ? 0.62 : 1);
+  leftArm.hand.scale.setScalar(wrap ? 0.62 : 1);
   if (wrap) for (const r of hold.rounds) r.visible = false;
   if (!handsOn) return;
   if (opts.knifeOn) {
@@ -2606,8 +2614,14 @@ function poseHeldHands(
     poseArm(arm, nadeWrist(nadeView));
     leftArm.root.visible = false;
   } else if (wrap) {
-    poseArm(arm, adsWrist(hold, 1), 0.85);
-    poseArm(leftArm, adsWrist(hold, -1), -0.85);
+    poseArm(arm, adsWrist(hold, 1), 0);
+    poseArm(leftArm, adsWrist(hold, -1), 0);
+    arm.hand.quaternion.identity();
+    arm.hand.rotateY(-Math.PI / 2);
+    arm.hand.rotateX(0.55);
+    leftArm.hand.quaternion.identity();
+    leftArm.hand.rotateY(Math.PI / 2);
+    leftArm.hand.rotateX(0.55);
   } else poseArm(arm, rifleWrist(hold, opts.boltK));
 }
 
