@@ -252,6 +252,15 @@ function drawMinimap(
   for (const b of world.colliders) {
     const tall = b.max.y - b.min.y > 0.35;
     if (!tall && b.walk) continue;
+    if (b.ramp) {
+      const a = to(b.min.x, b.max.z);
+      const c = to(b.max.x, b.min.z);
+      const x = Math.min(a.x, c.x);
+      const y = Math.min(a.y, c.y);
+      mapCtx.fillStyle = "#6a5a48";
+      mapCtx.fillRect(x, y, Math.max(1.2, Math.abs(c.x - a.x)), Math.max(1.2, Math.abs(c.y - a.y)));
+      continue;
+    }
     const a = to(b.min.x, b.max.z);
     const c = to(b.max.x, b.min.z);
     const x = Math.min(a.x, c.x);

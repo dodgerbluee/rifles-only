@@ -7,6 +7,11 @@ import { T } from "./kit";
 import {
   COVER_SIZE,
   HOLE_MIN,
+  RAMP_RISE,
+  RAMP_RISE_MAX,
+  RAMP_STEP,
+  RAMP_Y_MAX,
+  RAMP_Y_MIN,
   STOREY,
   STOREY_MAX,
   STOREY_MIN,
@@ -17,6 +22,10 @@ import {
   buildingHeight,
   buildingInterior,
   punchRects,
+  rampHeightAt,
+  rampHigh,
+  rampLow,
+  rampRise,
   subtractRect,
   type BuildingInterior,
   type BuildingSpec,
@@ -51,6 +60,7 @@ export type ToolId =
   | "wall"
   | "door"
   | "window"
+  | "ramp"
   | "crate"
   | "jumpCrate"
   | "fullCrate"
@@ -83,6 +93,7 @@ export const BUILD_TOOLS: ToolDef[] = [
   { id: "wall", key: "I", label: "Wall" },
   { id: "door", key: "O", label: "Door" },
   { id: "window", key: "V", label: "Window" },
+  { id: "ramp", key: "G", label: "Ramp" },
 ];
 
 export const KIT_TOOLS: ToolDef[] = [
@@ -109,7 +120,7 @@ export const HAND_IDS: ToolId[] = HAND_TOOLS.map((t) => t.id);
 export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
 export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
 export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
-export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall", "area", "siteA", "siteB"];
+export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall", "area", "siteA", "siteB", "ramp"];
 
 export function paletteOf(tool: ToolId): PaletteId {
   if (tool === "select" || tool === "erase") return "hand";
@@ -157,7 +168,8 @@ export type StudioItem =
   | { kind: "watch"; i: number }
   | { kind: "lamp"; i: number }
   | { kind: "tree"; i: number }
-  | { kind: "area"; i: number };
+  | { kind: "area"; i: number }
+  | { kind: "ramp"; i: number };
 
 export type LotEdge = DoorWall;
 
@@ -185,6 +197,7 @@ export function blankSpec(): LayoutSpec {
     partitions: [],
     cover: [],
     climbs: [],
+    ramps: [],
     sites: [
       { id: "loft", call: "A", name: "A", x: -14, z: 8, w: SITE_ZONE, d: SITE_ZONE },
       { id: "well", call: "B", name: "B", x: 14, z: -6, w: SITE_ZONE, d: SITE_ZONE },
@@ -270,6 +283,121 @@ export function setBuildingInterior(spec: LayoutSpec, i: number, interior: Build
   return next;
 }
 
+const WALL_CW: Record<DoorWall, DoorWall> = { n: "e", e: "s", s: "w", w: "n" };
+
+function turnWall(wall: DoorWall, steps: number) {
+  let w = wall;
+  const n = ((steps % 4) + 4) % 4;
+  for (let i = 0; i < n; i++) w = WALL_CW[w];
+  return w;
+}
+
+function turnOpenings(list: WallOpening[] | undefined, steps: number) {
+  if (!list) return list;
+  const n = ((steps % 4) + 4) % 4;
+  return list.map((o) => {
+    let wall = o.wall;
+    let at = o.at ?? 0;
+    for (let s = 0; s < n; s++) {
+      if (wall === "n" || wall === "s") at = -at;
+      wall = WALL_CW[wall];
+    }
+    return { ...o, wall, at };
+  });
+}
+
+/** 90° clockwise per step. Swaps w/d and walks doors, windows, and stairs around. */
+export function rotateBuilding(spec: LayoutSpec, i: number, steps = 1): LayoutSpec {
+  const cur = spec.buildings?.[i];
+  if (!cur) return spec;
+  const n = ((steps % 4) + 4) % 4;
+  if (n === 0) return spec;
+  const next = cloneSpec(spec);
+  const b = next.buildings![i]!;
+  for (let s = 0; s < n; s++) {
+    const w = b.w;
+    b.w = b.d;
+    b.d = w;
+  }
+  b.doors = turnOpenings(b.doors, n);
+  b.windows = turnOpenings(b.windows, n);
+  if (b.stairs) b.stairs = turnWall(b.stairs, n);
+  return next;
+}
+
+/** 90° clockwise. Swaps the footprint and walks the uphill end around. */
+export function rotateRamp(spec: LayoutSpec, i: number, steps = 1): LayoutSpec {
+  const cur = spec.ramps?.[i];
+  if (!cur) return spec;
+  const n = ((steps % 4) + 4) % 4;
+  if (n === 0) return spec;
+  const next = cloneSpec(spec);
+  const r = next.ramps![i]!;
+  for (let s = 0; s < n; s++) {
+    const w = r.w;
+    r.w = r.d;
+    r.d = w;
+    r.dir = WALL_CW[r.dir];
+  }
+  return next;
+}
+
+export function studioRampIndex(sels: StudioItem[], spec?: LayoutSpec, tool?: ToolId) {
+  if (sels.length === 1 && sels[0]!.kind === "ramp") return sels[0]!.i;
+  if (tool === "ramp") {
+    const n = spec?.ramps?.length ?? 0;
+    if (n > 0) return n - 1;
+  }
+  return -1;
+}
+
+export function setRampRise(spec: LayoutSpec, i: number, rise: number): LayoutSpec {
+  const cur = spec.ramps?.[i];
+  if (!cur) return spec;
+  const n = Math.max(RAMP_STEP, Math.min(RAMP_RISE_MAX, snap(rise, RAMP_STEP)));
+  if (Math.abs(rampRise(cur) - n) < 1e-6) return spec;
+  const next = cloneSpec(spec);
+  next.ramps![i]!.rise = n;
+  return next;
+}
+
+export function bumpRampRise(spec: LayoutSpec, i: number, delta: number) {
+  const r = spec.ramps?.[i];
+  if (!r) return spec;
+  return setRampRise(spec, i, rampRise(r) + delta);
+}
+
+export function setRampLow(spec: LayoutSpec, i: number, y0: number): LayoutSpec {
+  const cur = spec.ramps?.[i];
+  if (!cur) return spec;
+  const n = Math.max(RAMP_Y_MIN, Math.min(RAMP_Y_MAX, snap(y0, RAMP_STEP)));
+  if (Math.abs(rampLow(cur) - n) < 1e-6) return spec;
+  const next = cloneSpec(spec);
+  next.ramps![i]!.y0 = n;
+  return next;
+}
+
+export function bumpRampLow(spec: LayoutSpec, i: number, delta: number) {
+  const r = spec.ramps?.[i];
+  if (!r) return spec;
+  return setRampLow(spec, i, rampLow(r) + delta);
+}
+
+export function setRampDir(spec: LayoutSpec, i: number, dir: DoorWall): LayoutSpec {
+  const cur = spec.ramps?.[i];
+  if (!cur || cur.dir === dir) return spec;
+  const next = cloneSpec(spec);
+  next.ramps![i]!.dir = dir;
+  return next;
+}
+
+export function wallFromClimb(dir: ClimbDir): DoorWall {
+  if (dir === "+z") return "n";
+  if (dir === "-z") return "s";
+  if (dir === "+x") return "e";
+  return "w";
+}
+
 export function snap(n: number, grid = GRID) {
   return Math.round(n / grid) * grid;
 }
@@ -321,7 +449,7 @@ export function place(
   tool: ToolId,
   x: number,
   z: number,
-  opts: { yaw?: number; bw?: number; bd?: number; y?: number; name?: string } = {},
+  opts: { yaw?: number; bw?: number; bd?: number; y?: number; name?: string; dir?: DoorWall } = {},
 ): LayoutSpec {
   const next = cloneSpec(spec);
   const cell = cellRect(x, z);
@@ -370,6 +498,17 @@ export function place(
   }
   if (tool === "cut") {
     return cutCell(spec, gx, gz);
+  }
+  if (tool === "ramp") {
+    const dir = opts.dir ?? wallFromClimb(dirFromYaw(opts.yaw ?? 0));
+    const alongX = dir === "e" || dir === "w";
+    const cx = opts.bw != null ? x : gx;
+    const cz = opts.bd != null ? z : gz;
+    const ww = Math.max(GRID, opts.bw ?? (alongX ? 4 : 2));
+    const dd = Math.max(GRID, opts.bd ?? (alongX ? 2 : 4));
+    next.ramps = next.ramps ?? [];
+    next.ramps.push({ x: cx, z: cz, w: ww, d: dd, y0: 0, rise: RAMP_RISE, dir });
+    return next;
   }
   if (tool === "wall") {
     const foot = wallFootprint(x, z, x, z, opts.yaw);
@@ -490,6 +629,10 @@ export function deleteItem(spec: LayoutSpec, item: StudioItem): LayoutSpec {
     next.partitions?.splice(item.i, 1);
     return next;
   }
+  if (item.kind === "ramp") {
+    next.ramps?.splice(item.i, 1);
+    return next;
+  }
   if (item.kind === "cover") {
     next.cover?.splice(item.i, 1);
     return next;
@@ -535,6 +678,12 @@ export function inSlabHole(s: { x: number; z: number; w: number; d: number; hole
 
 export function surfaceAt(spec: LayoutSpec, x: number, z: number) {
   let y = 0;
+  let rampY = -Infinity;
+  for (const r of spec.ramps ?? []) {
+    const h = rampHeightAt(r, x, z);
+    if (h != null) rampY = Math.max(rampY, h);
+  }
+  if (rampY > -Infinity) y = rampY;
   for (const s of spec.slabs ?? []) {
     if (containsXZ(x, z, s.x, s.z, s.w, s.d) && !inSlabHole(s, x, z)) y = Math.max(y, s.y);
   }
@@ -785,6 +934,12 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): Studi
       hits.push({ item: { kind: "slab", i }, y: s.y, area: s.w * s.d, dist: 0 });
     }
   }
+  for (let i = 0; i < (spec.ramps ?? []).length; i++) {
+    const rmp = spec.ramps![i]!;
+    if (inside(rmp.x, rmp.z, rmp.w, rmp.d, 0)) {
+      hits.push({ item: { kind: "ramp", i }, y: 0.05, area: rmp.w * rmp.d, dist: 0 });
+    }
+  }
   for (let i = 0; i < (spec.partitions ?? []).length; i++) {
     const p = spec.partitions![i]!;
     if (inside(p.x, p.z, p.w, p.d, 0.2)) {
@@ -843,6 +998,10 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): Studi
     const aPt = a.area < 10;
     const bPt = b.area < 10;
     if (aPt !== bPt) return aPt ? -1 : 1;
+    if (a.dist === 0 && b.dist === 0 && a.item.kind !== b.item.kind) {
+      if (a.item.kind === "ramp" && a.area <= b.area) return -1;
+      if (b.item.kind === "ramp" && b.area <= a.area) return 1;
+    }
     if (a.dist === 0 && b.dist === 0 && a.y !== b.y) return b.y - a.y;
     if (a.dist === 0 && b.dist === 0 && a.area !== b.area) return a.area - b.area;
     return a.dist - b.dist;
@@ -862,6 +1021,10 @@ export function itemPos(spec: LayoutSpec, item: StudioItem): { x: number; z: num
   if (item.kind === "partition") {
     const p = spec.partitions?.[item.i];
     return p ? { x: p.x, z: p.z } : null;
+  }
+  if (item.kind === "ramp") {
+    const r = spec.ramps?.[item.i];
+    return r ? { x: r.x, z: r.z } : null;
   }
   if (item.kind === "cover") {
     const c = spec.cover?.[item.i];
@@ -917,6 +1080,13 @@ export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: numbe
     if (!p) return spec;
     p.x = x;
     p.z = z;
+    return next;
+  }
+  if (item.kind === "ramp") {
+    const r = next.ramps?.[item.i];
+    if (!r) return spec;
+    r.x = x;
+    r.z = z;
     return next;
   }
   if (item.kind === "cover") {
@@ -992,6 +1162,13 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
     const h = p.h ?? STOREY;
     const y0 = p.y ?? 0;
     return { x: p.x, y: y0 + h / 2, z: p.z, sx: p.w, sy: h, sz: p.d };
+  }
+  if (item.kind === "ramp") {
+    const r = spec.ramps?.[item.i];
+    if (!r) return null;
+    const y0 = rampLow(r);
+    const y1 = rampHigh(r);
+    return { x: r.x, y: (y0 + y1) / 2, z: r.z, sx: r.w, sy: Math.max(0.2, y1 - y0), sz: r.d };
   }
   if (item.kind === "cover") {
     const c = spec.cover?.[item.i];
@@ -1213,6 +1390,10 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
     const a = spec.areas?.[item.i];
     return a ? { x: a.x, z: a.z, w: a.w, d: a.d, minW: GRID, minD: GRID } : null;
   }
+  if (item.kind === "ramp") {
+    const r = spec.ramps?.[item.i];
+    return r ? { x: r.x, z: r.z, w: r.w, d: r.d, minW: GRID, minD: GRID } : null;
+  }
   if (item.kind === "site") {
     const s = spec.sites[item.i];
     if (!s) return null;
@@ -1278,6 +1459,15 @@ export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x
     a.d = nextBox.d;
     return next;
   }
+  if (item.kind === "ramp") {
+    const r = next.ramps?.[item.i];
+    if (!r) return spec;
+    r.x = nextBox.x;
+    r.z = nextBox.z;
+    r.w = nextBox.w;
+    r.d = nextBox.d;
+    return next;
+  }
   if (item.kind === "site") {
     const s = next.sites[item.i];
     if (!s) return spec;
@@ -1318,6 +1508,7 @@ export function allItems(spec: LayoutSpec): StudioItem[] {
   push("partition", spec.partitions?.length ?? 0);
   push("cover", spec.cover?.length ?? 0);
   push("climb", spec.climbs?.length ?? 0);
+  push("ramp", spec.ramps?.length ?? 0);
   push("site", spec.sites.length);
   push("plant", spec.plantSpawns.length);
   push("watch", spec.watchSpawns.length);
@@ -1514,6 +1705,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool === "building") return [bw, STOREY, bd];
   if (tool === "cut") return [GRID, 0.16, GRID];
   if (tool === "floor") return [bw, 0.16, bd];
+  if (tool === "ramp") return [bw, Math.max(0.2, RAMP_RISE), bd];
   if (tool === "wall") return [Math.max(STAMP, T), STOREY, T];
   if (tool === "door") return [2.4, 2.4, 0.28];
   if (tool === "window") return [1.8, 1.3, 0.28];
@@ -1660,6 +1852,7 @@ export function toolFromCode(code: string, palette: PaletteId = "build"): ToolId
   if (code === "KeyI") return "wall";
   if (code === "KeyO") return "door";
   if (code === "KeyV") return "window";
+  if (code === "KeyG") return "ramp";
   if (code === "Digit3" || code === "Numpad3") return "crate";
   if (code === "KeyJ") return "jumpCrate";
   if (code === "KeyK") return "fullCrate";
@@ -1767,6 +1960,12 @@ export function placeBuildingRect(
   if (tool === "siteA" || tool === "siteB") {
     const pad = snapRect(x0, z0, x1, z1, GRID);
     return place(spec, tool, pad.x, pad.z, { yaw, bw: pad.w, bd: pad.d, y: surfaceAt(spec, pad.x, pad.z) });
+  }
+  if (tool === "ramp") {
+    const pad = snapRect(x0, z0, x1, z1, GRID);
+    const alongX = pad.w >= pad.d;
+    const dir: DoorWall = alongX ? (x1 >= x0 ? "e" : "w") : (z1 >= z0 ? "n" : "s");
+    return place(spec, "ramp", pad.x, pad.z, { yaw, bw: pad.w, bd: pad.d, dir });
   }
   if (tool === "floor") {
     const placeY = Math.max(SLAB_Y, y || SLAB_Y);

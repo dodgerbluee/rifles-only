@@ -53,7 +53,23 @@ export type PartitionSpec = {
   h?: number;
 };
 
+/** Ground slope. Walk height goes from `y0` at the low end to `y0+rise` at `dir`. */
+export type RampSpec = {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  y0?: number;
+  rise?: number;
+  dir: DoorWall;
+};
+
 export const HOLE_MIN = 0.12;
+export const RAMP_STEP = 0.5;
+export const RAMP_RISE = 2.88;
+export const RAMP_RISE_MAX = 12;
+export const RAMP_Y_MIN = -8;
+export const RAMP_Y_MAX = 12;
 
 export type CoverKind = "crate" | "jumpCrate" | "fullCrate" | "low" | "high" | "truck";
 
@@ -138,6 +154,7 @@ export type LayoutSpec = {
   partitions?: PartitionSpec[];
   cover?: CoverSpec[];
   climbs?: ClimbSpec[];
+  ramps?: RampSpec[];
   areas?: AreaSpec[];
   sites: SiteSpec[];
   plantSpawns: [number, number][];
@@ -341,6 +358,34 @@ export function buildingBase(b: BuildingSpec) {
   return b.y ?? 0;
 }
 
+export function rampLow(r: RampSpec) {
+  return r.y0 ?? 0;
+}
+
+export function rampRise(r: RampSpec) {
+  const n = r.rise ?? RAMP_RISE;
+  return Math.max(RAMP_STEP, Math.min(RAMP_RISE_MAX, n));
+}
+
+export function rampHigh(r: RampSpec) {
+  return rampLow(r) + rampRise(r);
+}
+
+export function rampHeightAt(r: RampSpec, x: number, z: number) {
+  if (Math.abs(x - r.x) > r.w / 2 + 1e-6 || Math.abs(z - r.z) > r.d / 2 + 1e-6) return null;
+  const yLo = rampLow(r);
+  const yHi = rampHigh(r);
+  let t: number;
+  if (r.dir === "n" || r.dir === "s") {
+    t = r.d <= 1e-6 ? 0 : (z - (r.z - r.d / 2)) / r.d;
+    if (r.dir === "s") t = 1 - t;
+  } else {
+    t = r.w <= 1e-6 ? 0 : (x - (r.x - r.w / 2)) / r.w;
+    if (r.dir === "w") t = 1 - t;
+  }
+  return yLo + Math.max(0, Math.min(1, t)) * (yHi - yLo);
+}
+
 export function asLayoutSpec(raw: unknown): LayoutSpec | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as LayoutSpec;
@@ -476,6 +521,57 @@ function coverAt(kit: Kit, c: CoverSpec) {
   kit.box(c.x, sy / 2, c.z, sx, sy, sz, coverMat(kit, c.kind, sy), true, COVER_WALK[c.kind]);
 }
 
+function addRamp(kit: Kit, r: RampSpec, mat: THREE.Material) {
+  const yLo = rampLow(r);
+  const yHi = rampHigh(r);
+  const hw = r.w / 2;
+  const hd = r.d / 2;
+  const yb = Math.min(yLo, yHi) - 0.08;
+  const top = { sw: yLo, se: yLo, nw: yLo, ne: yLo };
+  if (r.dir === "n") {
+    top.nw = top.ne = yHi;
+  } else if (r.dir === "s") {
+    top.sw = top.se = yHi;
+  } else if (r.dir === "e") {
+    top.se = top.ne = yHi;
+  } else {
+    top.sw = top.nw = yHi;
+  }
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array([
+    -hw, yb, -hd, hw, yb, -hd, hw, yb, hd, -hw, yb, hd,
+    -hw, top.sw, -hd, hw, top.se, -hd, hw, top.ne, hd, -hw, top.nw, hd,
+  ]);
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setIndex([
+    4, 5, 6, 4, 6, 7,
+    0, 2, 1, 0, 3, 2,
+    0, 1, 5, 0, 5, 4,
+    3, 7, 6, 3, 6, 2,
+    0, 4, 7, 0, 7, 3,
+    1, 2, 6, 1, 6, 5,
+  ]);
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.position.set(r.x, 0, r.z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  kit.root.add(mesh);
+  kit.shootables.push(mesh);
+  const axis = r.dir === "e" || r.dir === "w" ? "x" : "z";
+  kit.colliders.push({
+    min: new THREE.Vector3(r.x - hw, yb, r.z - hd),
+    max: new THREE.Vector3(r.x + hw, Math.max(yLo, yHi) + 0.02, r.z + hd),
+    walk: true,
+    shot: true,
+    ramp: {
+      axis,
+      y0: axis === "x" ? (r.dir === "w" ? yHi : yLo) : r.dir === "s" ? yHi : yLo,
+      y1: axis === "x" ? (r.dir === "w" ? yLo : yHi) : r.dir === "s" ? yLo : yHi,
+    },
+  });
+}
+
 export function layoutPlaceName(spec: LayoutSpec, x: number, z: number, _y = 0): string {
   let best: { name: string; area: number } | null = null;
   for (const a of spec.areas ?? []) {
@@ -600,7 +696,10 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
 
   for (const s of spec.slabs ?? []) walkDecks.push(s);
   const resolved = resolveWalkDecks(walkDecks, buildings, H);
-  const groundHoles = resolved.filter((s) => s.y <= DECK_H + WALK_Y_EPS);
+  const groundHoles = [
+    ...resolved.filter((s) => s.y <= DECK_H + WALK_Y_EPS),
+    ...(spec.ramps ?? []).filter((r) => rampLow(r) < 0.2).map((r) => ({ x: r.x, z: r.z, w: r.w, d: r.d })),
+  ];
   for (const p of punchRects(lot, groundHoles)) {
     const gmat = kit.mat(theme.ground, p.w / 2, p.d / 2);
     gmat.polygonOffset = true;
@@ -608,6 +707,7 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     gmat.polygonOffsetUnits = 1;
     kit.box(p.x, -0.06, p.z, p.w, 0.12, p.d, gmat, true, true);
   }
+  for (const r of spec.ramps ?? []) addRamp(kit, r, kit.mat(theme.ground, r.w / 2, r.d / 2));
   for (const p of resolved) {
     kit.box(p.x, p.y - DECK_H / 2, p.z, p.w, DECK_H, p.d, kit.mat("wood", p.w / 2, p.d / 2), true, true);
   }

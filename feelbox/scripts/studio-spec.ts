@@ -2,7 +2,7 @@
  * Studio stamps must round-trip through compileLayout.
  */
 import * as THREE from "three";
-import { compileLayout, COVER_SIZE, DECK_H, layoutPlaceName, punchRects, priorWallGaps, resolveWalkDecks, STOREY } from "../src/maps/layout.ts";
+import { compileLayout, COVER_SIZE, DECK_H, layoutPlaceName, punchRects, priorWallGaps, rampHigh, rampLow, resolveWalkDecks, STOREY } from "../src/maps/layout.ts";
 import { T } from "../src/maps/kit.ts";
 import {
   blankSpec,
@@ -29,6 +29,11 @@ import {
   setBuildingStoreys,
   pickStudioHit,
   resizeItem,
+  rotateBuilding,
+  rotateRamp,
+  setRampLow,
+  bumpRampLow,
+  studioRampIndex,
   setLotHandle,
   itemsInRect,
   defaultOrbit,
@@ -275,6 +280,54 @@ punched = eraseNear(punched, 0, 0);
 check("erase punches the last site cell away", !punched.sites.some((s) => s.id === "loft"));
 check("site ghost is one grid square", ghostSize("siteA", GRID, GRID).join() === `${GRID},0.12,${GRID}`);
 check("harbor theme is dust", HARBOR_SPEC.theme === "dust");
+check("ramp lives on build", paletteOf("ramp") === "build" && toolFromCode("KeyG") === "ramp");
+check("ramp is a drag rect", isRectTool("ramp"));
+const rotHouse = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 6 });
+rotHouse.buildings![0]!.doors = [{ wall: "n", at: 2 }];
+const spun = rotateBuilding(rotHouse, 0, 1);
+check("rotate 90 swaps building footprint", spun.buildings?.[0]?.w === 6 && spun.buildings?.[0]?.d === 12);
+check("rotate 90 walks the door to east", spun.buildings?.[0]?.doors?.[0]?.wall === "e");
+check("rotate 90 flips door offset onto the new wall", spun.buildings?.[0]?.doors?.[0]?.at === -2);
+const spun2 = rotateBuilding(rotHouse, 0, 2);
+check("rotate 180 keeps footprint", spun2.buildings?.[0]?.w === 12 && spun2.buildings?.[0]?.d === 6);
+check("rotate 180 puts the door on south", spun2.buildings?.[0]?.doors?.[0]?.wall === "s");
+const rampDrag = placeBuildingRect(blankSpec(), -4, -1, 4, 1, "ramp", 0);
+const rp = rampDrag.ramps?.[0];
+check("dragged ramp points uphill to the last corner", rp?.dir === "e" && (rp?.w ?? 0) >= 8, `dir=${rp?.dir} w=${rp?.w}`);
+const rampWorld = compileLayout(new THREE.Scene(), rampDrag);
+let walkY = 0;
+for (let x = -3.5; x <= 3.5; x += 0.4) walkY = groundHeight(rampWorld.colliders, x, 0, 0.3, walkY);
+check("walking the ramp climbs a storey", walkY > 2.2, `y=${walkY}`);
+check("ramp low end is the lot", rampLow(rp!) < 0.05);
+check("ramp high end is a storey", rampHigh(rp!) > 2.2);
+const northRamp = placeBuildingRect(blankSpec(), -1, -4, 1, 4, "ramp", 0);
+check("drag north last-corner is uphill north", northRamp.ramps?.[0]?.dir === "n");
+const northWorld = compileLayout(new THREE.Scene(), northRamp);
+let northY = 0;
+for (let z = -3.5; z <= 3.5; z += 0.4) northY = groundHeight(northWorld.colliders, 0, z, 0.3, northY);
+check("walking north up the ramp climbs", northY > 2.2, `y=${northY}`);
+const spunRamp = rotateRamp(rampDrag, 0, 1);
+check("rotate ramp swaps footprint", spunRamp.ramps?.[0]?.w === rp!.d && spunRamp.ramps?.[0]?.d === rp!.w);
+check("rotate ramp walks uphill clockwise", spunRamp.ramps?.[0]?.dir === "s");
+let dip = placeBuildingRect(blankSpec(), -4, -1, 4, 1, "ramp", 0);
+dip = setRampLow(dip, 0, -2);
+const dipWorld = compileLayout(new THREE.Scene(), dip);
+let dipY = -2;
+for (let x = -3.5; x <= 3.5; x += 0.4) dipY = groundHeight(dipWorld.colliders, x, 0, 0.3, dipY);
+check("sunken mid still walks up", dipY > 0.5, `y=${dipY}`);
+check("sunken low end is below the lot", groundHeight(dipWorld.colliders, -3.5, 0, 0.3, -2) < -1.4);
+check(
+  "ramp tool edits the last ramp without a grab",
+  studioRampIndex([], dip, "ramp") === 0 && bumpRampLow(dip, studioRampIndex([], dip, "ramp"), -0.5).ramps?.[0]?.y0 === -2.5,
+);
+const raisedRamp = setRampLow(placeBuildingRect(blankSpec(), -4, -1, 4, 1, "ramp", 0), 0, 3);
+const raisedWorld = compileLayout(new THREE.Scene(), raisedRamp);
+check(
+  "raised ramp leaves the lot dirt",
+  raisedWorld.colliders.some(
+    (c) => c.walk && !c.ramp && c.max.y < 0.2 && c.min.x < 0 && c.max.x > 0 && c.min.z < 0 && c.max.z > 0,
+  ),
+);
 
 let floored = blankSpec();
 floored = place(floored, "building", 0, 0, { bw: 16, bd: 14 });

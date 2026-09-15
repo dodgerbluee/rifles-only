@@ -5,7 +5,7 @@ import "./style.css";
 import * as THREE from "three";
 import { collideXZ, groundHeight, inSite, rayShot, rayWorld, spawnYaw } from "./world";
 import { buildMap, MAPS, LAYOUT_SPECS, compileLayout, specForMap, type MapId } from "./maps";
-import { asLayoutSpec, buildingFloors, buildingInterior, type LayoutSpec } from "./maps/layout";
+import { asLayoutSpec, buildingFloors, buildingInterior, RAMP_RISE, rampLow, rampRise, type LayoutSpec } from "./maps/layout";
 import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, popPawnHead, refillBotPawn, resetBots, restoreHead, restorePawnHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
 import {
   hideDeath,
@@ -86,6 +86,8 @@ import {
   applyOrbit,
   blankSpec,
   bumpBuildingStoreys,
+  bumpRampLow,
+  bumpRampRise,
   canvasNdc,
   cellKey,
   callName,
@@ -129,11 +131,17 @@ import {
   saveStored,
   setLotHandle,
   SLAB_Y,
+  rotateBuilding,
+  rotateRamp,
   setAreaName,
   setBuildingInterior,
+  setRampDir,
+  dirFromYaw,
+  wallFromClimb,
   snapFloor,
   studioAreaIndex,
   studioBuildingIndex,
+  studioRampIndex,
   surfaceAt,
   interiorYAt,
   wallHeightAt,
@@ -1280,10 +1288,11 @@ function studioRecord() {
   studio.redo = [];
 }
 
-function studioApply(next: LayoutSpec, opts?: { record?: boolean; checkpoint?: boolean }) {
+function studioApply(next: LayoutSpec, opts?: { record?: boolean; checkpoint?: boolean; sels?: StudioItem[] }) {
   if (next === studio.spec) return false;
   if (opts?.record !== false) studioRecord();
   persistSpec(next, opts?.checkpoint);
+  if (opts?.sels) studio.sels = opts.sels;
   rebuildStudio();
   paintStudio();
   return true;
@@ -1444,7 +1453,7 @@ function paintStudio() {
   const build = document.querySelector<HTMLElement>("#studio-building");
   const bi = studioBuildingIndex(studio.sels);
   const b = bi >= 0 ? studio.spec.buildings?.[bi] : undefined;
-  if (build) build.hidden = !b;
+  if (build) build.hidden = !b || studio.tool === "ramp";
   if (b) {
     const floors = buildingFloors(b);
     const n = document.querySelector("#studio-storeys");
@@ -1456,6 +1465,19 @@ function paintStudio() {
     const interior = buildingInterior(b);
     document.querySelector("#studio-interior-floors")?.classList.toggle("on", interior === "floors");
     document.querySelector("#studio-interior-empty")?.classList.toggle("on", interior === "empty");
+  }
+  const rampPanel = document.querySelector<HTMLElement>("#studio-ramp");
+  const ri = studioRampIndex(studio.sels, studio.spec, studio.tool);
+  const ramp = ri >= 0 ? studio.spec.ramps?.[ri] : undefined;
+  if (rampPanel) rampPanel.hidden = studio.tool !== "ramp" && !ramp;
+  if (ramp) {
+    const riseEl = document.querySelector("#studio-rise");
+    if (riseEl) riseEl.textContent = rampRise(ramp).toFixed(1);
+    const lowEl = document.querySelector("#studio-low");
+    if (lowEl) lowEl.textContent = String(rampLow(ramp));
+    for (const dir of ["n", "s", "e", "w"] as const) {
+      document.querySelector(`#studio-ramp-${dir}`)?.classList.toggle("on", ramp.dir === dir);
+    }
   }
   const areaPanel = document.querySelector<HTMLElement>("#studio-area");
   const ai = studioAreaIndex(studio.sels);
@@ -1469,6 +1491,8 @@ function paintStudio() {
       ? "WASD move · click to place any tool except Building · U cuts one square · Esc orbit"
       : studio.tool === "siteA" || studio.tool === "siteB"
         ? "Paint any shape · click adds a cell · drag adds a rect · erase punches · gold outline in play"
+        : studio.tool === "ramp"
+          ? "Drag a slope · last corner is the high end · Rise/Low slants the ground · N S E W or Rotate after you grab it"
         : "Drag the yellow peg to walk there · Middle-drag pans · Shift-click or drag-box to multi-select · Knobs resize · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
@@ -1946,6 +1970,16 @@ function stampOpening() {
   if (ground) stampOpeningAt(ground.x, ground.z);
 }
 
+function placedStudioSel(prev: LayoutSpec, next: LayoutSpec, tool: ToolId): StudioItem[] | undefined {
+  if (tool === "ramp" && (next.ramps?.length ?? 0) > (prev.ramps?.length ?? 0)) {
+    return [{ kind: "ramp", i: next.ramps!.length - 1 }];
+  }
+  if (tool === "building" && (next.buildings?.length ?? 0) > (prev.buildings?.length ?? 0)) {
+    return [{ kind: "building", i: next.buildings!.length - 1 }];
+  }
+  return [];
+}
+
 function finishStudioDrag() {
   const drag = studio.drag;
   const base = studio.base;
@@ -1986,7 +2020,8 @@ function finishStudioDrag() {
       studio.spec = base;
       studio.base = null;
     }
-    studioApply(next);
+    const prev = studio.spec;
+    studioApply(next, { sels: placedStudioSel(prev, next, studio.tool) });
     const status = document.querySelector("#studio-status");
     if (status) status.textContent = `placed ${studio.tool}`;
     return;
@@ -2380,10 +2415,48 @@ paintStatsChrome();
     const i = studioBuildingIndex(studio.sels);
     if (i >= 0) studioApply(setBuildingInterior(studio.spec, i, "floors"));
   });
+  document.querySelector("#studio-rotate")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioBuildingIndex(studio.sels);
+    if (i >= 0) studioApply(rotateBuilding(studio.spec, i, 1));
+  });
   document.querySelector("#studio-interior-empty")?.addEventListener("click", (e) => {
     e.stopPropagation();
     const i = studioBuildingIndex(studio.sels);
     if (i >= 0) studioApply(setBuildingInterior(studio.spec, i, "empty"));
+  });
+  document.querySelector("#studio-rise-sub")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
+    if (i >= 0) studioApply(bumpRampRise(studio.spec, i, -0.5));
+  });
+  document.querySelector("#studio-rise-add")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
+    if (i >= 0) studioApply(bumpRampRise(studio.spec, i, 0.5));
+  });
+  document.querySelector("#studio-low-sub")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
+    if (i >= 0) studioApply(bumpRampLow(studio.spec, i, -0.5));
+  });
+  document.querySelector("#studio-low-add")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
+    if (i >= 0) studioApply(bumpRampLow(studio.spec, i, 0.5));
+  });
+  document.querySelector("#studio-ramp")?.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest("button[data-dir]");
+    const dir = btn?.getAttribute("data-dir");
+    if (dir !== "n" && dir !== "s" && dir !== "e" && dir !== "w") return;
+    e.stopPropagation();
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
+    if (i >= 0) studioApply(setRampDir(studio.spec, i, dir));
+  });
+  document.querySelector("#studio-ramp-rotate")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
+    if (i >= 0) studioApply(rotateRamp(studio.spec, i, 1));
   });
   document.querySelector("#studio-area-name")?.addEventListener("input", (e) => {
     const el = e.currentTarget as HTMLInputElement;
@@ -2975,9 +3048,15 @@ addEventListener("keydown", (e) => {
     const tool = moveKeys || e.metaKey || e.ctrlKey ? null : toolFromCode(e.code, studio.palette);
     if (tool) setStudioTool(tool);
     if (e.code === "KeyR" && !e.repeat) {
-      studio.faceYaw = turnYaw(studio.faceYaw);
-      const status = document.querySelector("#studio-status");
-      if (status) status.textContent = "turned";
+      const bi = studioBuildingIndex(studio.sels);
+      const ri = studioRampIndex(studio.sels, studio.spec, studio.tool);
+      if (bi >= 0) studioApply(rotateBuilding(studio.spec, bi, 1));
+      else if (ri >= 0) studioApply(rotateRamp(studio.spec, ri, 1));
+      else {
+        studio.faceYaw = turnYaw(studio.faceYaw);
+        const status = document.querySelector("#studio-status");
+        if (status) status.textContent = "turned";
+      }
     }
     if (e.code === "KeyP" && !e.repeat) {
       if (studio.walk) leaveWalk();
@@ -6246,6 +6325,12 @@ function frame(now: number) {
           studioGhost.visible = true;
           studioGhost.scale.set(foot.w, sy, foot.d);
           studioGhost.position.set(foot.x, y + sy / 2, foot.z);
+        } else if (studio.tool === "ramp") {
+          const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
+          const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
+          studioGhost.visible = true;
+          studioGhost.scale.set(w, RAMP_RISE, d);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, RAMP_RISE / 2, (studio.drag.z0 + studio.drag.z1) / 2);
         } else if (studio.tool === "area" || studio.tool === "siteA" || studio.tool === "siteB") {
           const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
           const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
@@ -6304,6 +6389,13 @@ function frame(now: number) {
             const gz = snapCell(hit.z);
             studioGhost.scale.set(GRID, 0.12, GRID);
             studioGhost.position.set(gx, surfaceAt(studio.spec, gx, gz) + 0.06, gz);
+          } else if (studio.tool === "ramp") {
+            const dir = wallFromClimb(dirFromYaw(studio.faceYaw));
+            const alongX = dir === "e" || dir === "w";
+            const sx = alongX ? 4 : 2;
+            const sz = alongX ? 2 : 4;
+            studioGhost.scale.set(sx, RAMP_RISE, sz);
+            studioGhost.position.set(snap(hit.x), RAMP_RISE / 2, snap(hit.z));
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
             const gx = studio.tool === "crate" ? snapCell(hit.x) : snap(hit.x);
