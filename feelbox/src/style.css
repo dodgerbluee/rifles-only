@@ -1246,7 +1246,7 @@ body.register-page #start {
   z-index: 21;
   pointer-events: none;
   border: 1px solid rgba(232, 217, 168, 0.35);
-  background: rgba(12, 14, 10, 0.2);
+  background: transparent;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
@@ -1869,19 +1869,23 @@ body.settings-model .settings-main {
 }
 
 .model-catalog-foot {
-  margin-top: auto;
+  margin-top: 12px;
   padding-top: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  border-top: 1px solid rgba(232, 217, 168, 0.12);
 }
 
 .model-detail {
   position: relative;
   min-width: 0;
   min-height: 0;
+  margin: 16px 12px;
   pointer-events: none;
   background: transparent;
+  border: 1px solid rgba(232, 217, 168, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
 .model-stage-label,
@@ -2260,8 +2264,8 @@ body.locker.onboarding #locker-back {
 
 .locker-opts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 7px;
   width: 100%;
 }
 

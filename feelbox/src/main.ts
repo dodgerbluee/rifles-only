@@ -1494,45 +1494,68 @@ function applyLockerBodyCam() {
   lockerBodyCam.far = 80;
 }
 
-function renderLockerPip() {
-  const pip = document.querySelector<HTMLElement>("#locker-pip");
-  if (!pip || pip.hidden) return;
-  const rect = pip.getBoundingClientRect();
-  if (rect.width < 8 || rect.height < 8) return;
+function lockerStageRect(el: HTMLElement | null) {
+  if (!el || el.hidden) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return null;
   const dpr = renderer.getPixelRatio();
-  const x = Math.floor(rect.left * dpr);
-  const y = Math.floor((innerHeight - rect.bottom) * dpr);
-  const w = Math.max(1, Math.floor(rect.width * dpr));
-  const h = Math.max(1, Math.floor(rect.height * dpr));
-  applyLockerBodyCam();
-  lockerBodyCam.aspect = rect.width / rect.height;
-  lockerBodyCam.updateProjectionMatrix();
+  return {
+    cssW: rect.width,
+    cssH: rect.height,
+    x: Math.floor(rect.left * dpr),
+    y: Math.floor((innerHeight - rect.bottom) * dpr),
+    w: Math.max(1, Math.floor(rect.width * dpr)),
+    h: Math.max(1, Math.floor(rect.height * dpr)),
+  };
+}
+
+function renderLockerStage(
+  el: HTMLElement | null,
+  cam: THREE.PerspectiveCamera,
+  place: () => void,
+) {
+  const stage = lockerStageRect(el);
+  if (!stage) return;
+  place();
+  cam.aspect = stage.cssW / stage.cssH;
+  cam.updateProjectionMatrix();
   const full = new THREE.Vector2();
   renderer.getDrawingBufferSize(full);
   renderer.clearDepth();
   renderer.setScissorTest(true);
-  renderer.setScissor(x, y, w, h);
-  renderer.setViewport(x, y, w, h);
-  renderer.render(scene, lockerBodyCam);
+  renderer.setScissor(stage.x, stage.y, stage.w, stage.h);
+  renderer.setViewport(stage.x, stage.y, stage.w, stage.h);
+  renderer.render(scene, cam);
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, full.x, full.y);
 }
 
+function renderLockerDetail() {
+  renderLockerStage(document.querySelector("#locker-detail-stage"), camera, applyLockerCam);
+}
+
+function renderLockerPip() {
+  renderLockerStage(document.querySelector("#locker-pip"), lockerBodyCam, applyLockerBodyCam);
+}
+
 function rebuildLocker() {
   wipeMapMeshes();
-  scene.background = new THREE.Color(0x10120e);
+  scene.background = new THREE.Color(0x14160f);
   scene.fog = null;
-  scene.add(new THREE.HemisphereLight(0xd0c8ba, 0x1c1a16, 1.15));
-  const sun = new THREE.DirectionalLight(0xf0e8dc, 1.05);
+  scene.add(new THREE.HemisphereLight(0xe4dcc8, 0x242018, 1.45));
+  const sun = new THREE.DirectionalLight(0xfff4e4, 1.35);
   sun.position.set(3.2, 9.5, 4.6);
   sun.castShadow = true;
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x8a9aac, 0.28);
-  fill.position.set(-4, 3, -2.5);
+  const fill = new THREE.DirectionalLight(0xb0c0d4, 0.55);
+  fill.position.set(-4, 3.4, -2.5);
   scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xd8c8a8, 0.35);
+  rim.position.set(0.5, 2.2, -5);
+  scene.add(rim);
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(7, 40),
-    new THREE.MeshStandardMaterial({ color: 0x161812, roughness: 0.94, metalness: 0.03 }),
+    new THREE.MeshStandardMaterial({ color: 0x1a1c14, roughness: 0.9, metalness: 0.03 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -5617,8 +5640,17 @@ function frame(now: number) {
     lockerPawn.visible = false;
   }
 
-  renderer.render(scene, camera);
-  if (locker.on) renderLockerPip();
+  if (locker.on) {
+    const prevExposure = renderer.toneMappingExposure;
+    renderer.toneMappingExposure = 1.18;
+    renderer.setClearColor(0x0c0e0a, 1);
+    renderer.clear();
+    renderLockerDetail();
+    renderLockerPip();
+    renderer.toneMappingExposure = prevExposure;
+  } else {
+    renderer.render(scene, camera);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
