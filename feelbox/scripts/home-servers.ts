@@ -1,5 +1,6 @@
 /**
- * Home is servers-only. Auth is modal/page. Settings is a full page with preferences.
+ * Home is servers-only with a Servers header. Auth is modal/page.
+ * Settings is a two-pane page (nav + section content); Player is default.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,18 +21,20 @@ check("settings page hides the home start shell", /body\.settings\s+#start/.test
 
 check("home chrome has Map studio before settings", html.indexOf('id="home-studio"') < html.indexOf('id="open-settings"'));
 check("home chrome has Log in after settings", html.indexOf('id="open-settings"') < html.indexOf('id="home-login"'));
-check("home chrome has Log out after settings", html.indexOf('id="open-settings"') < html.indexOf('id="home-logout"'));
-check("home body is servers only (no Account section)", !html.includes('id="home-account"'));
-check("home body has no Preferences entry", !html.includes('id="home-locker"'));
+check("servers page has a header section", html.includes('class="servers-header"') && html.includes('id="home-servers"'));
 check("login is a modal", html.includes('id="login-modal"'));
 check("register is its own page", html.includes('id="register-page"'));
-check("settings is a full page with Back", html.includes('id="settings"') && html.includes('id="settings-back"'));
-check("preferences live under settings", html.includes('id="settings-prefs"') && html.includes('id="locker-name"'));
-check("settings has no separate display-name field outside prefs", !html.includes('id="set-name"'));
-check("locker pip still exists for full-body preview", html.includes('id="locker-pip"'));
+check("settings uses two-pane shell", html.includes('class="settings-shell"') && html.includes('class="settings-nav"'));
+check("settings nav is ~15% in CSS", /settings-nav[\s\S]*?flex:\s*0\s+0\s+15%/.test(css) || /settings-nav[\s\S]*?15%/.test(css));
+check("player settings pane is default on", /id="settings-pane-player"/.test(html) && /class="settings-pane on"[^>]*id="settings-pane-player"|id="settings-pane-player"[^>]*class="[^"]*\bon\b/.test(html));
+check("model section exists", html.includes('data-settings-section="model"') && html.includes('id="settings-pane-model"'));
+check("crosshair is its own section", html.includes('data-settings-section="crosshair"'));
+check("controls section exists", html.includes('data-settings-section="controls"'));
+check("name lives under player settings", html.includes('id="locker-name"') && html.indexOf('settings-pane-player') < html.indexOf('id="locker-name"'));
+check("locker pip still exists", html.includes('id="locker-pip"'));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\nhome is servers-only; auth modal/page; settings full page with prefs");
+console.log("\nservers header + two-pane settings checks passed");

@@ -1349,10 +1349,8 @@ function commitLook() {
 }
 
 function paintLocker() {
-  const panel = document.querySelector<HTMLElement>("#settings");
-  if (panel) panel.hidden = !locker.on;
   const pip = document.querySelector<HTMLElement>("#locker-pip");
-  if (pip) pip.hidden = !locker.on;
+  if (pip) pip.hidden = !(locker.on && settingsSection === "model");
   document.body.classList.toggle("onboarding", false);
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
@@ -1536,22 +1534,63 @@ function rebuildLocker() {
   applyLockerCam();
 }
 
-function enterLocker(opts?: { onboarding?: boolean }) {
+
+let settingsSection: "player" | "model" | "crosshair" | "controls" = "player";
+
+function showSettingsSection(section: typeof settingsSection) {
+  settingsSection = section;
+  document.querySelectorAll<HTMLButtonElement>(".settings-nav-btn").forEach((b) => {
+    b.classList.toggle("on", b.dataset.settingsSection === section);
+  });
+  document.querySelectorAll<HTMLElement>(".settings-pane").forEach((pane) => {
+    const on = pane.dataset.settingsPane === section;
+    pane.classList.toggle("on", on);
+    pane.hidden = !on;
+  });
+  const wantModel = section === "model";
+  document.body.classList.toggle("settings-model", wantModel);
+  document.body.classList.toggle("locker", wantModel);
+  if (wantModel) {
+    if (!locker.on) {
+      locker.on = true;
+      locker.dragging = false;
+      locker.team = prefs.team ?? "ember";
+      rebuildLocker();
+    }
+    paintLocker();
+  } else if (locker.on) {
+    locker.dragging = false;
+    lockerPawn.visible = false;
+    document.body.classList.remove("locker-drag", "locker");
+    const pip = document.querySelector<HTMLElement>("#locker-pip");
+    if (pip) pip.hidden = true;
+    // Keep settings open; drop the character stage until Model is selected again.
+    locker.on = false;
+    camera.near = 0.05;
+    camera.far = 85;
+    camera.fov = 90;
+    camera.updateProjectionMatrix();
+    if (!studio.on) loadMap(mapId, true);
+  }
+}
+
+function enterSettings() {
   if (studio.on) leaveStudio();
   stopReel();
   document.body.classList.remove("bestplay");
-  locker.on = true;
-  locker.onboarding = !!opts?.onboarding;
-  locker.dragging = false;
-  locker.team = prefs.team ?? "ember";
   hideJoinTeam();
-  document.body.classList.add("locker", "settings");
-  document.body.classList.remove("onboarding");
+  locker.onboarding = false;
+  locker.dragging = false;
+  document.body.classList.add("settings");
+  document.body.classList.remove("onboarding", "locker", "locker-drag", "settings-model");
   const settings = document.querySelector<HTMLElement>("#settings");
   if (settings) settings.hidden = false;
-  rebuildLocker();
-  paintLocker();
+  showSettingsSection("player");
   document.exitPointerLock();
+}
+
+function enterLocker(_opts?: { onboarding?: boolean }) {
+  enterSettings();
 }
 
 function leaveLocker(reload = true) {
@@ -1559,7 +1598,7 @@ function leaveLocker(reload = true) {
   locker.onboarding = false;
   locker.dragging = false;
   lockerPawn.visible = false;
-  document.body.classList.remove("locker", "locker-drag", "onboarding", "settings");
+  document.body.classList.remove("locker", "locker-drag", "onboarding", "settings", "settings-model");
   const settings = document.querySelector<HTMLElement>("#settings");
   if (settings) settings.hidden = true;
   const pip = document.querySelector<HTMLElement>("#locker-pip");
@@ -1944,7 +1983,8 @@ bindIdentity({
     paintLocker();
   },
   onRegistered() {
-    enterLocker();
+    enterSettings();
+    showSettingsSection("model");
   },
 });
 
@@ -1989,6 +2029,15 @@ bindIdentity({
   document.querySelector("#settings-back")?.addEventListener("click", (e) => {
     e.stopPropagation();
     leaveLocker();
+  });
+  document.querySelector(".settings-nav")?.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>(".settings-nav-btn");
+    const section = btn?.dataset.settingsSection;
+    if (!btn || !section) return;
+    e.stopPropagation();
+    if (section === "player" || section === "model" || section === "crosshair" || section === "controls") {
+      showSettingsSection(section);
+    }
   });
   document.querySelector("#locker-save-look")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2427,8 +2476,8 @@ canvas.addEventListener("click", () => {
 });
 document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   e.stopPropagation();
-  if (locker.on) leaveLocker();
-  else enterLocker();
+  if (document.body.classList.contains("settings")) leaveLocker();
+  else enterSettings();
 });
 {
   const panel = document.querySelector<HTMLElement>("#settings")!;

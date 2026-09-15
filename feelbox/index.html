@@ -105,25 +105,27 @@
         <button type="button" id="home-login">Log in</button>
         <button type="button" id="home-logout" hidden>Log out</button>
       </div>
-      <div class="start-top">
-        <p class="kicker">Rifles Only</p>
-        <p class="title" id="start-title">Servers</p>
-        <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
-      </div>
-      <div id="server-list"></div>
+      <section id="home-servers" class="home-servers" aria-labelledby="start-title">
+        <header class="servers-header">
+          <p class="kicker">Rifles Only</p>
+          <h1 class="title" id="start-title">Servers</h1>
+          <p id="start-blurb" class="servers-lead">Pick a match. Ember plants the Wire. First to six.</p>
+        </header>
+        <div id="server-list"></div>
+      </section>
     </div>
 
     <div id="login-modal" hidden>
       <button type="button" class="modal-scrim" id="login-scrim" aria-label="Close log in"></button>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
-        <p class="locker-kicker" id="login-title">Log in</p>
-        <form id="auth-login">
+        <p class="modal-title" id="login-title">Log in</p>
+        <form id="auth-login" class="modal-form">
           <label class="locker-stack"><span>Username or email</span><input id="login-user" type="text" autocomplete="username" maxlength="120" spellcheck="false" required /></label>
           <label class="locker-stack"><span>Password</span><input id="login-pass" type="password" autocomplete="current-password" maxlength="200" required /></label>
           <p id="login-err" class="locker-err" hidden></p>
-          <div class="locker-footer">
-            <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
+          <div class="modal-actions">
             <button type="submit" id="login-go">Log in</button>
+            <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
           </div>
         </form>
       </div>
@@ -165,63 +167,78 @@
     </div>
 
     <div id="settings" hidden>
-      <div class="settings-panel">
-        <div class="settings-top">
+      <div class="settings-shell">
+        <nav class="settings-nav" aria-label="Settings sections">
           <button type="button" id="settings-back">Back</button>
-          <p class="title">Settings</p>
-          <p class="home-lead">Game feel and player preferences.</p>
+          <p class="settings-nav-title">Settings</p>
+          <button type="button" class="settings-nav-btn on" data-settings-section="player">Player</button>
+          <button type="button" class="settings-nav-btn" data-settings-section="model">Model</button>
+          <button type="button" class="settings-nav-btn" data-settings-section="crosshair">Crosshair</button>
+          <button type="button" class="settings-nav-btn" data-settings-section="controls">Controls</button>
+        </nav>
+        <div class="settings-main">
+          <section class="settings-pane on" id="settings-pane-player" data-settings-pane="player" aria-labelledby="settings-player-h">
+            <h2 class="settings-pane-title" id="settings-player-h">Player settings</h2>
+            <p class="home-lead">Name, aim feel, and audio.</p>
+            <label class="locker-name"><span>Name</span><input id="locker-name" type="text" maxlength="18" /></label>
+            <label class="admin-knob"><span>Mouse sens</span><input id="set-sens" type="range" min="0.15" max="4" step="0.05" /><b id="set-sens-v">1.00</b></label>
+            <label class="admin-knob"><span>Sound</span><input id="set-vol" type="range" min="0" max="1" step="0.01" /><b id="set-vol-v">70%</b></label>
+            <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-model" data-settings-pane="model" aria-labelledby="settings-model-h" hidden>
+            <h2 class="settings-pane-title" id="settings-model-h">Model</h2>
+            <p class="home-lead">Character look. Drag the figure to turn — main view is detail, inset is full body.</p>
+            <div id="locker-look">
+              <p class="locker-label">Character</p>
+              <div id="locker-secs" class="locker-secs"></div>
+              <p id="locker-slot-hint" class="locker-slot-hint"></p>
+              <div id="locker-opts" class="locker-opts"></div>
+            </div>
+            <p class="locker-label">Preview side</p>
+            <div id="locker-sides">
+              <button type="button" data-side="ember">Ember</button>
+              <button type="button" data-side="stone">Stone</button>
+            </div>
+            <p class="locker-hint">Melee reach is the same on every option</p>
+            <div class="locker-footer">
+              <button type="button" id="locker-save-look">Save character</button>
+            </div>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-crosshair" data-settings-pane="crosshair" aria-labelledby="settings-crosshair-h" hidden>
+            <h2 class="settings-pane-title" id="settings-crosshair-h">Crosshair</h2>
+            <p class="home-lead">Slots and shape. Preview updates live.</p>
+            <div id="ch-slots"></div>
+            <div id="ch-preview"><span class="ch-draw" id="ch-preview-draw"></span></div>
+            <label class="admin-select"><span>Style</span>
+              <select id="ch-style">
+                <option value="classic">Classic</option>
+                <option value="static">Classic Static</option>
+              </select>
+            </label>
+            <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
+            <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
+            <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
+            <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
+            <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
+            <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
+            <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
+            <div id="ch-colors"></div>
+            <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
+            <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
+            <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
+            <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
+            <button type="button" id="ch-reset">Reset slot</button>
+          </section>
+
+          <section class="settings-pane" id="settings-pane-controls" data-settings-pane="controls" aria-labelledby="settings-controls-h" hidden>
+            <h2 class="settings-pane-title" id="settings-controls-h">Controls</h2>
+            <p class="home-lead">In-match bindings. Esc always opens Settings.</p>
+            <p class="admin-hint">WASD · Space · Ctrl prone · C crouch · Q/E peek · Tab board · Esc settings · 1 primary · 2 secondary · 3 knife · 4 nade · V melee · F plant/cut · ` admin</p>
+            <p class="admin-hint">Click the game to lock the mouse. Esc unlocks and opens Settings.</p>
+          </section>
         </div>
-
-        <section class="settings-section" aria-labelledby="settings-game-h">
-          <h2 class="home-heading" id="settings-game-h">Game</h2>
-          <label class="admin-knob"><span>Mouse sens</span><input id="set-sens" type="range" min="0.15" max="4" step="0.05" /><b id="set-sens-v">1.00</b></label>
-          <label class="admin-knob"><span>Sound</span><input id="set-vol" type="range" min="0" max="1" step="0.01" /><b id="set-vol-v">70%</b></label>
-          <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>
-          <p class="admin-kicker sub">Crosshair</p>
-          <div id="ch-slots"></div>
-          <div id="ch-preview"><span class="ch-draw" id="ch-preview-draw"></span></div>
-          <label class="admin-select"><span>Style</span>
-            <select id="ch-style">
-              <option value="classic">Classic</option>
-              <option value="static">Classic Static</option>
-            </select>
-          </label>
-          <label class="admin-check"><input id="ch-dot" type="checkbox" /> Center dot</label>
-          <label class="admin-check"><input id="ch-outline" type="checkbox" /> Outline</label>
-          <label class="admin-check"><input id="ch-t" type="checkbox" /> T style</label>
-          <label class="admin-knob"><span>Length</span><input id="ch-length" type="range" min="0" max="10" step="0.1" /><b id="ch-length-v">4.0</b></label>
-          <label class="admin-knob"><span>Thickness</span><input id="ch-thick" type="range" min="0.1" max="6" step="0.1" /><b id="ch-thick-v">1.0</b></label>
-          <label class="admin-knob"><span>Gap</span><input id="ch-gap" type="range" min="-5" max="5" step="0.1" /><b id="ch-gap-v">1.5</b></label>
-          <label class="admin-knob"><span>Out thick</span><input id="ch-outw" type="range" min="0.5" max="3" step="0.5" /><b id="ch-outw-v">1.0</b></label>
-          <div id="ch-colors"></div>
-          <label class="admin-knob"><span>Red</span><input id="ch-r" type="range" min="0" max="255" step="1" /><b id="ch-r-v">255</b></label>
-          <label class="admin-knob"><span>Green</span><input id="ch-g" type="range" min="0" max="255" step="1" /><b id="ch-g-v">255</b></label>
-          <label class="admin-knob"><span>Blue</span><input id="ch-b" type="range" min="0" max="255" step="1" /><b id="ch-b-v">255</b></label>
-          <label class="admin-knob"><span>Alpha</span><input id="ch-a" type="range" min="0" max="255" step="1" /><b id="ch-a-v">255</b></label>
-          <button type="button" id="ch-reset">Reset slot</button>
-          <p class="admin-hint">WASD · Space · Ctrl prone · C crouch · Q/E peek · Tab board · Esc settings · 1 primary · 2 secondary · 3 knife · 4 nade · V melee · F plant/cut · ` admin</p>
-        </section>
-
-        <section class="settings-section" id="settings-prefs" aria-labelledby="settings-prefs-h">
-          <h2 class="home-heading" id="settings-prefs-h">Preferences</h2>
-          <p class="home-lead">Name and character. Drag the figure to turn — main view is detail, inset is full body.</p>
-          <label class="locker-name"><span>Name</span><input id="locker-name" type="text" maxlength="18" /></label>
-          <div id="locker-look">
-            <p class="locker-label">Character</p>
-            <div id="locker-secs" class="locker-secs"></div>
-            <p id="locker-slot-hint" class="locker-slot-hint"></p>
-            <div id="locker-opts" class="locker-opts"></div>
-          </div>
-          <p class="locker-label">Preview side</p>
-          <div id="locker-sides">
-            <button type="button" data-side="ember">Ember</button>
-            <button type="button" data-side="stone">Stone</button>
-          </div>
-          <p class="locker-hint">Melee reach is the same on every option</p>
-          <div class="locker-footer">
-            <button type="button" id="locker-save-look">Save character</button>
-          </div>
-        </section>
       </div>
       <div id="locker-pip" hidden aria-hidden="true">
         <span class="locker-pip-label">Full body</span>
