@@ -6548,8 +6548,8 @@ function frame(now: number) {
     renderLockerPip();
     renderer.toneMappingExposure = prevExposure;
   } else {
-    const ironVm = rifles.kar.root.visible && (watching ? lastReelAds : ads);
-    if (ironVm) {
+    const glassVm = RIFLES[rifleKind].glass && rifles[rifleKind].root.visible && (watching ? lastReelAds : ads);
+    if (glassVm) {
       const savedFov = camera.fov;
       const savedNear = camera.near;
       camera.layers.set(0);
