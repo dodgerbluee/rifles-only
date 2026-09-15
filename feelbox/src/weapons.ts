@@ -272,9 +272,9 @@ function karIronBarrel(root: THREE.Group, axisY: number, steel: THREE.Material) 
   lug.position.set(-0.014, axisY - nearR + 0.004, faceZ - 0.016);
   g.add(lug);
 
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.042, 0.16), stockMat);
-  stock.position.set(-0.088, axisY - 0.058, faceZ - 0.03);
-  stock.rotation.z = 0.32;
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.048, 0.22), stockMat);
+  stock.position.set(-0.082, axisY - 0.062, faceZ - 0.04);
+  stock.rotation.z = 0.28;
   g.add(stock);
 
   const mask = ringZ(nearR * 1.02, 1.4, maskMat, 32);
@@ -313,9 +313,9 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const axisY = 0.034;
   const recR = 0.013;
   const barR = 0.0072;
-  place(root, capZ(0.028, 0.12, wood), 0, 0.002, 0.18);
-  place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
-  place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
+  const butt = place(root, capZ(0.028, 0.12, wood), 0, 0.002, 0.18);
+  const comb = place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
+  const wrist = place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
   place(root, capZ(0.016, 0.3, wood), 0, 0.012, -0.18);
   const rec = place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
   const ironAds = !scoped && !world;
@@ -323,6 +323,9 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   if (ironAds) {
     rec.userData.karHipBarrel = true;
     barrel.userData.karHipBarrel = true;
+    butt.userData.karHipBarrel = true;
+    comb.userData.karHipBarrel = true;
+    wrist.userData.karHipBarrel = true;
   }
 
   const bolt = makeBolt(root, new THREE.Vector3(0, axisY, 0.02), new THREE.Vector3(0.056, -0.031, 0));
