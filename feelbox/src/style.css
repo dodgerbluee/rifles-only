@@ -1540,6 +1540,14 @@ body:not(.register) #home-login {
   display: none;
 }
 
+#home-account:has(#register:not([hidden])) #home-login {
+  display: none;
+}
+
+#home-account:has(#register:not([hidden])) #home-account-lead {
+  display: none;
+}
+
 #home-studio:hover,
 #home-locker:hover,
 #home-login:hover,
