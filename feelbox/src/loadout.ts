@@ -16,7 +16,7 @@ export function botRifle(_id?: number): RifleId {
 
 export const GUN_BLURB: Record<SecondaryId, string> = {
   kar: "Iron sights · the CoD1 rifle",
-  karscope: "Glass zoom · hold the line",
+  karscope: "4x ZF tube · hold the line",
   mosin: "Peep sight · planted shot",
   knife: "Close work when the bolt is open",
 };

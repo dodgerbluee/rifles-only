@@ -192,6 +192,7 @@ import {
   makeKar98Scoped,
   makeMosin,
   makeRightArm,
+  makeLeftArm,
   poseKnifeRest,
   poseKnifeSlash,
   applyReloadPose,
@@ -201,12 +202,15 @@ import {
   poseArm,
   reloadBoltK,
   rifleWrist,
+  scopeWrist,
+  poseScopeMask,
   knifeWrist,
   nadeWrist,
   RIFLES,
   isRifleId,
   rifleFromWeapon,
   type RifleId,
+  type RifleView,
 } from "./weapons";
 import {
   GUN_BLURB,
@@ -1160,6 +1164,7 @@ function afterMapLoad() {
     if (!g.parent) scene.add(g);
     g.visible = true;
   }
+  lightViewmodels();
   resetJoinCam();
 }
 
@@ -2420,6 +2425,22 @@ const camera = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 8
 camera.rotation.order = "YXZ";
 scene.add(camera);
 
+const VM_LAYER = 1;
+const VM_FOV = 80;
+camera.layers.enable(VM_LAYER);
+
+function markViewmodel(obj: THREE.Object3D) {
+  obj.traverse((o) => o.layers.set(VM_LAYER));
+}
+
+function lightViewmodels() {
+  scene.traverse((o) => {
+    if ((o as THREE.Light).isLight) o.layers.enable(VM_LAYER);
+  });
+}
+
+lightViewmodels();
+
 const rifles = {
   kar: makeKar98(),
   karscope: makeKar98Scoped(),
@@ -2428,6 +2449,9 @@ const rifles = {
 camera.add(rifles.kar.root, rifles.karscope.root, rifles.mosin.root);
 rifles.karscope.root.visible = false;
 rifles.mosin.root.visible = false;
+markViewmodel(rifles.kar.root);
+markViewmodel(rifles.karscope.root);
+markViewmodel(rifles.mosin.root);
 
 function liveRifle() {
   return rifles[rifleKind];
@@ -2450,8 +2474,8 @@ function setKarGlass(kind: RifleId, aiming: boolean, zoom: number) {
   karGlassEl.style.opacity = on ? String(Math.min(1, (zoom - 0.04) / 0.7)) : "0";
 }
 
-function glassHidesRifle(kind: RifleId, aiming: boolean, zoom: number) {
-  return aiming && RIFLES[kind].glass && zoom > 0.7;
+function glassHidesRifle(_kind: RifleId, _aiming: boolean, _zoom: number) {
+  return false;
 }
 
 function selectLoadoutSlot(slot: 1 | 2 | 3) {
@@ -2466,7 +2490,10 @@ function selectLoadoutSlot(slot: 1 | 2 | 3) {
 
 function poseIdleRifles() {
   for (const id of PRIMARY_IDS) {
-    if (id !== rifleKind) poseAmmo(rifles[id], mag, magCap(), 0);
+    if (id !== rifleKind) {
+      poseAmmo(rifles[id], mag, magCap(), 0);
+      poseScopeMask(rifles[id], false);
+    }
   }
 }
 
@@ -2478,6 +2505,7 @@ let knife = makeMelee(prefs.look.melee);
 knife.visible = false;
 poseKnifeRest(knife);
 camera.add(knife);
+markViewmodel(knife);
 
 function refreshMeleeView() {
   const on = knife.visible;
@@ -2492,6 +2520,7 @@ function refreshMeleeView() {
   knife = makeMelee(prefs.look.melee);
   knife.visible = on;
   (parent ?? camera).add(knife);
+  markViewmodel(knife);
   if (knife.visible) poseKnifeRest(knife);
 }
 
@@ -2504,9 +2533,57 @@ nadeView.add(nadeBody);
 nadeView.position.set(0.18, -0.2, -0.2);
 nadeView.visible = false;
 camera.add(nadeView);
+markViewmodel(nadeView);
 
 const arm = makeRightArm();
 camera.add(arm.root);
+markViewmodel(arm.root);
+const leftArm = makeLeftArm();
+camera.add(leftArm.root);
+markViewmodel(leftArm.root);
+
+const vmKey = new THREE.PointLight(0xf2e8d4, 0.7, 1.35);
+vmKey.position.set(-0.14, 0.09, 0.02);
+vmKey.layers.set(VM_LAYER);
+camera.add(vmKey);
+
+function hideArms() {
+  arm.root.visible = false;
+  leftArm.root.visible = false;
+  arm.root.scale.setScalar(1);
+  leftArm.root.scale.setScalar(1);
+}
+
+function poseHeldHands(
+  hold: RifleView,
+  opts: {
+    aiming: boolean;
+    rifleOn: boolean;
+    boltK: number;
+    knifeOn: boolean;
+    nadeOn: boolean;
+    bash: number;
+  },
+) {
+  const wrap = opts.aiming && opts.rifleOn && !!hold.scopeGrip;
+  const handsOn = (opts.rifleOn || opts.knifeOn || opts.nadeOn) && (!opts.aiming || wrap);
+  arm.root.visible = handsOn;
+  leftArm.root.visible = wrap;
+  arm.root.scale.setScalar(wrap ? 0.62 : 1);
+  leftArm.root.scale.setScalar(wrap ? 0.62 : 1);
+  if (wrap) for (const r of hold.rounds) r.visible = false;
+  if (!handsOn) return;
+  if (opts.knifeOn) {
+    poseArm(arm, knifeWrist(knife), opts.bash * 0.8);
+    leftArm.root.visible = false;
+  } else if (opts.nadeOn) {
+    poseArm(arm, nadeWrist(nadeView));
+    leftArm.root.visible = false;
+  } else if (wrap) {
+    poseArm(arm, scopeWrist(hold, 1), 0.85);
+    poseArm(leftArm, scopeWrist(hold, -1), -0.85);
+  } else poseArm(arm, rifleWrist(hold, opts.boltK));
+}
 
 const bomb = makeBomb();
 const wirePack = bomb.root;
@@ -2533,6 +2610,7 @@ let diveT = 0;
 let diveVx = 0;
 let diveVz = 0;
 let ads = false;
+let adsMouse = false;
 let leanInput = 0;
 let lean = 0;
 let mag = 5;
@@ -2743,6 +2821,7 @@ document.addEventListener("pointerlockchange", () => {
   }
   if (!locked) {
     ads = false;
+    adsMouse = false;
     leanInput = 0;
     mouseDown = false;
     clearFire(fireQ);
@@ -3046,7 +3125,7 @@ addEventListener("mousedown", (e) => {
   }
   if (e.button === 2) {
     if (isNade(weapon)) tryDropSmoke();
-    else ads = true;
+    else adsMouse = true;
   }
 });
 addEventListener("mouseup", (e) => {
@@ -3073,7 +3152,7 @@ addEventListener("mouseup", (e) => {
     if (isNade(weapon) && smokeHeld) releaseSmoke();
     smokeHeld = false;
   }
-  if (e.button === 2) ads = false;
+  if (e.button === 2) adsMouse = false;
 });
 addEventListener("wheel", (e) => {
   if (locker.on) {
@@ -4509,12 +4588,14 @@ function applyReelHands(cam: Pose) {
   const hold = rifles[kind];
   const rest = (cam.ads ? hold.adsPos : hold.hipPos).clone();
   const g = hold.root;
+  const wrap = aiming && !!hold.scopeGrip;
   g.position.copy(rest);
   g.position.z += cam.kick;
-  g.rotation.x = (cam.ads ? 0 : 0.1) - cam.punchP * 0.04;
+  g.rotation.x = (cam.ads ? 0 : 0.1) - cam.punchP * (wrap ? 0 : 0.04);
   g.rotation.y = cam.ads ? 0 : 0.22;
-  g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
+  g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * (wrap ? 0 : 0.05);
   poseBolt(hold, 0);
+  poseScopeMask(hold, wrap);
   hold.root.updateMatrixWorld(true);
   if (throwing) poseThrow(nadeView, cam.throw ?? 0, !!cam.throwDrop);
   else if (nadeOn && !bashing) {
@@ -4524,13 +4605,14 @@ function applyReelHands(cam: Pose) {
   }
   hideRifleFlash();
   if (rifleOn) hold.flash.visible = cam.flash;
-  const handsOn = !cam.ads && (rifleOn || knife.visible || nadeView.visible || throwing);
-  arm.root.visible = handsOn;
-  if (handsOn) {
-    if (bashing || cam.weapon === "knife") poseArm(arm, knifeWrist(knife), cam.bash * 0.8);
-    else if (throwing || nadeOn) poseArm(arm, nadeWrist(nadeView));
-    else poseArm(arm, rifleWrist(hold, 0));
-  }
+  poseHeldHands(hold, {
+    aiming,
+    rifleOn,
+    boltK: 0,
+    knifeOn: knife.visible,
+    nadeOn: nadeView.visible,
+    bash: cam.bash,
+  });
   camera.fov = camFov;
   camera.updateProjectionMatrix();
   lastReelAds = cam.ads;
@@ -4974,7 +5056,8 @@ function frame(now: number) {
   leanInput = 0;
   if (locked && alive && keys.has("KeyQ")) leanInput -= 1;
   if (locked && alive && keys.has("KeyE")) leanInput += 1;
-  ads = ads && locked && alive && weapon === "rifle";
+  const shiftAds = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  ads = locked && alive && weapon === "rifle" && (adsMouse || shiftAds);
   document.body.classList.toggle("ads", ads);
   if (diveT > 0) diveT = Math.max(0, diveT - dt);
   if (bashT > 0) bashT = Math.max(0, bashT - dt);
@@ -5556,7 +5639,7 @@ function frame(now: number) {
       setKarGlass(rifleKind, false, 0);
       knife.visible = false;
       nadeView.visible = false;
-      arm.root.visible = false;
+      hideArms();
       setSpec(null);
       ghost.visible = false;
       if (!isClient) {
@@ -5579,7 +5662,7 @@ function frame(now: number) {
         setKarGlass(rifleKind, false, 0);
         knife.visible = false;
         nadeView.visible = false;
-        arm.root.visible = false;
+        hideArms();
         hideLiveSpecSubject(null);
         setSpec("Free look · LMB spectate · E take over a bot");
       } else if (spec) {
@@ -5595,7 +5678,7 @@ function frame(now: number) {
         setKarGlass(rifleKind, false, 0);
         knife.visible = false;
         nadeView.visible = false;
-        arm.root.visible = false;
+        hideArms();
         hideLiveSpecSubject(spec.id);
         const mate = spec.team === specMateTeam();
         setSpec(
@@ -5636,12 +5719,14 @@ function frame(now: number) {
         }
         const hold = liveRifle();
         const rest = (ads ? hold.adsPos : hold.hipPos).clone();
+        const wrap = aiming && !!hold.scopeGrip;
         const g = hold.root;
         g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
-        g.rotation.x = (ads ? 0 : 0.1) - punchP * 0.04;
+        g.rotation.x = (ads ? 0 : 0.1) - punchP * (wrap ? 0 : 0.04);
         g.rotation.y = ads ? 0 : 0.22;
-        g.rotation.z = (ads ? 0 : 0.06) + punchY * 0.05;
+        g.rotation.z = (ads ? 0 : 0.06) + punchY * (wrap ? 0 : 0.05);
+        poseScopeMask(hold, wrap);
         const reloadK = reloading > 0 ? 1 - reloading / RELOAD : 0;
         if (reloading > 0 && weapon === "rifle") {
           if (!ads) applyReloadPose(g, rifleKind, reloadK);
@@ -5650,16 +5735,14 @@ function frame(now: number) {
         poseAmmo(hold, mag, magCap(), reloadK);
         poseIdleRifles();
         hold.root.updateMatrixWorld(true);
-        const handsOn =
-          alive &&
-          !ads &&
-          (PRIMARY_IDS.some((id) => rifles[id].root.visible) || knife.visible || nadeView.visible || throwing);
-        arm.root.visible = handsOn;
-        if (handsOn) {
-          if (bashing || weapon === "knife") poseArm(arm, knifeWrist(knife), bashing ? (1 - bashT / 0.42) * 0.8 : 0);
-          else if (throwing || isNade(weapon)) poseArm(arm, nadeWrist(nadeView));
-          else poseArm(arm, rifleWrist(hold, reloading > 0 ? reloadBoltK(reloadK) : boltK));
-        }
+        poseHeldHands(hold, {
+          aiming,
+          rifleOn,
+          boltK: reloading > 0 ? reloadBoltK(reloadK) : boltK,
+          knifeOn: knife.visible,
+          nadeOn: nadeView.visible || throwing,
+          bash: bashing ? 1 - bashT / 0.42 : 0,
+        });
       }
     }
   } else {
@@ -5955,7 +6038,7 @@ function frame(now: number) {
     setKarGlass(rifleKind, false, 0);
     knife.visible = false;
     nadeView.visible = false;
-    arm.root.visible = false;
+    hideArms();
     studioGhost.visible = false;
     lockerPawn.visible = true;
     const want = lockerCamTarget();
@@ -6048,9 +6131,16 @@ function frame(now: number) {
       hold.root.position.copy(hold.hipPos);
       hold.root.rotation.set(0.1, 0.22, 0.06);
       poseBolt(hold, 0);
+      poseScopeMask(hold, false);
       hold.root.updateMatrixWorld(true);
-      arm.root.visible = true;
-      poseArm(arm, rifleWrist(hold, 0));
+      poseHeldHands(hold, {
+        aiming: false,
+        rifleOn: true,
+        boltK: 0,
+        knifeOn: false,
+        nadeOn: false,
+        bash: 0,
+      });
       if (isOpeningTool(studio.tool)) {
         studioAim.set(0, 0, -1).applyQuaternion(camera.quaternion);
         const wall = pickBuildingWall(studio.spec, camera.position, studioAim);
@@ -6106,7 +6196,7 @@ function frame(now: number) {
     } else {
       showRifle(rifleKind, false);
       setKarGlass(rifleKind, false, 0);
-      arm.root.visible = false;
+      hideArms();
       applyOrbit(camera, studio.cam);
       studioSel.visible = false;
       if (studio.drag?.mode === "marquee") {
@@ -6218,6 +6308,7 @@ function frame(now: number) {
     lockerPawn.visible = false;
   }
 
+  renderer.autoClear = true;
   if (locker.on) {
     const prevExposure = renderer.toneMappingExposure;
     renderer.toneMappingExposure = 1.18;
@@ -6227,7 +6318,25 @@ function frame(now: number) {
     renderLockerPip();
     renderer.toneMappingExposure = prevExposure;
   } else {
-    renderer.render(scene, camera);
+    const scopeVm = rifles.karscope.root.visible && (watching ? lastReelAds : ads);
+    if (scopeVm) {
+      const savedFov = camera.fov;
+      camera.layers.set(0);
+      renderer.render(scene, camera);
+      camera.fov = VM_FOV;
+      camera.updateProjectionMatrix();
+      camera.layers.set(VM_LAYER);
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+      renderer.autoClear = true;
+      camera.fov = savedFov;
+      camera.updateProjectionMatrix();
+      camera.layers.enable(0);
+      camera.layers.enable(VM_LAYER);
+    } else {
+      renderer.render(scene, camera);
+    }
     if (onJoinScreen()) {
       tickGunPreview(dt);
       renderGunPreview();
