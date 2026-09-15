@@ -304,6 +304,8 @@ let world = buildMap(scene, mapId as MapId);
 
 let joinReturn: "lobby" | "play" | "spec" = "lobby";
 let joinStep: "team" | "guns" = "team";
+let pickedPrimary = false;
+let pickedSecondary = false;
 let pauseOpenedAt = 0;
 
 function calloutAt(x: number, z: number, y = 0) {
@@ -557,6 +559,9 @@ function enterPlay() {
   rifleKind = prefs.loadout.primary;
   weapon = "rifle";
   joinReturn = "play";
+  joinStep = "team";
+  pickedPrimary = false;
+  pickedSecondary = false;
   document.body.classList.add("started", "joined");
   document.body.classList.remove("choosing", "spectating", "paused");
   hideJoinTeam();
@@ -565,7 +570,7 @@ function enterPlay() {
   camera.far = 85;
   camera.fov = 90;
   camera.updateProjectionMatrix();
-  lock();
+  requestAnimationFrame(() => lock());
 }
 
 function enterSpectate() {
@@ -600,18 +605,42 @@ function openPause() {
   hideJoinTeam();
   const el = document.querySelector<HTMLElement>("#pause");
   if (el) el.hidden = false;
+  const gunsBtn = document.querySelector<HTMLButtonElement>("#pause-guns");
+  if (gunsBtn) {
+    gunsBtn.hidden =
+      document.body.classList.contains("spectating") || !document.body.classList.contains("started");
+  }
   pauseOpenedAt = performance.now();
   document.exitPointerLock();
+}
+
+function beginGunStep() {
+  joinStep = "guns";
+  pickedPrimary = false;
+  pickedSecondary = false;
+  paintLoadout();
+  paintJoin();
 }
 
 function openChooseTeam(from: "lobby" | "play" | "spec" = "lobby") {
   joinReturn = from;
   joinStep = "team";
+  pickedPrimary = false;
+  pickedSecondary = false;
   document.body.classList.add("joined", "choosing");
   document.body.classList.remove("paused", "started", "spectating", "playing");
   closePause();
   paintLoadout();
   paintJoin();
+  document.exitPointerLock();
+}
+
+function openChooseGuns(from: "lobby" | "play" | "spec" = "play") {
+  joinReturn = from;
+  document.body.classList.add("joined", "choosing");
+  document.body.classList.remove("paused", "started", "spectating", "playing");
+  closePause();
+  beginGunStep();
   document.exitPointerLock();
 }
 
@@ -650,6 +679,8 @@ function leaveToLobby() {
   freeLook = false;
   joinReturn = "lobby";
   joinStep = "team";
+  pickedPrimary = false;
+  pickedSecondary = false;
   closePause();
   setGunPreviewVisible(false);
   document.body.classList.remove(
@@ -715,8 +746,6 @@ function paintJoin() {
   if (pick) pick.hidden = !teamStep;
   const guns = document.querySelector<HTMLElement>("#join-loadout");
   if (guns) guns.hidden = !gunStep;
-  const go = document.querySelector<HTMLButtonElement>("#loadout-go");
-  if (go) go.disabled = !ready;
   if (specBtn) {
     specBtn.hidden = !teamStep;
     specBtn.disabled = !ready;
@@ -734,7 +763,7 @@ function paintJoin() {
   setGunPreviewVisible(!!gunStep);
   const ask = document.querySelector<HTMLElement>("#join-team .join-ask");
   if (ask) {
-    ask.textContent = !ready ? "Connecting" : gunStep ? "Choose rifles" : "Pick a side";
+    ask.textContent = !ready ? "Connecting" : gunStep ? "Pick primary and secondary" : "Pick a side";
   }
   if (!list) return;
   for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
@@ -989,9 +1018,7 @@ function paintTeamPick() {
 function pickTeam(team: Team) {
   sendJoinTeam(team);
   if (onJoinScreen() || (document.body.classList.contains("joined") && !document.body.classList.contains("started") && !document.body.classList.contains("spectating"))) {
-    joinStep = "guns";
-    paintLoadout();
-    paintJoin();
+    beginGunStep();
   }
 }
 
@@ -1028,9 +1055,19 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
     b.className = "gun-card";
     b.dataset.gun = id;
     b.classList.toggle("on", id === on);
+    b.setAttribute("aria-pressed", id === on ? "true" : "false");
+    const head = document.createElement("span");
+    head.className = "gun-card-head";
     const name = document.createElement("span");
     name.className = "gun-name";
     name.textContent = gunName(id);
+    head.append(name);
+    if (id === on) {
+      const tag = document.createElement("span");
+      tag.className = "gun-selected";
+      tag.textContent = "Selected";
+      head.append(tag);
+    }
     const blurb = document.createElement("span");
     blurb.className = "gun-blurb";
     blurb.textContent = GUN_BLURB[id];
@@ -1038,7 +1075,7 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
     views.className = id === "knife" ? "gun-views solo" : "gun-views";
     if (id !== "knife") views.append(gunPane("sight", id));
     views.append(gunPane("inspect", id));
-    b.append(name, blurb, views);
+    b.append(head, blurb, views);
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       pick(id);
@@ -1047,20 +1084,46 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
   }
 }
 
+function tryEnterFromLoadout() {
+  if (!pickedPrimary || !pickedSecondary) return;
+  prefs.loadout = parseLoadout(prefs.loadout);
+  savePrefs();
+  enterPlay();
+}
+
 function paintLoadout() {
   const loadout = parseLoadout(prefs.loadout);
   prefs.loadout = loadout;
+  const pLab = document.querySelector("#loadout-primary-label");
+  if (pLab) pLab.textContent = `Primary · ${gunName(loadout.primary)}`;
+  const sLab = document.querySelector("#loadout-secondary-label");
+  if (sLab) sLab.textContent = `Secondary · ${gunName(loadout.secondary)}`;
+  const hint = document.querySelector("#loadout-hint");
+  if (hint) {
+    hint.textContent =
+      pickedPrimary && pickedSecondary
+        ? "Deploying"
+        : !pickedPrimary && !pickedSecondary
+          ? "Click a primary and a secondary to deploy"
+          : !pickedPrimary
+            ? "Click a primary to deploy"
+            : "Click a secondary to deploy";
+  }
   fillGunRow("#loadout-primary", PRIMARY_IDS, loadout.primary, (id) => {
     if (!isRifleId(id)) return;
     prefs.loadout.primary = id;
     if (prefs.loadout.secondary === id) prefs.loadout.secondary = "knife";
+    pickedPrimary = true;
     savePrefs();
     paintLoadout();
+    tryEnterFromLoadout();
   });
   fillGunRow("#loadout-secondary", secondaryChoices(loadout.primary), loadout.secondary, (id) => {
     prefs.loadout.secondary = id;
+    pickedSecondary = true;
     savePrefs();
     paintLoadout();
+    tryEnterFromLoadout();
   });
   syncGunPreviews(document.querySelector("#join-loadout"));
 }
@@ -2766,20 +2829,11 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
     prefs.loadout = parseLoadout(prefs.loadout);
     savePrefs();
     sendJoinTeam(team);
-    joinStep = "guns";
-    paintLoadout();
-    paintJoin();
+    beginGunStep();
   });
   const setTeam = document.querySelector("#set-team");
   if (setTeam) fillTeams(setTeam);
   document.querySelector("#join-loadout")?.addEventListener("click", (e) => e.stopPropagation());
-  document.querySelector("#loadout-go")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (net.role !== "client") return;
-    prefs.loadout = parseLoadout(prefs.loadout);
-    savePrefs();
-    enterPlay();
-  });
   document.querySelector("#join-spec")?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (net.role !== "client") return;
@@ -2788,6 +2842,10 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
   document.querySelector("#join-cancel")?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (joinStep === "guns") {
+      if (joinReturn === "play" || joinReturn === "spec") {
+        leavePauseToGame();
+        return;
+      }
       joinStep = "team";
       paintJoin();
       return;
@@ -2806,6 +2864,10 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
   document.querySelector("#pause-team")?.addEventListener("click", (e) => {
     e.stopPropagation();
     openChooseTeam(joinReturn);
+  });
+  document.querySelector("#pause-guns")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openChooseGuns(joinReturn === "spec" ? "play" : joinReturn);
   });
   document.querySelector("#pause-settings")?.addEventListener("click", (e) => {
     e.stopPropagation();

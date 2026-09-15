@@ -20,8 +20,8 @@ const game = readFileSync(join(root, "server/game.ts"), "utf8");
 const net = readFileSync(join(root, "src/net.ts"), "utf8");
 
 check("join overlay has a spectate control", html.includes('id="join-spec"') && html.includes(">Spectate<"));
-check("join overlay has enter-match after weapons", html.includes('id="loadout-go"') && html.includes("Enter match"));
-check("pause menu lists disconnect, team, and settings", html.includes('id="pause-disconnect"') && html.includes('id="pause-team"') && html.includes('id="pause-settings"'));
+check("join overlay deploys after both guns are picked", html.includes('id="loadout-hint"') && main.includes("tryEnterFromLoadout()") && main.includes("pickedPrimary") && main.includes("pickedSecondary"));
+check("pause menu lists disconnect, team, weapons, and settings", html.includes('id="pause-disconnect"') && html.includes('id="pause-team"') && html.includes('id="pause-guns"') && html.includes("Switch Weapon") && html.includes('id="pause-settings"'));
 check("join overlay is transparent over the map", /#join-team\s*\{[^}]*background:\s*transparent/.test(css));
 check("team sides are translucent washes", css.includes("rgba(178, 74, 24") && css.includes("rgba(42, 104, 168"));
 check("team and rifle selectors share the three-fifths frame", /#join-team-pick,\s*#join-loadout\s*\{[^}]*width:\s*60%/.test(css) && /#join-team-pick,\s*#join-loadout\s*\{[^}]*height:\s*60%/.test(css) && /#join-team-pick,\s*#join-loadout\s*\{[^}]*left:\s*20%/.test(css) && /#join-team-pick,\s*#join-loadout\s*\{[^}]*top:\s*20%/.test(css));
@@ -38,8 +38,9 @@ check("team pick is a first step, not enter play", main.includes('joinStep = "gu
 check("each rifle card has sight and gun canvases", main.includes('gunPane("sight"') && main.includes('gunPane("inspect"') && main.includes("dataset.preview"));
 check("preview renders both panes without a toggle", preview.includes('"sight"') && preview.includes('"inspect"') && !preview.includes("togglePreviewMode"));
 check("join overlay has no inspect/sight toggle", !html.includes("gun-preview-mode"));
-check("enter match starts play from the gun step", main.includes("#loadout-go") && /#loadout-go[\s\S]{0,400}enterPlay\(\)/.test(main));
-check("escape opens the pause menu while joined", main.includes("openPause()") && main.includes("leavePauseToGame()"));
+check("selected gun cards are labeled", main.includes('gun-selected') && css.includes(".loadout-row button .gun-selected"));
+check("picking both guns enters play", main.includes("tryEnterFromLoadout()") && /pickedPrimary = true[\s\S]{0,200}tryEnterFromLoadout\(\)/.test(main));
+check("escape opens the pause menu while joined", main.includes("openPause()") && main.includes("leavePauseToGame()") && main.includes("openChooseGuns("));
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
