@@ -49,14 +49,14 @@ check("scoped has no iron aiming bar", !findFlag(scoped.root, "karPoiBar"));
   const minY = mesh.geometry.boundingBox!.min.y;
   check("iron rear sinks into the receiver", minY < -0.004, `minY=${minY}`);
   const maxY = mesh.geometry.boundingBox!.max.y;
-  check("iron U is half as tall", maxY < 0.011, `maxY=${maxY}`);
+  check("iron U is 35% shorter", maxY > 0.008 && maxY < 0.012, `maxY=${maxY}`);
   const notchW = Number(mesh.userData.karIronNotchW);
   const bar = findFlag(iron.root, "karPoiBar") as THREE.Mesh;
   bar.geometry.computeBoundingBox();
   const barW = bar.geometry.boundingBox!.max.x - bar.geometry.boundingBox!.min.x;
   const barH = bar.geometry.boundingBox!.max.y - bar.geometry.boundingBox!.min.y;
   check("iron U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
-  check("iron aiming bar is half as tall", barH < 0.007, `barH=${barH}`);
+  check("iron aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
 }
 
 let ironFacets = 0;

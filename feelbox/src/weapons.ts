@@ -194,11 +194,11 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 
 /**
  * Iron rear: option-3 U as a sight block that hugs the receiver.
- * Rounded inner notch, half-height ears and aiming bar. adsPos is unchanged.
+ * Rounded inner notch, ears and aiming bar 35% shorter. adsPos is unchanged.
  * Inner cutout is 2× the aiming rectangle on each side of the bar.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
-  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.5;
+  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
   const recW = 0.026;
   const sink = 0.011;
   const bw = recW * 0.5 + 0.0012;
