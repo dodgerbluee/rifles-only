@@ -65,8 +65,11 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   check("boxy U is taller than the rounded U", fore.geometry.boundingBox!.max.y > rear.geometry.boundingBox!.max.y, `boxyH=${fore.geometry.boundingBox!.max.y} roundH=${rear.geometry.boundingBox!.max.y}`);
   check("boxy U is 5% shorter", fore.geometry.boundingBox!.max.y < 0.0144, `maxY=${fore.geometry.boundingBox!.max.y}`);
   check("boxy U is 10% wider", foreW > 0.064, `foreW=${foreW}`);
-  const grey = (fore.material as THREE.MeshStandardMaterial).color.getHex();
-  check("boxy U is very dark grey", grey === 0x262826, `hex=${grey.toString(16)}`);
+  const hoodHex = (fore.material as THREE.MeshStandardMaterial).color.getHex();
+  const rearHex = (rear.material as THREE.MeshStandardMaterial).color.getHex();
+  check("boxy U is the same black as the rifle", hoodHex === 0x1c1e1a, `hex=${hoodHex.toString(16)}`);
+  check("boxy U sheen differs from the rounded U", (fore.material as THREE.MeshStandardMaterial).roughness !== (rear.material as THREE.MeshStandardMaterial).roughness, `hoodR=${(fore.material as THREE.MeshStandardMaterial).roughness} leafR=${(rear.material as THREE.MeshStandardMaterial).roughness}`);
+  check("boxy and rounded Us are separate meshes", hoodHex === rearHex && fore !== rear);
   const ch = Number(fore.userData.karIronChamfer);
   check("boxy U has a small corner chamfer", ch > 0.0015 && ch < 0.0035, `ch=${ch}`);
   check("boxy U cutout is a bit bigger", Number(fore.userData.karIronHoleW) > 0.025, `holeW=${fore.userData.karIronHoleW}`);

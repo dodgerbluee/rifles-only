@@ -240,9 +240,9 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square hood whose arms sit outside the rounded U. 5% shorter and
- * 10% wider, near-black grey, small clipped top corners, slightly
- * larger inner cutout. Rounded U stays in front. adsPos is unchanged.
+ * Square hood whose arms sit outside the rounded U. Same black as the
+ * rifle, with clipped corners and a slightly drier sheen so the two
+ * pieces read as separate if you look. adsPos is unchanged.
  */
 function karIronForeU(
   root: THREE.Group,
@@ -286,12 +286,12 @@ function karIronForeU(
     curveSegments: 1,
   });
   geo.translate(0, 0, -depth / 2);
-  const grey = new THREE.MeshStandardMaterial({
-    color: 0x262826,
-    roughness: 0.62,
-    metalness: 0.28,
-  });
-  const hood = new THREE.Mesh(geo, grey);
+  const hoodMat = steel.clone();
+  if (hoodMat instanceof THREE.MeshStandardMaterial) {
+    hoodMat.roughness = 0.5;
+    hoodMat.metalness = 0.52;
+  }
+  const hood = new THREE.Mesh(geo, hoodMat);
   hood.userData.karIronForeU = true;
   hood.userData.karIronDepth = depth;
   hood.userData.karIronOuterW = bw * 2;
