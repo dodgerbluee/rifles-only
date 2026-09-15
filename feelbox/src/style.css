@@ -1576,10 +1576,64 @@ body.register #home-id,
   display: flex;
 }
 
+.home-id-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .home-id-name {
   margin: 0;
   color: #e8d9a8;
   font-weight: 650;
+}
+
+.home-id-record {
+  margin: 0;
+  color: #8d8676;
+  font-size: 13px;
+}
+
+.record-grid {
+  display: grid;
+  grid-template-columns: 7.5em 1fr;
+  gap: 4px 12px;
+  width: 100%;
+  color: #cfc6b2;
+  font-size: 13px;
+}
+
+.record-label {
+  color: #8d8676;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.record-val {
+  color: #e8e4d4;
+}
+
+.record-rival {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 0;
+  color: #cfc6b2;
+  font-size: 13px;
+}
+
+.board-career,
+.board-h2h {
+  margin-left: 8px;
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #8d8676;
+}
+
+.board-h2h {
+  color: #b7a57a;
 }
 
 #locker-save-look {

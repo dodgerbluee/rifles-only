@@ -107,7 +107,10 @@
       </div>
       <div id="server-list"></div>
       <div id="home-id">
-        <p class="home-id-name" id="home-id-name"></p>
+        <div class="home-id-who">
+          <p class="home-id-name" id="home-id-name"></p>
+          <p class="home-id-record" id="home-id-record"></p>
+        </div>
         <button type="button" id="home-logout">Log out</button>
       </div>
       <div id="home-actions">
@@ -150,6 +153,11 @@
           <button type="button" data-side="stone">Stone</button>
         </div>
         <p class="locker-hint">Drag to turn · colors follow the side you join · Melee is cosmetic (same hit range)</p>
+        <div id="locker-record">
+          <p class="locker-label">Record</p>
+          <div id="locker-record-grid" class="record-grid"></div>
+          <div id="locker-record-rivals"></div>
+        </div>
         <button type="button" id="locker-back">Back</button>
       </div>
     </div>

@@ -220,6 +220,7 @@ import {
   releaseFire,
 } from "./fireQueue";
 import { accountKey, accountLook, bindIdentity, isRegistered, openLogin, paintIdentity } from "./account";
+import { careerBoard, loadBoard, loadCareer, paintCareer, vsRecord } from "./career";
 import { COW_SECS, connectNet, fetchServers, playWsUrl, serverGone, setNetName, setNetSkin, setNetLook, setNetPlayerKey, type NetHandle, type Snapshot } from "./net";
 import {
   applyMatchSnap,
@@ -1492,6 +1493,7 @@ function enterLocker() {
   document.body.classList.remove("settings");
   rebuildLocker();
   paintLocker();
+  void paintCareer();
   document.exitPointerLock();
 }
 
@@ -1878,11 +1880,13 @@ bindIdentity({
     setNetLook(accountLook() || packLook(prefs.look));
     setNetPlayerKey(accountKey() || prefs.playerKey);
     paintLocker();
+    void paintCareer();
   },
   onRegistered() {
     enterLocker();
   },
 });
+void paintCareer();
 
 {
   const titleEl = document.querySelector<HTMLInputElement>("#studio-title")!;
@@ -5074,16 +5078,30 @@ function frame(now: number) {
   const showBoard = holdBoard || match.phase === "matchover";
   document.body.classList.toggle("board", holdBoard);
   if (showBoard) {
-    renderScoreboard(match, viewId, (id) => {
-      if (id === viewId) return net.role === "client" ? net.pingMs : 0;
-      const remote = [...remotes.values()].find((x) => x.slotId === id);
-      if (remote) return remote.ping;
-      const pawn = lastSnap?.pawns.find((p) => p.id === id);
-      if (pawn?.ping != null) return pawn.ping;
-      if (bots.some((b) => b.id === id)) return null;
-      if (pawn && (pawn.netId ?? 0) > 0) return pawn.ping ?? 0;
-      return null;
-    });
+    const keys = match.slots.map((s) => s.playerKey).filter((k): k is string => !!k);
+    const youKey = accountKey() || prefs.playerKey;
+    if (youKey) keys.push(youKey);
+    void loadBoard(keys);
+    if (youKey) void loadCareer(youKey);
+    renderScoreboard(
+      match,
+      viewId,
+      (id) => {
+        if (id === viewId) return net.role === "client" ? net.pingMs : 0;
+        const remote = [...remotes.values()].find((x) => x.slotId === id);
+        if (remote) return remote.ping;
+        const pawn = lastSnap?.pawns.find((p) => p.id === id);
+        if (pawn?.ping != null) return pawn.ping;
+        if (bots.some((b) => b.id === id)) return null;
+        if (pawn && (pawn.netId ?? 0) > 0) return pawn.ping ?? 0;
+        return null;
+      },
+      {
+        board: careerBoard(),
+        youKey,
+        vs: vsRecord,
+      },
+    );
   }
   if (match.phase === "matchover") {
     if (!podiumOn) {

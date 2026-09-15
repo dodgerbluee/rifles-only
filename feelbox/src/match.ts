@@ -42,6 +42,8 @@ export type Match = {
   lastJoin: string;
   matchOverPending: boolean;
   lastWinner: Team | null;
+  lastPlanterId: number | null;
+  lastCutterId: number | null;
   mapTitle: string;
   firstTo: number;
   swapAfter: number;
@@ -107,6 +109,8 @@ export function createMatch(opts?: {
     lastJoin: "",
     matchOverPending: false,
     lastWinner: null,
+    lastPlanterId: null,
+    lastCutterId: null,
     mapTitle: opts?.mapTitle ?? "Wharf",
     firstTo: opts?.firstTo ?? FIRST_TO,
     swapAfter: opts?.swapAfter ?? SWAP_AFTER,
@@ -214,6 +218,7 @@ export function claimSlot(m: Match, team: Team, name: string): Slot | null {
   bot.kind = "human";
   bot.name = who;
   bot.occupant = undefined;
+  bot.playerKey = undefined;
   m.lastJoin = `${who} took ${team === "ember" ? "Ember" : "Stone"} · ${left} left`;
   return bot;
 }
@@ -221,6 +226,7 @@ export function claimSlot(m: Match, team: Team, name: string): Slot | null {
 export function vacateSlot(m: Match, slot: Slot) {
   slot.kind = "bot";
   slot.occupant = undefined;
+  slot.playerKey = undefined;
   slot.name = restBotName(slot, m.perTeam);
 }
 
@@ -377,6 +383,7 @@ function groundWire(x: number, y: number, z: number): WireState {
 
 export function plantWire(m: Match, site: SiteId, x: number, y: number, z: number) {
   if (m.phase !== "live" || m.wire.mode !== "carried") return;
+  m.lastPlanterId = m.wire.carrierId;
   m.phase = "planted";
   m.bombTime = tuning.fuse;
   m.wire.mode = "planted";
@@ -541,6 +548,17 @@ export function tickMatch(
         if (d < 1.35 && Math.abs(a.y - m.wire.y) < 1.6) cutting = true;
       }
       if (cutting) {
+        if (m.lastCutterId == null) {
+          const cutter = people.find(
+            (a) =>
+              a.alive &&
+              a.team === watchingTeam(m) &&
+              a.holdingUse &&
+              Math.hypot(a.x - m.wire.x, a.z - m.wire.z) < 1.35 &&
+              Math.abs(a.y - m.wire.y) < 1.6,
+          );
+          if (cutter) m.lastCutterId = cutter.id;
+        }
         m.wire.cutHold += dt;
         if (m.wire.cutHold >= tuning.cut) finish(m, watchingTeam(m), "The Bomb was cut");
       }
@@ -588,6 +606,8 @@ function nextRound(m: Match, spawn: { x: number; y: number; z: number }) {
   m.bombTime = tuning.fuse;
   m.endText = "";
   m.matchOverPending = false;
+  m.lastPlanterId = null;
+  m.lastCutterId = null;
   for (const s of m.slots) s.alive = true;
   m.wire = groundWire(spawn.x, spawn.y + 0.2, spawn.z);
   giveWireToPlanter(m);
@@ -606,6 +626,8 @@ export function restartMatch(m: Match, spawn: { x: number; y: number; z: number 
   m.matchOverPending = false;
   m.lastWinner = null;
   m.lastJoin = "Match restarted";
+  m.lastPlanterId = null;
+  m.lastCutterId = null;
   for (const s of m.slots) s.alive = true;
   m.wire = groundWire(spawn.x, spawn.y + 0.2, spawn.z);
   giveWireToPlanter(m);
