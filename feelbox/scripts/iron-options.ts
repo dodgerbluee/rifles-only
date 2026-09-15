@@ -33,13 +33,16 @@ if (rear && rear instanceof THREE.Mesh) {
   const box = rear.geometry.boundingBox!;
   check("rear is smaller than the old plate", box.max.x - box.min.x < 0.04, `w=${box.max.x - box.min.x}`);
   check("rear sinks below the receiver top", box.min.y < -0.004, `minY=${box.min.y}`);
+  check("U is half as tall", box.max.y < 0.011, `maxY=${box.max.y}`);
 }
 if (bar && bar instanceof THREE.Mesh && rear) {
   bar.geometry.computeBoundingBox();
   const barBox = bar.geometry.boundingBox!;
   const barW = barBox.max.x - barBox.min.x;
+  const barH = barBox.max.y - barBox.min.y;
   const notchW = Number(rear.userData.karIronNotchW);
   check("U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
+  check("aiming bar is half as tall", barH < 0.007, `barH=${barH}`);
 }
 
 if (failed) {

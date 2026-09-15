@@ -193,13 +193,12 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Iron rear: option-3 U, 50% smaller, built as a sight block that hugs
- * the receiver. Thick center bar is the point of aim. adsPos is unchanged.
- * Inner cutout is 2× the aiming rectangle on each side of the bar so the
- * empty U is open sky, not a black slot.
+ * Iron rear: option-3 U as a sight block that hugs the receiver.
+ * Rounded inner notch, half-height ears and aiming bar. adsPos is unchanged.
+ * Inner cutout is 2× the aiming rectangle on each side of the bar.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
-  const earH = 0.026 * 1.85 * 0.6 * 0.5;
+  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.5;
   const recW = 0.026;
   const sink = 0.011;
   const bw = recW * 0.5 + 0.0012;
@@ -207,7 +206,6 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const barH = earH * 0.7;
   const barD = 0.008;
   const depth = 0.018;
-  // 2× the aiming rectangle of empty sky on each side of the bar.
   const cutW = barW + 2 * (2 * barW);
   const nw = cutW * 0.5;
   const notchFloor = 0.001;
@@ -215,9 +213,8 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH);
   leaf.lineTo(-nw, earH);
-  leaf.lineTo(-nw, notchFloor);
-  leaf.lineTo(nw, notchFloor);
-  leaf.lineTo(nw, earH);
+  leaf.quadraticCurveTo(-nw, notchFloor, 0, notchFloor);
+  leaf.quadraticCurveTo(nw, notchFloor, nw, earH);
   leaf.lineTo(bw, earH);
   leaf.lineTo(bw, -sink);
   leaf.closePath();
@@ -227,7 +224,7 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
     bevelThickness: 0.0005,
     bevelSize: 0.0004,
     bevelSegments: 1,
-    curveSegments: 1,
+    curveSegments: 8,
   });
   geo.translate(0, 0, -depth / 2);
   const rear = new THREE.Mesh(geo, steel);
@@ -236,8 +233,9 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   place(root, rear, 0, floorY, z);
 
   const aimY = floorY + 0.005;
+  const barY = Math.min(aimY, floorY + earH - barH * 0.5);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
-  bar.position.set(0, aimY, z + 0.001);
+  bar.position.set(0, barY, z + 0.001);
   bar.userData.karPoiBar = true;
   root.add(bar);
 }

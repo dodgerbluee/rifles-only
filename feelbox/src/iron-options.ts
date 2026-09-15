@@ -110,7 +110,7 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose as main. Open U cutout 2× the aiming bar on each side, sunk into the receiver."),
+    card("ads", "ADS", "Same zoom and eye pose as main. Rounded half-height U and aiming bar, cutout 2× the bar on each side."),
   );
   grid.appendChild(
     card("side", "On the rifle", "The U is a sight block in the receiver, not a plate sitting on top."),
