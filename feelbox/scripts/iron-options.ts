@@ -58,6 +58,7 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   const boxyDepth = Number(fore.userData.karIronDepth);
   const gap = rear.position.z - roundDepth / 2 - (fore.position.z + boxyDepth / 2);
   check("Us are connected", Math.abs(gap) < 0.002, `gap=${gap}`);
+  check("Us are half as thick in side view", roundDepth < 0.011 && boxyDepth < 0.009, `roundD=${roundDepth} boxyD=${boxyDepth}`);
 }
 
 if (failed) {

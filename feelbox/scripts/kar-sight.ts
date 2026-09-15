@@ -72,6 +72,7 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   const boxyDepth = Number(ironFore.userData.karIronDepth);
   const gap = ironRear.position.z - roundDepth / 2 - (ironFore.position.z + boxyDepth / 2);
   check("Us are connected", Math.abs(gap) < 0.002, `gap=${gap}`);
+  check("Us are half as thick in side view", roundDepth < 0.011 && boxyDepth < 0.009, `roundD=${roundDepth} boxyD=${boxyDepth}`);
 }
 
 let ironFacets = 0;

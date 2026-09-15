@@ -203,7 +203,7 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const sink = 0.011;
   const bw = recW * 0.5 + 0.0012;
   const barW = 0.003;
-  const depth = 0.018;
+  const depth = 0.009;
   const cutW = barW + 2 * (2 * barW);
   const botW = cutW * 0.5;
   const topW = botW * 1.32;
@@ -243,11 +243,11 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
  */
 function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.012;
-  const bw = 0.031;
-  const nw = 0.019;
+  const bw = 0.0185;
+  const nw = 0.012;
   const sink = 0.011;
   const notchFloor = 0.001;
-  const depth = 0.014;
+  const depth = 0.007;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH);
@@ -274,7 +274,7 @@ function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE
 
   const barW = 0.003;
   const barH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65 * 0.7;
-  const barD = 0.018;
+  const barD = 0.009;
   const aimY = floorY + 0.005;
   const barY = Math.min(aimY, floorY + earH - barH * 0.5);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
@@ -455,8 +455,8 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
   else {
     const roundZ = -0.08;
-    const boxyDepth = 0.014;
-    const roundDepth = 0.018;
+    const boxyDepth = 0.007;
+    const roundDepth = 0.009;
     karIronRear(root, roundZ, recTop, steel);
     karIronForeU(root, roundZ - roundDepth / 2 - boxyDepth / 2, recTop, steel);
   }
