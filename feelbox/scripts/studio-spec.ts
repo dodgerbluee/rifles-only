@@ -32,6 +32,8 @@ import {
   rotateBuilding,
   rotateRamp,
   setRampLow,
+  bumpRampLow,
+  studioRampIndex,
   setLotHandle,
   itemsInRect,
   defaultOrbit,
@@ -314,6 +316,10 @@ let dipY = -2;
 for (let x = -3.5; x <= 3.5; x += 0.4) dipY = groundHeight(dipWorld.colliders, x, 0, 0.3, dipY);
 check("sunken mid still walks up", dipY > 0.5, `y=${dipY}`);
 check("sunken low end is below the lot", groundHeight(dipWorld.colliders, -3.5, 0, 0.3, -2) < -1.4);
+check(
+  "ramp tool edits the last ramp without a grab",
+  studioRampIndex([], dip, "ramp") === 0 && bumpRampLow(dip, studioRampIndex([], dip, "ramp"), -0.5).ramps?.[0]?.y0 === -2.5,
+);
 const raisedRamp = setRampLow(placeBuildingRect(blankSpec(), -4, -1, 4, 1, "ramp", 0), 0, 3);
 const raisedWorld = compileLayout(new THREE.Scene(), raisedRamp);
 check(

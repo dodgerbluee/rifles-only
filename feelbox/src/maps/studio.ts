@@ -342,9 +342,13 @@ export function rotateRamp(spec: LayoutSpec, i: number, steps = 1): LayoutSpec {
   return next;
 }
 
-export function studioRampIndex(sels: StudioItem[]) {
-  if (sels.length !== 1 || sels[0]!.kind !== "ramp") return -1;
-  return sels[0]!.i;
+export function studioRampIndex(sels: StudioItem[], spec?: LayoutSpec, tool?: ToolId) {
+  if (sels.length === 1 && sels[0]!.kind === "ramp") return sels[0]!.i;
+  if (tool === "ramp") {
+    const n = spec?.ramps?.length ?? 0;
+    if (n > 0) return n - 1;
+  }
+  return -1;
 }
 
 export function setRampRise(spec: LayoutSpec, i: number, rise: number): LayoutSpec {
@@ -994,6 +998,10 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): Studi
     const aPt = a.area < 10;
     const bPt = b.area < 10;
     if (aPt !== bPt) return aPt ? -1 : 1;
+    if (a.dist === 0 && b.dist === 0 && a.item.kind !== b.item.kind) {
+      if (a.item.kind === "ramp" && a.area <= b.area) return -1;
+      if (b.item.kind === "ramp" && b.area <= a.area) return 1;
+    }
     if (a.dist === 0 && b.dist === 0 && a.y !== b.y) return b.y - a.y;
     if (a.dist === 0 && b.dist === 0 && a.area !== b.area) return a.area - b.area;
     return a.dist - b.dist;

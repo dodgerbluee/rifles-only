@@ -1441,7 +1441,7 @@ function paintStudio() {
     document.querySelector("#studio-interior-empty")?.classList.toggle("on", interior === "empty");
   }
   const rampPanel = document.querySelector<HTMLElement>("#studio-ramp");
-  const ri = studioRampIndex(studio.sels);
+  const ri = studioRampIndex(studio.sels, studio.spec, studio.tool);
   const ramp = ri >= 0 ? studio.spec.ramps?.[ri] : undefined;
   if (rampPanel) rampPanel.hidden = studio.tool !== "ramp" && !ramp;
   if (ramp) {
@@ -2401,22 +2401,22 @@ paintStatsChrome();
   });
   document.querySelector("#studio-rise-sub")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    const i = studioRampIndex(studio.sels);
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
     if (i >= 0) studioApply(bumpRampRise(studio.spec, i, -0.5));
   });
   document.querySelector("#studio-rise-add")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    const i = studioRampIndex(studio.sels);
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
     if (i >= 0) studioApply(bumpRampRise(studio.spec, i, 0.5));
   });
   document.querySelector("#studio-low-sub")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    const i = studioRampIndex(studio.sels);
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
     if (i >= 0) studioApply(bumpRampLow(studio.spec, i, -0.5));
   });
   document.querySelector("#studio-low-add")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    const i = studioRampIndex(studio.sels);
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
     if (i >= 0) studioApply(bumpRampLow(studio.spec, i, 0.5));
   });
   document.querySelector("#studio-ramp")?.addEventListener("click", (e) => {
@@ -2424,12 +2424,12 @@ paintStatsChrome();
     const dir = btn?.getAttribute("data-dir");
     if (dir !== "n" && dir !== "s" && dir !== "e" && dir !== "w") return;
     e.stopPropagation();
-    const i = studioRampIndex(studio.sels);
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
     if (i >= 0) studioApply(setRampDir(studio.spec, i, dir));
   });
   document.querySelector("#studio-ramp-rotate")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    const i = studioRampIndex(studio.sels);
+    const i = studioRampIndex(studio.sels, studio.spec, studio.tool);
     if (i >= 0) studioApply(rotateRamp(studio.spec, i, 1));
   });
   document.querySelector("#studio-area-name")?.addEventListener("input", (e) => {
@@ -2922,7 +2922,7 @@ addEventListener("keydown", (e) => {
     if (tool) setStudioTool(tool);
     if (e.code === "KeyR" && !e.repeat) {
       const bi = studioBuildingIndex(studio.sels);
-      const ri = studioRampIndex(studio.sels);
+      const ri = studioRampIndex(studio.sels, studio.spec, studio.tool);
       if (bi >= 0) studioApply(rotateBuilding(studio.spec, bi, 1));
       else if (ri >= 0) studioApply(rotateRamp(studio.spec, ri, 1));
       else {
