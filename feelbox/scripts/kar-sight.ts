@@ -1,5 +1,5 @@
 /**
- * Iron Kar ADS is the open tangent picture. Scoped Kar keeps the 2D glass tube.
+ * Kar98k keeps a simple open rear U and front post; Scoped Kar uses 2D glass.
  */
 import * as THREE from "three";
 import { makeKar98, makeKar98Scoped, makeWorldKar, RIFLES } from "../src/weapons.ts";
@@ -22,7 +22,6 @@ const iron = makeKar98();
 const scoped = makeKar98Scoped();
 const ironOcular = findFlag(iron.root, "karOcular");
 const scopedOcular = findFlag(scoped.root, "karOcular");
-const ironSight = findFlag(iron.root, "karIronSight");
 
 check("iron Kar has no scope ocular", !ironOcular);
 check("scoped Kar keeps the tube ocular", !!scopedOcular);
@@ -39,8 +38,7 @@ check("scoped ADS sits behind the ocular", scoped.adsPos.z < -0.12, `z=${scoped.
 check("scoped ADS is centered on X", Math.abs(scoped.adsPos.x) < 1e-6);
 check("scoped ADS sits on the tube height", scopedOcular ? Math.abs(scoped.adsPos.y + scopedOcular.position.y) < 1e-6 : false, `y=${scoped.adsPos.y}`);
 check("scoped has no wrap grips", !scoped.adsGrip);
-check("iron ADS has wrap grips", !!iron.adsGrip);
-check("iron has an ADS-only open tangent assembly", !!ironSight);
+check("iron ADS uses the standard rifle pose", !iron.adsGrip);
 
 let ironFacets = 0;
 iron.root.traverse((c) => {
@@ -49,7 +47,7 @@ iron.root.traverse((c) => {
   const geo = mesh.geometry as THREE.CylinderGeometry;
   if (geo.type === "CylinderGeometry" && (geo.parameters.radialSegments ?? 0) <= 8) ironFacets += 1;
 });
-check("iron ADS receiver uses faceted 8-sided metal", ironFacets >= 3, `cyls=${ironFacets}`);
+check("iron barrel is faceted 8-sided metal", ironFacets >= 1, `cyls=${ironFacets}`);
 
 let scopedPipes = 0;
 scoped.root.traverse((c) => {
@@ -62,17 +60,14 @@ check("scoped tube is solid, not an ADS cup", scopedPipes === 0, `pipes=${scoped
 
 const world = makeWorldKar();
 let worldOcular = false;
-let worldSight = false;
 world.traverse((c) => {
   if (c.userData.karOcular) worldOcular = true;
-  if (c.userData.karIronSight) worldSight = true;
 });
 check("world Kar is the iron rifle, not scoped glass", !worldOcular);
-check("world Kar keeps the slim barrel, not the ADS assembly", !worldSight);
 check("world Kar is held at the pawn, not the camera hip", world.position.length() < 1e-6);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\niron Kar uses the open tangent sight; scoped stays the glass gun");
+console.log("\niron Kar uses a U-and-post sight; scoped stays the glass gun");

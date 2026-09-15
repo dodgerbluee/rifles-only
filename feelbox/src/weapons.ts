@@ -347,57 +347,36 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const axisY = 0.034;
   const recR = 0.013;
   const barR = 0.0072;
-  const butt = place(root, capZ(0.028, 0.12, wood), 0, 0.002, 0.18);
-  const comb = place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
-  const wrist = place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
+  place(root, capZ(0.028, 0.12, wood), 0, 0.002, 0.18);
+  place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
+  place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
   place(root, capZ(0.016, 0.3, wood), 0, 0.012, -0.18);
-  const rec = place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
-  const ironAds = !scoped && !world;
-  const barrel = place(root, cylZ(barR, 0.42, steel, 8), 0, axisY, -0.3);
-  if (ironAds) {
-    rec.userData.karHipBarrel = true;
-    barrel.userData.karHipBarrel = true;
-    butt.userData.karHipBarrel = true;
-    comb.userData.karHipBarrel = true;
-    wrist.userData.karHipBarrel = true;
-  }
+  place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
+  place(root, cylZ(barR, 0.42, steel, 8), 0, axisY, -0.3);
 
   const bolt = makeBolt(root, new THREE.Vector3(0, axisY, 0.02), new THREE.Vector3(0.056, -0.031, 0));
   place(bolt, cylX(0.005, 0.048, steel, 6), 0.034, 0.004, 0);
   place(bolt, cylY(0.005, 0.034, steel, 6), 0.056, -0.014, 0);
-  if (ironAds) bolt.userData.karHipBarrel = true;
 
   const recTop = axisY + recR;
   const barTop = axisY + barR;
   const uH = scoped ? 0.007 : 0.01;
-  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054, ironAds);
+  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054);
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
-  const postRamp = place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
-  const post = place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
+  place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
+  place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
   const wingH = postH + (scoped ? 0.004 : 0.006);
-  const wingL = place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
-  const wingR = place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
-  const postBar = !scoped ? place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ) : undefined;
-  if (ironAds) {
-    for (const m of [postRamp, post, wingL, wingR, postBar]) {
-      if (m) m.userData.karHipBarrel = true;
-    }
-  }
+  place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
+  place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
+  if (!scoped) place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ);
 
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
   let adsPos = new THREE.Vector3(0, -(recTop + postH), -0.15);
-  let adsGrip: RifleView["adsGrip"];
-  let adsPitch: number | undefined;
   if (scoped) {
     const scope = karScope(root, recTop, steel);
     adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
-  } else if (ironAds) {
-    const barrel = karIronSight(root, axisY, steel);
-    adsPos = new THREE.Vector3(0, -barrel.lookY, -(barrel.faceZ + barrel.eye));
-    adsGrip = barrel.grip;
-    adsPitch = barrel.pitch;
   }
 
   const flash = flashMesh(0, axisY, -0.52);
@@ -405,7 +384,7 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const id: RifleId = scoped ? "karscope" : "kar";
   const { rounds, clip } = makeAmmoKit(root, axisY, id, steel);
   root.position.copy(hipPos);
-  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip, adsGrip, adsPitch };
+  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
 /** Karabiner 98k: iron U + post, CoD1 rifle picture. */
@@ -728,10 +707,8 @@ export function rifleWrist(view: RifleView, boltK: number, out = _wrist) {
 }
 
 export function poseAdsMask(view: RifleView, on: boolean) {
-  view.root.traverse((c) => {
-    if (c.userData.karIronSight) c.visible = on;
-    if (c.userData.karHipBarrel) c.visible = !on;
-  });
+  void view;
+  void on;
 }
 
 /** Palm on the left or right of the iron barrel. */
