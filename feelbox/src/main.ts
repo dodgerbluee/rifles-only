@@ -2134,13 +2134,16 @@ function studioStampY(x: number, z: number) {
 
 function studioHit() {
   const ndc = canvasNdc(canvas, studio.mx, studio.my);
-  if (studio.drag?.mode === "resize" && studio.drag.item) {
+  const wantKnobs = studio.drag?.mode === "resize" || studio.tool === "select" || studio.tool === "building";
+  if (wantKnobs && studio.drag?.mode === "resize" && studio.drag.item) {
     const p = pickAtY(camera, ndc.x, ndc.y, resizePickY(studio.spec, studio.drag.item));
     if (p) return p;
   }
-  for (const sel of studio.sels) {
-    const p = pickAtY(camera, ndc.x, ndc.y, resizePickY(studio.spec, sel));
-    if (p && pickResizeHandle(studio.spec, sel, p.x, p.z)) return p;
+  if (wantKnobs) {
+    for (const sel of studio.sels) {
+      const p = pickAtY(camera, ndc.x, ndc.y, resizePickY(studio.spec, sel));
+      if (p && pickResizeHandle(studio.spec, sel, p.x, p.z)) return p;
+    }
   }
   return pickGround(camera, ndc.x, ndc.y);
 }
@@ -3274,7 +3277,9 @@ addEventListener("mousedown", (e) => {
       const gz = snap(hit.z);
       const shift = e.shiftKey;
       const ptr = pickStudioHit(studio.spec, hit.x, hit.z, studio.sels);
-      const grabHandles = ptr.type === "resize" || (studio.tool === "select" && ptr.type === "lot");
+      const grabHandles =
+        (ptr.type === "resize" && (studio.tool === "select" || studio.tool === "building")) ||
+        (studio.tool === "select" && ptr.type === "lot");
       if (grabHandles) {
         studio.base = cloneSpec(studio.spec);
         studio.drag = {
