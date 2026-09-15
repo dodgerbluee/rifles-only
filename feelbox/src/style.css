@@ -1540,10 +1540,6 @@ body:not(.register) #home-login {
   display: none;
 }
 
-body.register #home-play {
-  display: none;
-}
-
 #home-studio:hover,
 #home-locker:hover,
 #home-login:hover,
