@@ -5,14 +5,24 @@ import { createSim } from "../src/sim.ts";
 import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
 import {
   FAST_RATE,
+  LAST_POST,
   PLAY_RATE,
+  POST_SLOW,
+  PRE_SLOW,
   TAPE_MIN_DT,
+  advancePlayT,
   createTape,
+  inSlowWindow,
+  killcamWindow,
+  playBounds,
   pushFrame,
+  pushKill,
   recapWindow,
   reelDrivesBotMeshes,
+  reelWallTime,
   reelWorldPawnVisible,
   samplePoses,
+  sampleTape,
   type Pose,
 } from "../src/replay.ts";
 
@@ -176,6 +186,42 @@ while (skipT < 4 && skipWall < 20) {
   skipWall += hz60;
 }
 check("FAST_RATE skip is 10× wall time", Math.abs(skipWall - 4 / FAST_RATE) < 0.05, `wall=${skipWall.toFixed(3)}`);
+
+const nadeTape = createTape();
+pushFrame(nadeTape, 0, [poseAt(1, 0)], { nades: [{ x: 0, y: 1, z: 0, kind: "frag" }], clouds: [] });
+pushFrame(nadeTape, 0.2, [poseAt(1, 1)], { nades: [{ x: 4, y: 1, z: 0, kind: "frag" }], clouds: [] });
+pushFrame(nadeTape, 0.4, [poseAt(1, 2)], { nades: [], clouds: [{ x: 4, y: 1, z: 0, radius: 3, opacity: 0.8 }] });
+const midNade = sampleTape(nadeTape, 0.1).nades[0];
+check("tape nades interpolate along the throw", !!midNade && midNade.x > 1.5 && midNade.x < 2.5, `x=${midNade?.x}`);
+check("later tape frame drops the airborne nade", sampleTape(nadeTape, 0.4).nades.length === 0);
+check("later tape frame keeps the cloud that existed then", sampleTape(nadeTape, 0.4).clouds.length === 1);
+
+const killsTape = createTape();
+for (let i = 0; i <= 40; i++) pushFrame(killsTape, i * 0.25, [poseAt(2, i)]);
+pushKill(killsTape, { t: 2, killerId: 2, victimId: 3, victimName: "A" });
+pushKill(killsTape, { t: 8, killerId: 2, victimId: 4, victimName: "B" });
+const clips = [
+  { t: 2, killerId: 2, victimId: 3, victimName: "A" },
+  { t: 8, killerId: 2, victimId: 4, victimName: "B" },
+];
+const bounds = playBounds(clips, killsTape);
+check("reel hangs past the last kill", bounds.end >= 8 + LAST_POST, `end=${bounds.end} lastPost=${LAST_POST}`);
+check("last kill is still in the slow window after old post", inSlowWindow(8 + POST_SLOW + 0.4, clips));
+check("gap before the last kill is not slow", !inSlowWindow(5.5, clips));
+
+let playT = 4;
+playT = advancePlayT(playT, 0.05, clips);
+check("FAST_RATE does not skip into the last kill", playT <= 8 - 1.55 + 1e-9, `playT=${playT}`);
+playT = 8 - 1.55 - 0.01;
+playT = advancePlayT(playT, 0.05, clips);
+check("advance lands on the next kill window instead of jumping over it", Math.abs(playT - (8 - 1.55)) < 1e-6, `playT=${playT}`);
+
+const wall = reelWallTime(clips, killsTape);
+check("multi-kill reel wall time covers the last kill hang", wall > LAST_POST + PRE_SLOW, `wall=${wall.toFixed(2)}`);
+
+const cam = killcamWindow(killsTape, 4, 8);
+check("killcam follows the killer", cam.killerId === 2);
+check("killcam lasts 3-5 seconds", cam.end - cam.start >= 3 && cam.end - cam.start <= 5, `span=${(cam.end - cam.start).toFixed(2)}`);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

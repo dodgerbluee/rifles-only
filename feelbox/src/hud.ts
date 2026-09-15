@@ -88,20 +88,25 @@ export function showDeath(opts: {
   place: string;
   spawnName: string;
   remain: number;
+  killcam?: boolean;
 }) {
   deathEl.classList.add("on");
   deathEl.classList.remove("dim");
   document.body.classList.add("dead");
   deathBy.textContent = opts.killer.startsWith("by ") ? opts.killer : `by ${opts.killer}`;
   deathAt.textContent = `Went down at ${opts.place}`;
+  if (opts.killcam) {
+    deathCount.textContent = "Killcam";
+    deathWhere.textContent = "E skip · E again take over a bot";
+    return;
+  }
   const secs = Math.max(0, Math.ceil(opts.remain));
   deathCount.textContent =
     opts.remain < 0 ? "Out this round" : secs <= 0 ? "Deploying now" : `Deploying in ${secs}`;
   deathWhere.textContent =
     opts.remain < 0
-      ? "Click next teammate · E take over a bot"
+      ? "LMB spectate · RMB free look · E take over a bot"
       : `${opts.spawnName} · full health · 5 rounds · 2 smokes`;
-  if (opts.remain < 0) window.setTimeout(() => deathEl.classList.add("dim"), 2400);
 }
 
 export function hideDeath() {
@@ -109,6 +114,11 @@ export function hideDeath() {
   deathEl.classList.remove("dim");
   document.body.classList.remove("dead");
   specEl.classList.remove("on");
+}
+
+export function hideDeathOverlay() {
+  deathEl.classList.remove("on");
+  deathEl.classList.remove("dim");
 }
 
 export function setRoundResult(text: string | null, win = false) {

@@ -793,13 +793,13 @@ body.started #spawn-banner.on {
   justify-content: center;
   align-items: center;
   gap: 6px;
-  background: rgba(10, 8, 6, 0.72);
+  background: rgba(10, 8, 6, 0.42);
   text-align: center;
   pointer-events: none;
+  z-index: 28;
 }
 
-#death.on,
-body.dead #death {
+#death.on {
   display: flex;
 }
 
@@ -839,6 +839,16 @@ body.dead #death {
 
 #death.dim {
   opacity: 0.22;
+}
+
+body.killcam #death.on {
+  justify-content: flex-start;
+  padding-top: 7vh;
+  background: linear-gradient(180deg, rgba(8, 7, 5, 0.82) 0%, rgba(8, 7, 5, 0.28) 34%, transparent 52%);
+}
+
+body.killcam #letterbox {
+  display: block !important;
 }
 
 body.dead:not(.bestplay) #crosshair,
@@ -1113,9 +1123,9 @@ body.started:not(.playing) #view {
   display: none;
   position: fixed;
   left: 50%;
-  top: 16px;
+  top: 88px;
   transform: translateX(-50%);
-  z-index: 31;
+  z-index: 32;
   text-align: center;
   pointer-events: none;
   text-shadow: 0 1px 8px #000, 0 0 18px #000;
