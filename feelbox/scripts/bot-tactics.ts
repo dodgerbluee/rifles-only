@@ -22,6 +22,8 @@ const carrier = bots.find((b) => b.id === match.wire.carrierId);
 check("one bot is assigned to plant", bots.filter((b) => b.role === "plant").length === 1);
 check("the Wire carrier is the planter", carrier?.role === "plant");
 check("planter has escorts", bots.filter((b) => b.role === "escort").length > 0);
+const escorts = bots.filter((b) => b.role === "escort");
+check("escorts route to their assigned support anchors", escorts.every((b) => b.routeGoal.distanceTo(b.anchor) < 0.01));
 
 const site = world.sites.find((s) => s.id === carrier?.site)!;
 match.wire.mode = "planted";
@@ -36,6 +38,7 @@ check("one watcher is assigned to cut", bots.filter((b) => b.role === "cut").len
 const holders = bots.filter((b) => b.role === "hold");
 const anchors = new Set(holders.map((b) => `${b.anchor.x.toFixed(2)},${b.anchor.z.toFixed(2)}`));
 check("holders use distinct support anchors", anchors.size > 1);
+check("holders route to their assigned support anchors", holders.every((b) => b.routeGoal.distanceTo(b.anchor) < 0.01));
 
 if (failed) process.exit(1);
 console.log("bot tactics assignments are coordinated");
