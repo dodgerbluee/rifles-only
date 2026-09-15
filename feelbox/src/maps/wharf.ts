@@ -44,8 +44,8 @@ export const WHARF_SPEC: LayoutSpec = {
     { x: -21, z: -4, w: 10, d: 10, name: "Net shed" },
   ],
   sites: [
-    { id: "loft", call: "A", name: "Ice", x: -9, z: 20.5, y: 3.35 },
-    { id: "well", call: "B", name: "Slip", x: 10, z: -16 },
+    { id: "loft", call: "A", name: "Ice", x: -9, z: 20.5, y: 3.35, w: 6, d: 6 },
+    { id: "well", call: "B", name: "Slip", x: 10, z: -16, w: 6.4, d: 6.4 },
   ],
   plantSpawns: [
     [-38, 6],
