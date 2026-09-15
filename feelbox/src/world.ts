@@ -6,6 +6,8 @@ import { type Aabb, hasLos, rayShot, rayWorld } from "./trace";
 export type { Aabb };
 export { hasLos, rayShot, rayWorld };
 
+export type SitePad = { x: number; z: number; w: number; d: number };
+
 export type Site = {
   id: "loft" | "well";
   call: string;
@@ -16,7 +18,13 @@ export type Site = {
   r: number;
   w?: number;
   d?: number;
+  /** Union of painted rects. Omitted = one pad from x/z/w/d (or r). */
+  pads?: SitePad[];
 };
+
+const SITE_CELL = 0.5;
+const SITE_STROKE = 0.055;
+const SITE_MARK = 2.6;
 
 /** Painted plant pad. Missing w/d fall back to a square around r. */
 export function siteExtent(s: { r?: number; w?: number; d?: number }) {
@@ -25,19 +33,171 @@ export function siteExtent(s: { r?: number; w?: number; d?: number }) {
   return { w, d };
 }
 
-const SITE_STROKE = 0.055;
-const SITE_MARK = 2.6;
+export function sitePads(s: { x: number; z: number; r?: number; w?: number; d?: number; pads?: SitePad[] }): SitePad[] {
+  if (s.pads && s.pads.length) return s.pads;
+  const { w, d } = siteExtent(s);
+  return [{ x: s.x, z: s.z, w, d }];
+}
 
-/** Thin gold frame on the plantable pad. Not a filled slab. */
-export function addSiteOutline(
-  parent: THREE.Object3D,
-  x: number,
-  y: number,
-  z: number,
-  w: number,
-  d: number,
-  opacity = 0.4,
-) {
+export function inSitePad(p: SitePad, x: number, z: number) {
+  return Math.abs(x - p.x) <= p.w / 2 && Math.abs(z - p.z) <= p.d / 2;
+}
+
+function cellKey(ix: number, iz: number) {
+  return `${ix},${iz}`;
+}
+
+/** 0.5m cells covered by the union of pads. */
+export function siteCellSet(pads: SitePad[]): Set<string> {
+  const cells = new Set<string>();
+  for (const p of pads) {
+    const x0 = p.x - p.w / 2;
+    const x1 = p.x + p.w / 2;
+    const z0 = p.z - p.d / 2;
+    const z1 = p.z + p.d / 2;
+    const ix0 = Math.floor(x0 / SITE_CELL + 1e-6);
+    const ix1 = Math.ceil(x1 / SITE_CELL - 1e-6);
+    const iz0 = Math.floor(z0 / SITE_CELL + 1e-6);
+    const iz1 = Math.ceil(z1 / SITE_CELL - 1e-6);
+    for (let ix = ix0; ix < ix1; ix++) {
+      for (let iz = iz0; iz < iz1; iz++) {
+        const cx = (ix + 0.5) * SITE_CELL;
+        const cz = (iz + 0.5) * SITE_CELL;
+        if (Math.abs(cx - p.x) <= p.w / 2 + 1e-6 && Math.abs(cz - p.z) <= p.d / 2 + 1e-6) cells.add(cellKey(ix, iz));
+      }
+    }
+  }
+  return cells;
+}
+
+/** Greedy rects covering the same cells, so an L is two pads not a bounding square. */
+export function mergeSitePads(pads: SitePad[]): SitePad[] {
+  const set = siteCellSet(pads);
+  const out: SitePad[] = [];
+  const has = (ix: number, iz: number) => set.has(cellKey(ix, iz));
+  while (set.size) {
+    let ix = 0;
+    let iz = 0;
+    let first = true;
+    for (const k of set) {
+      const [cx, cz] = k.split(",").map(Number) as [number, number];
+      if (first || cz < iz || (cz === iz && cx < ix)) {
+        ix = cx;
+        iz = cz;
+        first = false;
+      }
+    }
+    let w = 1;
+    while (has(ix + w, iz)) w++;
+    let d = 1;
+    grow: while (true) {
+      for (let dx = 0; dx < w; dx++) if (!has(ix + dx, iz + d)) break grow;
+      d++;
+    }
+    for (let dz = 0; dz < d; dz++) {
+      for (let dx = 0; dx < w; dx++) set.delete(cellKey(ix + dx, iz + dz));
+    }
+    out.push({
+      x: (ix + w / 2) * SITE_CELL,
+      z: (iz + d / 2) * SITE_CELL,
+      w: w * SITE_CELL,
+      d: d * SITE_CELL,
+    });
+  }
+  return out;
+}
+
+export function siteCentroid(pads: SitePad[]) {
+  let area = 0;
+  let x = 0;
+  let z = 0;
+  for (const p of pads) {
+    const a = p.w * p.d;
+    area += a;
+    x += p.x * a;
+    z += p.z * a;
+  }
+  return area > 0 ? { x: x / area, z: z / area } : { x: pads[0]?.x ?? 0, z: pads[0]?.z ?? 0 };
+}
+
+export function siteBounds(pads: SitePad[]): SitePad {
+  if (!pads.length) return { x: 0, z: 0, w: 0, d: 0 };
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const p of pads) {
+    x0 = Math.min(x0, p.x - p.w / 2);
+    x1 = Math.max(x1, p.x + p.w / 2);
+    z0 = Math.min(z0, p.z - p.d / 2);
+    z1 = Math.max(z1, p.z + p.d / 2);
+  }
+  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 };
+}
+
+export function writeSitePads<T extends { x: number; z: number; w?: number; d?: number; pads?: SitePad[] }>(s: T, pads: SitePad[]): T {
+  const merged = mergeSitePads(pads);
+  const c = siteCentroid(merged);
+  const b = siteBounds(merged);
+  s.x = c.x;
+  s.z = c.z;
+  s.w = b.w;
+  s.d = b.d;
+  if (merged.length <= 1) delete s.pads;
+  else s.pads = merged;
+  return s;
+}
+
+/** Outer gold edges of a union of axis-aligned pads (0.5m cells). */
+export function siteOutlineEdges(pads: SitePad[]): { x: number; z: number; sx: number; sz: number }[] {
+  const cells = siteCellSet(pads);
+  const hAt = new Map<string, number[]>();
+  const vAt = new Map<string, number[]>();
+  const add = (map: Map<string, number[]>, k: string, n: number) => {
+    const a = map.get(k);
+    if (a) a.push(n);
+    else map.set(k, [n]);
+  };
+  for (const k of cells) {
+    const [ix, iz] = k.split(",").map(Number) as [number, number];
+    if (!cells.has(cellKey(ix, iz + 1))) add(hAt, `${iz + 1}`, ix);
+    if (!cells.has(cellKey(ix, iz - 1))) add(hAt, `${iz}`, ix);
+    if (!cells.has(cellKey(ix + 1, iz))) add(vAt, `${ix + 1}`, iz);
+    if (!cells.has(cellKey(ix - 1, iz))) add(vAt, `${ix}`, iz);
+  }
+  const merge = (idxs: number[]) => {
+    idxs.sort((a, b) => a - b);
+    const runs: [number, number][] = [];
+    for (const i of idxs) {
+      const last = runs[runs.length - 1];
+      if (last && i === last[1]) last[1] = i + 1;
+      else runs.push([i, i + 1]);
+    }
+    return runs;
+  };
+  const edges: { x: number; z: number; sx: number; sz: number }[] = [];
+  for (const [k, idxs] of hAt) {
+    const z = Number(k) * SITE_CELL;
+    for (const [a, b] of merge(idxs)) {
+      const x0 = a * SITE_CELL;
+      const x1 = b * SITE_CELL;
+      edges.push({ x: (x0 + x1) / 2, z, sx: x1 - x0, sz: SITE_STROKE });
+    }
+  }
+  for (const [k, idxs] of vAt) {
+    const x = Number(k) * SITE_CELL;
+    for (const [a, b] of merge(idxs)) {
+      const z0 = a * SITE_CELL;
+      const z1 = b * SITE_CELL;
+      edges.push({ x, z: (z0 + z1) / 2, sx: SITE_STROKE, sz: z1 - z0 });
+    }
+  }
+  return edges;
+}
+
+/** Thin gold frame on the plantable pad. Not a filled slab. Follows the union of pads. */
+export function addSiteOutlinePads(parent: THREE.Object3D, pads: SitePad[], y: number, opacity = 0.4) {
+  if (!pads.length) return;
   const mat = new THREE.MeshBasicMaterial({
     color: 0xd4b45a,
     transparent: true,
@@ -49,18 +209,24 @@ export function addSiteOutline(
   });
   const h = 0.02;
   const lift = y + 0.028;
-  const hw = w / 2;
-  const hd = d / 2;
-  const strip = (cx: number, cz: number, sx: number, sz: number) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, h, sz), mat);
-    m.position.set(cx, lift, cz);
+  for (const e of siteOutlineEdges(pads)) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(e.sx, h, e.sz), mat);
+    m.position.set(e.x, lift, e.z);
     m.renderOrder = 2;
     parent.add(m);
-  };
-  strip(x, z + hd, w, SITE_STROKE);
-  strip(x, z - hd, w, SITE_STROKE);
-  strip(x + hw, z, SITE_STROKE, d);
-  strip(x - hw, z, SITE_STROKE, d);
+  }
+}
+
+export function addSiteOutline(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  d: number,
+  opacity = 0.4,
+) {
+  addSiteOutlinePads(parent, [{ x, z, w, d }], y, opacity);
 }
 
 export function addSiteMarker(parent: THREE.Object3D, pos: THREE.Vector3, letter: string) {
@@ -667,10 +833,7 @@ export function inSite(world: World, id: Site["id"], x: number, z: number, y: nu
   const s = world.sites.find((site) => site.id === id);
   if (!s) return false;
   if (Math.abs(y - s.y) >= 1.8) return false;
-  if (s.w != null && s.d != null) {
-    return Math.abs(x - s.x) <= s.w / 2 && Math.abs(z - s.z) <= s.d / 2;
-  }
-  return Math.hypot(x - s.x, z - s.z) < s.r;
+  return sitePads(s).some((pad) => inSitePad(pad, x, z));
 }
 
 /** Face the map middle from a spawn so planters/watchers look inward. */

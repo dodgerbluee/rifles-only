@@ -1,5 +1,5 @@
 import type { World } from "./world";
-import { siteExtent } from "./world";
+import { siteCentroid, siteOutlineEdges, sitePads } from "./world";
 import { actorTag, displayName, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
@@ -266,17 +266,17 @@ function drawMinimap(
   mapCtx.textAlign = "center";
   mapCtx.textBaseline = "middle";
   for (const site of world.sites) {
-    const { w, d } = siteExtent(site);
-    const a = to(site.x - w / 2, site.z + d / 2);
-    const c = to(site.x + w / 2, site.z - d / 2);
-    const x = Math.min(a.x, c.x);
-    const y = Math.min(a.y, c.y);
-    const rw = Math.abs(c.x - a.x);
-    const rh = Math.abs(c.y - a.y);
-    mapCtx.strokeStyle = "rgba(212, 180, 90, 0.55)";
-    mapCtx.lineWidth = 1.15;
-    mapCtx.strokeRect(x, y, Math.max(2, rw), Math.max(2, rh));
-    const p = to(site.x, site.z);
+    const pads = sitePads(site);
+    mapCtx.fillStyle = "rgba(212, 180, 90, 0.7)";
+    for (const e of siteOutlineEdges(pads)) {
+      const a = to(e.x - e.sx / 2, e.z + e.sz / 2);
+      const c = to(e.x + e.sx / 2, e.z - e.sz / 2);
+      const x = Math.min(a.x, c.x);
+      const y = Math.min(a.y, c.y);
+      mapCtx.fillRect(x, y, Math.max(1.2, Math.abs(c.x - a.x)), Math.max(1.2, Math.abs(c.y - a.y)));
+    }
+    const mid = siteCentroid(pads);
+    const p = to(mid.x, mid.z);
     mapCtx.fillStyle = "#efe2b4";
     mapCtx.fillText(site.call, p.x, p.y + 0.5);
   }

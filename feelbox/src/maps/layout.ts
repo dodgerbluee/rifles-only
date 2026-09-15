@@ -3,8 +3,8 @@
  */
 import * as THREE from "three";
 import { finish, makeKit, sky, T, type Kit } from "./kit";
-import type { Site, World } from "../world";
-import { siteExtent } from "../world";
+import type { Site, SitePad, World } from "../world";
+import { addSiteOutlinePads, mergeSitePads, siteBounds, siteCentroid, sitePads } from "../world";
 
 export type ThemeId = "winter" | "harbor" | "stone" | "dust";
 export type DoorWall = "n" | "s" | "e" | "w";
@@ -122,6 +122,8 @@ export type SiteSpec = {
   /** Painted plantable pad. Defaults to a 6m square (r = 3). */
   w?: number;
   d?: number;
+  /** Extra rects unioned with x/z/w/d. Omit for a single rectangle. */
+  pads?: SitePad[];
 };
 
 export type LayoutSpec = {
@@ -626,10 +628,11 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   }
 
   for (const s of spec.sites) {
-    const { w, d } = siteExtent(s);
+    const pads = mergeSitePads(sitePads(s));
     const y = s.y ?? 0;
-    kit.pad(s.x, y, s.z, w, d, clay ? 0.58 : 0.4);
-    kit.siteMarker(kit.v(s.x, s.z, y + 1.85), s.call);
+    const c = siteCentroid(pads);
+    addSiteOutlinePads(kit.root, pads, y, clay ? 0.58 : 0.4);
+    kit.siteMarker(kit.v(c.x, c.z, y + 1.85), s.call);
   }
   if (clay) {
     const plantMat = new THREE.MeshLambertMaterial({ color: 0xb88a78 });
@@ -658,17 +661,20 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     waypoints,
     bounds: spec.bounds,
     sites: spec.sites.map((s) => {
-      const { w, d } = siteExtent(s);
+      const pads = mergeSitePads(sitePads(s));
+      const c = siteCentroid(pads);
+      const b = siteBounds(pads);
       return {
         id: s.id,
         call: s.call,
         name: s.name,
-        x: s.x,
+        x: c.x,
         y: s.y ?? 0,
-        z: s.z,
-        r: s.r ?? Math.max(w, d) / 2,
-        w,
-        d,
+        z: c.z,
+        r: s.r ?? Math.max(b.w, b.d) / 2,
+        w: b.w,
+        d: b.d,
+        pads: pads.length > 1 ? pads : undefined,
       };
     }),
     placeName: (x, z, y) => layoutPlaceName(spec, x, z, y),

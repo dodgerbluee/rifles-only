@@ -97,8 +97,6 @@ import {
   isOpeningTool,
   isRectTool,
   GRID,
-  SITE_MIN,
-  SITE_ZONE,
   STAMP,
   snap,
   snapCell,
@@ -1262,7 +1260,7 @@ function paintStudio() {
     hint.textContent = studio.walk
       ? "WASD move · click to place any tool except Building · U cuts one square · Esc orbit"
       : studio.tool === "siteA" || studio.tool === "siteB"
-        ? "Drag the plantable pad · click stamps a 6m square · gold outline in play, not a fill"
+        ? "Paint any shape · click adds a cell · drag adds a rect · erase punches · gold outline in play"
         : "Drag the yellow peg to walk there · Middle-drag pans · Shift-click or drag-box to multi-select · Knobs resize · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
@@ -5772,9 +5770,8 @@ function frame(now: number) {
           studioGhost.scale.set(foot.w, sy, foot.d);
           studioGhost.position.set(foot.x, y + sy / 2, foot.z);
         } else if (studio.tool === "area" || studio.tool === "siteA" || studio.tool === "siteB") {
-          const min = studio.tool === "area" ? GRID : SITE_MIN;
-          const w = Math.max(min, Math.abs(studio.drag.x1 - studio.drag.x0));
-          const d = Math.max(min, Math.abs(studio.drag.z1 - studio.drag.z0));
+          const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
+          const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
           const y = studio.tool === "area"
             ? 0.06
             : rectSurfaceY(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1) + 0.06;
@@ -5828,7 +5825,7 @@ function frame(now: number) {
           } else if (studio.tool === "siteA" || studio.tool === "siteB") {
             const gx = snapCell(hit.x);
             const gz = snapCell(hit.z);
-            studioGhost.scale.set(SITE_ZONE, 0.12, SITE_ZONE);
+            studioGhost.scale.set(GRID, 0.12, GRID);
             studioGhost.position.set(gx, surfaceAt(studio.spec, gx, gz) + 0.06, gz);
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);

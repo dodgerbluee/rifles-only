@@ -17,6 +17,7 @@ import {
   buildingHeight,
   buildingInterior,
   punchRects,
+  subtractRect,
   type BuildingInterior,
   type BuildingSpec,
   type ClimbDir,
@@ -28,12 +29,14 @@ import {
   type WallOpening,
   type XzRect,
 } from "./layout";
+import { siteBounds, sitePads, writeSitePads, type SitePad } from "../world";
 
 export const STUDIO_STORE = "rifles-studio-spec";
 /** Quarter of the old 2m cell. Stamps sit in a cell; building edges sit on the lines. */
 export const GRID = 0.5;
 export const SITE_ZONE = 6;
-export const SITE_MIN = 2;
+/** Smallest plant stroke. Click is one cell; drag/knobs can be any rect ≥ GRID. */
+export const SITE_MIN = GRID;
 export const HANDLE_KNOB = 0.18;
 export const HANDLE_BAND = 0.22;
 
@@ -395,13 +398,18 @@ export function place(
     const id = tool === "siteA" ? "loft" : "well";
     const call = tool === "siteA" ? "A" : "B";
     const name = call;
-    const cx = opts.bw != null ? x : px;
-    const cz = opts.bd != null ? z : pz;
-    const ww = Math.max(SITE_MIN, opts.bw ?? SITE_ZONE);
-    const dd = Math.max(SITE_MIN, opts.bd ?? SITE_ZONE);
+    const cx = opts.bw != null ? x : cell.x;
+    const cz = opts.bd != null ? z : cell.z;
+    const ww = Math.max(GRID, opts.bw ?? GRID);
+    const dd = Math.max(GRID, opts.bd ?? GRID);
     const y = opts.y ?? surfaceAt(spec, cx, cz);
-    next.sites = next.sites.filter((s) => s.id !== id);
-    next.sites.push({ id, call, name, x: cx, z: cz, y, w: ww, d: dd });
+    const painted: SitePad = { x: cx, z: cz, w: ww, d: dd };
+    const existing = next.sites.find((s) => s.id === id);
+    if (existing) {
+      writeSitePads(existing, [...sitePads(existing), painted]);
+      return next;
+    }
+    next.sites.push(writeSitePads({ id, call, name, x: cx, z: cz, y, w: ww, d: dd }, [painted]));
     return next;
   }
   if (tool === "plant") {
@@ -449,7 +457,23 @@ export function place(
 export function eraseNear(spec: LayoutSpec, x: number, z: number, r = 1.1): LayoutSpec {
   const item = pickItem(spec, x, z, r);
   if (!item) return spec;
+  if (item.kind === "site") return punchSite(spec, item.i, x, z);
   return deleteItem(spec, item);
+}
+
+function punchSite(spec: LayoutSpec, i: number, x: number, z: number): LayoutSpec {
+  const next = cloneSpec(spec);
+  const s = next.sites[i];
+  if (!s) return spec;
+  const hole = cellRect(x, z);
+  const leftover: SitePad[] = [];
+  for (const p of sitePads(s)) leftover.push(...subtractRect(p, hole, GRID));
+  if (!leftover.length) {
+    next.sites.splice(i, 1);
+    return next;
+  }
+  writeSitePads(s, leftover);
+  return next;
 }
 
 export function deleteItem(spec: LayoutSpec, item: StudioItem): LayoutSpec {
@@ -790,10 +814,10 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): Studi
   }
   for (let i = 0; i < spec.sites.length; i++) {
     const s = spec.sites[i]!;
-    const w = s.w ?? SITE_ZONE;
-    const d = s.d ?? SITE_ZONE;
-    if (inside(s.x, s.z, w, d, 0)) {
-      hits.push({ item: { kind: "site", i }, y: s.y ?? 0, area: w * d, dist: 0 });
+    const pads = sitePads(s);
+    if (pads.some((p) => inside(p.x, p.z, p.w, p.d, 0))) {
+      const area = pads.reduce((n, p) => n + p.w * p.d, 0);
+      hits.push({ item: { kind: "site", i }, y: s.y ?? 0, area, dist: 0 });
     }
   }
   for (let i = 0; i < spec.plantSpawns.length; i++) {
@@ -912,9 +936,13 @@ export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: numbe
   if (item.kind === "site") {
     const s = next.sites[item.i];
     if (!s) return spec;
-    s.x = x;
-    s.z = z;
-    s.y = surfaceAt(next, x, z);
+    const dx = x - s.x;
+    const dz = z - s.z;
+    writeSitePads(
+      s,
+      sitePads(s).map((p) => ({ ...p, x: p.x + dx, z: p.z + dz })),
+    );
+    s.y = surfaceAt(next, s.x, s.z);
     return next;
   }
   if (item.kind === "plant") {
@@ -983,9 +1011,8 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
   if (item.kind === "site") {
     const s = spec.sites[item.i];
     if (!s) return null;
-    const w = s.w ?? SITE_ZONE;
-    const d = s.d ?? SITE_ZONE;
-    return { x: s.x, y: (s.y ?? 0) + 0.06, z: s.z, sx: w, sy: 0.12, sz: d };
+    const b = siteBounds(sitePads(s));
+    return { x: b.x, y: (s.y ?? 0) + 0.06, z: b.z, sx: b.w, sy: 0.12, sz: b.d };
   }
   if (item.kind === "area") {
     const a = spec.areas?.[item.i];
@@ -1188,9 +1215,11 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
   }
   if (item.kind === "site") {
     const s = spec.sites[item.i];
-    return s
-      ? { x: s.x, z: s.z, w: s.w ?? SITE_ZONE, d: s.d ?? SITE_ZONE, minW: SITE_MIN, minD: SITE_MIN }
-      : null;
+    if (!s) return null;
+    const pads = sitePads(s);
+    if (pads.length !== 1) return null;
+    const p = pads[0]!;
+    return { x: p.x, z: p.z, w: p.w, d: p.d, minW: GRID, minD: GRID };
   }
   return null;
 }
@@ -1252,10 +1281,7 @@ export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x
   if (item.kind === "site") {
     const s = next.sites[item.i];
     if (!s) return spec;
-    s.x = nextBox.x;
-    s.z = nextBox.z;
-    s.w = nextBox.w;
-    s.d = nextBox.d;
+    writeSitePads(s, [{ x: nextBox.x, z: nextBox.z, w: nextBox.w, d: nextBox.d }]);
     s.y = surfaceAt(next, nextBox.x, nextBox.z);
     return next;
   }
@@ -1494,7 +1520,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool in COVER_SIZE) return COVER_SIZE[tool as CoverKind];
   if (tool === "climb") return [2.2, 0.4, 1.75];
   if (tool === "ladder") return [1.2, STOREY, 0.4];
-  if (tool === "siteA" || tool === "siteB") return [bw > STAMP ? bw : SITE_ZONE, 0.12, bd > STAMP ? bd : SITE_ZONE];
+  if (tool === "siteA" || tool === "siteB") return [bw > STAMP ? bw : GRID, 0.12, bd > STAMP ? bd : GRID];
   if (tool === "area") return [bw, 0.12, bd];
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
   if (tool === "lamp") return [0.2, 3.2, 0.2];
@@ -1739,7 +1765,7 @@ export function placeBuildingRect(
     return place(spec, "area", rect.x, rect.z, { yaw, bw: rect.w, bd: rect.d, name });
   }
   if (tool === "siteA" || tool === "siteB") {
-    const pad = snapRect(x0, z0, x1, z1, SITE_MIN);
+    const pad = snapRect(x0, z0, x1, z1, GRID);
     return place(spec, tool, pad.x, pad.z, { yaw, bw: pad.w, bd: pad.d, y: surfaceAt(spec, pad.x, pad.z) });
   }
   if (tool === "floor") {
