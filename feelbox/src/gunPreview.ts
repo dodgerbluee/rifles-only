@@ -38,28 +38,34 @@ for (const id of ["kar", "karscope", "mosin"] as const) {
   stage.add(rifles[id].root);
 }
 
+const world = new THREE.Group();
+world.visible = false;
+world.add(
+  new THREE.Mesh(
+    new THREE.SphereGeometry(8, 20, 14),
+    new THREE.MeshBasicMaterial({ color: 0xc8cbc4, side: THREE.BackSide }),
+  ),
+);
 {
-  let ocular: THREE.Object3D | undefined;
-  rifles.karscope.root.traverse((c) => {
-    if (c.userData.karOcular) ocular = c;
-  });
-  if (ocular) {
-    const lens = new THREE.Mesh(
-      new THREE.CircleGeometry(0.0046, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x6a8c62,
-        transparent: true,
-        opacity: 0.32,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-    );
-    lens.rotation.copy(ocular.rotation);
-    lens.position.copy(ocular.position);
-    lens.position.z += 0.0012;
-    rifles.karscope.root.add(lens);
-  }
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(28, 28),
+    new THREE.MeshLambertMaterial({ color: 0x9a968c }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.55;
+  world.add(ground);
+  const plaster = new THREE.MeshLambertMaterial({ color: 0x8a8478 });
+  const brick = new THREE.MeshLambertMaterial({ color: 0x7a5a48 });
+  const hut = (x: number, z: number, w: number, h: number, d: number, mat: THREE.Material) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, h * 0.5 - 0.55, z);
+    world.add(m);
+  };
+  hut(-1.4, -4.6, 1.5, 1.15, 1.3, plaster);
+  hut(1.7, -5.4, 1.9, 1.7, 1.5, brick);
+  hut(0.1, -7.2, 2.6, 0.72, 1.9, plaster);
 }
+scene.add(world);
 
 let knife = makeMelee(prefs.look.melee);
 knife.visible = false;
@@ -121,6 +127,8 @@ export function tickGunPreview(dt: number) {
 function pose(id: SecondaryId, kind: PreviewKind) {
   for (const rifleId of ["kar", "karscope", "mosin"] as const) rifles[rifleId].root.visible = false;
   knife.visible = false;
+  world.visible = false;
+  camera.far = 8;
   if (id === "knife") {
     knife.visible = true;
     knife.position.set(0, 0.02, 0);
@@ -133,22 +141,27 @@ function pose(id: SecondaryId, kind: PreviewKind) {
   }
   if (!isRifleId(id)) return;
   const hold = rifles[id];
-  hold.root.visible = true;
   if (kind === "sight") {
+    world.visible = true;
+    camera.far = 24;
+    if (RIFLES[id].glass) {
+      camera.fov = 26;
+      camera.near = 0.08;
+      camera.position.set(0, 0.14, 0.9);
+      camera.lookAt(0.12, 0.02, -6);
+      return;
+    }
+    hold.root.visible = true;
     hold.root.position.copy(hold.adsPos);
     hold.root.rotation.set(0, 0, 0);
+    camera.fov = RIFLES[id].adsFov;
+    camera.near = 0.02;
     camera.position.set(0, 0, 0);
     camera.rotation.set(0, 0, 0);
     camera.rotation.order = "YXZ";
-    if (RIFLES[id].glass) {
-      camera.fov = 7.4;
-      camera.near = 0.004;
-    } else {
-      camera.fov = RIFLES[id].adsFov;
-      camera.near = 0.02;
-    }
     return;
   }
+  hold.root.visible = true;
   hold.root.position.set(0, 0, 0);
   hold.root.rotation.set(0.12, spin, 0.04);
   camera.fov = 38;
