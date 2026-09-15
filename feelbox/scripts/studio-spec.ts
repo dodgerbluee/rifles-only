@@ -46,6 +46,8 @@ import {
   callName,
   isRectTool,
   setAreaName,
+  setBuildingRoof,
+  setPartitionStoreys,
 } from "../src/maps/studio.ts";
 import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } from "../src/maps/studio-lib.ts";
 import { SIDING_SPEC } from "../src/maps/siding.ts";
@@ -583,6 +585,100 @@ check("interior wall sits on the floor", (inner?.y ?? -1) === 0);
 check("interior wall is not on the roof", (inner?.y ?? 9) < surfaceAt(inside, 0, 0) - 1);
 check("interior wall is not snapped to an outer face", Math.abs(inner?.z ?? 9) < 1);
 check("interiorYAt is ground inside a 1F house", interiorYAt(inside, 0, 0) === 0);
+
+let roofed = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 });
+const roofY = surfaceAt(roofed, 0, 0);
+roofed = place(roofed, "crate", 0, 0, { y: roofY });
+roofed = place(roofed, "plant", 1, 0, { y: roofY });
+roofed = place(roofed, "siteA", 0, 0, { y: roofY, bw: GRID, bd: GRID });
+const roofCrate = roofed.cover?.[0];
+check("crate on a roof stores y", roofCrate?.y === roofY && roofY === STOREY);
+check("plant spawn on a roof stores y", roofed.plantSpawns.at(-1)?.[2] === roofY);
+check("site on a roof stores y", (roofed.sites.find((s) => s.id === "loft")?.y ?? 0) === roofY);
+const roofedWorld = compileLayout(new THREE.Scene(), roofed);
+check(
+  "crate collider sits on the roof",
+  !!roofCrate &&
+    roofedWorld.colliders.some(
+      (c) =>
+        c.min.y >= roofY - 0.05 &&
+        c.max.y <= roofY + COVER_SIZE.crate[1] + 0.05 &&
+        c.min.x < roofCrate.x &&
+        c.max.x > roofCrate.x &&
+        c.min.z < roofCrate.z &&
+        c.max.z > roofCrate.z,
+    ),
+);
+
+let twoF = setBuildingInterior(setBuildingStoreys(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), 0, 2), 0, "floors");
+check("walk hint on 2F is the deck", interiorYAt(twoF, 0, 0, STOREY + 0.2) === STOREY);
+check("orbit 2F is the roof", surfaceAt(twoF, 0, 0) === 2 * STOREY);
+
+let openTop = setBuildingRoof(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), 0, false);
+check("open 1F place y is ground", surfaceAt(openTop, 0, 0) === 0);
+check(
+  "open 1F has no roof walk",
+  thinWalkAt(compileLayout(new THREE.Scene(), openTop), 0, 0, STOREY).length === 0,
+);
+
+let tallWall = place(blankSpec(), "wall", 0, 0, { yaw: 0 });
+tallWall = setPartitionStoreys(tallWall, 0, 3);
+check(
+  "wall storeys 3 writes h",
+  tallWall.partitions?.[0]?.floors === 3 && Math.abs((tallWall.partitions?.[0]?.h ?? 0) - 3 * STOREY) < 1e-6,
+);
+check(
+  "3-storey wall compiles tall",
+  compileLayout(new THREE.Scene(), tallWall).colliders.some(
+    (c) => Math.abs(c.max.y - 3 * STOREY) < 0.2 && Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5,
+  ),
+);
+
+function wallBlockAt(
+  w: { colliders: { min: THREE.Vector3; max: THREE.Vector3 }[] },
+  x: number,
+  z: number,
+  y = 1,
+) {
+  return w.colliders.filter(
+    (c) =>
+      c.min.y < y &&
+      c.max.y > y &&
+      c.min.x < x &&
+      c.max.x > x &&
+      c.min.z < z &&
+      c.max.z > z &&
+      Math.min(c.max.x - c.min.x, c.max.z - c.min.z) < 0.5,
+  );
+}
+
+let pair = blankSpec();
+pair = place(pair, "building", -6, 0, { bw: 12, bd: 10 });
+pair = place(pair, "building", 6, 0, { bw: 12, bd: 10 });
+check("shared face is blocked before cut", wallBlockAt(compileLayout(new THREE.Scene(), pair), 0, 0).length >= 1);
+pair = place(pair, "cut", 0, 0);
+check(
+  "cut punches the first shell",
+  (pair.buildings?.[0]?.doors ?? []).some((d) => d.wall === "e"),
+);
+check(
+  "cut punches the neighbor shell",
+  (pair.buildings?.[1]?.doors ?? []).some((d) => d.wall === "w"),
+);
+check("shared face is open after cut", wallBlockAt(compileLayout(new THREE.Scene(), pair), 0, 0).length === 0);
+
+let mirrored = blankSpec();
+mirrored = place(mirrored, "building", -6, 0, { bw: 12, bd: 10 });
+mirrored = place(mirrored, "building", 6, 0, { bw: 12, bd: 10 });
+mirrored = addOpening(mirrored, "door", { i: 1, wall: "w", at: 0, x: 0, y: 0, z: 0, floor: 0 });
+check(
+  "door on the later house also opens the first shell",
+  (mirrored.buildings?.[0]?.doors ?? []).some((d) => d.wall === "e"),
+);
+check(
+  "mirrored door opens the shared face",
+  wallBlockAt(compileLayout(new THREE.Scene(), mirrored), 0, 0).length === 0,
+);
 
 const catalog = seedCatalog(emptyLibrary(blankSpec()), LAYOUT_SPECS);
 for (const id of ["wharf", "harbor", "cove", "parish", "cut", "siding"] as const) {
