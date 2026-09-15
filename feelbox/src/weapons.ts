@@ -195,7 +195,7 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 /**
  * Iron rear: option-3 rounded U, 35% shorter. adsPos is unchanged.
  * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
- * Thick arms and body. The boxy hood's black sits outside this leaf.
+ * Thick arms and body. In front of the wider boxy hood.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
@@ -240,9 +240,9 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square hood whose black arms sit outside the rounded U. The far
- * end starts in the rounded leaf; the near end comes toward the eye
- * so the boxy black finishes outside the round U. adsPos is unchanged.
+ * Square hood whose black arms sit outside the rounded U. The near
+ * end starts in the rounded leaf; the far end goes toward the muzzle
+ * so the rounded U stays in front. adsPos is unchanged.
  */
 function karIronForeU(
   root: THREE.Group,
@@ -475,7 +475,7 @@ function buildKar98(scoped: boolean, world = false): RifleView {
     const nest = roundDepth * 0.55;
     const outside = 0.022;
     const boxyDepth = roundDepth + outside - nest;
-    const boxyZ = roundZ + (nest + outside) / 2;
+    const boxyZ = roundZ - (nest + outside) / 2;
     karIronRear(root, roundZ, recTop, steel);
     karIronForeU(root, boxyZ, recTop, steel, boxyDepth);
   }

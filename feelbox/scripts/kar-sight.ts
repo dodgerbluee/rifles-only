@@ -69,15 +69,15 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   rearMesh.geometry.computeBoundingBox();
   const rearBox = rearMesh.geometry.boundingBox!;
   check("boxy U black is outside the rounded U", foreBox.max.x - foreBox.min.x > rearBox.max.x - rearBox.min.x, `foreW=${foreBox.max.x - foreBox.min.x} rearW=${rearBox.max.x - rearBox.min.x}`);
-  check("boxy U is closer to the eye than the rounded U", ironFore.position.z > ironRear.position.z, `roundZ=${ironRear.position.z} boxyZ=${ironFore.position.z}`);
+  check("rounded U is in front of the boxy U", ironRear.position.z > ironFore.position.z, `roundZ=${ironRear.position.z} boxyZ=${ironFore.position.z}`);
   const roundDepth = Number(rearMesh.userData.karIronDepth);
   const boxyDepth = Number(ironFore.userData.karIronDepth);
-  const boxyEye = ironFore.position.z + boxyDepth / 2;
-  const boxyMuzzle = ironFore.position.z - boxyDepth / 2;
+  const boxyNear = ironFore.position.z + boxyDepth / 2;
+  const boxyFar = ironFore.position.z - boxyDepth / 2;
   const roundFront = ironRear.position.z - roundDepth / 2;
   const roundBack = ironRear.position.z + roundDepth / 2;
-  check("boxy U starts inside the rounded U", boxyMuzzle > roundFront && boxyMuzzle < roundBack, `boxyMuzzle=${boxyMuzzle} roundFront=${roundFront} roundBack=${roundBack}`);
-  check("boxy U finishes outside the rounded U", boxyEye - roundBack >= 0.018, `stickOut=${boxyEye - roundBack}`);
+  check("boxy U starts inside the rounded U", boxyNear > roundFront && boxyNear < roundBack, `boxyNear=${boxyNear} roundFront=${roundFront} roundBack=${roundBack}`);
+  check("boxy U finishes outside the rounded U", roundFront - boxyFar >= 0.018, `stickOut=${roundFront - boxyFar}`);
   check("boxy U is taller than the rounded U", foreBox.max.y > rearBox.max.y, `boxyH=${foreBox.max.y} roundH=${rearBox.max.y}`);
 }
 
