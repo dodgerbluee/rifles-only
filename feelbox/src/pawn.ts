@@ -428,15 +428,15 @@ function makeShirt(id: ShirtId, k: Kit, team: Team, cloth: THREE.Mesh[], extras:
   if (id !== "vest") cloth.push(shoulder);
 
   if (id === "tee") {
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.072, 0.012, 6, 14), k.tunic);
-    collar.position.set(0, 1.408, -0.012);
-    collar.rotation.x = Math.PI / 2;
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.018, 12), k.tunic);
+    collar.position.set(0, 1.412, -0.005);
+    collar.scale.z = 0.78;
     extras.push(collar);
     cloth.push(collar);
   } else if (id === "henley") {
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.082, 0.02, 7, 14), k.tunic);
-    collar.position.set(0, 1.41, -0.005);
-    collar.rotation.x = Math.PI / 2;
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.082, 0.028, 12), k.tunic);
+    collar.position.set(0, 1.415, -0.005);
+    collar.scale.z = 0.8;
     extras.push(collar);
     cloth.push(collar);
     for (let i = 0; i < 3; i++) {
@@ -450,9 +450,9 @@ function makeShirt(id: ShirtId, k: Kit, team: Team, cloth: THREE.Mesh[], extras:
     extras.push(lapelL, lapelR);
     cloth.push(lapelL, lapelR);
   } else if (id === "parka") {
-    const hood = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.034, 7, 16), k.tunic);
-    hood.position.set(0, 1.445, 0.005);
-    hood.rotation.x = Math.PI / 2;
+    const hood = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), k.tunic);
+    hood.position.set(0, 1.445, 0.055);
+    hood.scale.set(1, 0.82, 0.58);
     const hem = new THREE.Mesh(new THREE.CylinderGeometry(0.208, 0.208, 0.045, 12), k.tunic);
     hem.position.y = 0.945;
     hem.scale.z = 0.82;
@@ -631,9 +631,10 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
     const frame = mat(0x1a1814, 0.35, 0.25);
     const lens = mat(0x3a4a58, 0.18, 0.55);
     const bridge = bone(-0.02, 0.025, -0.158, 0.02, 0.025, -0.158, 0.006, frame);
-    const rimL = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.007, 6, 14), frame);
+    const rimL = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.037, 0.008, 12), frame);
     rimL.position.set(-0.055, 0.025, -0.155);
-    rimL.scale.set(1.12, 0.82, 1);
+    rimL.rotation.x = Math.PI / 2;
+    rimL.scale.set(1.12, 1, 0.82);
     const rimR = rimL.clone();
     rimR.position.x = 0.06;
     const glassL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 7), lens);
@@ -647,9 +648,9 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
     return;
   }
   if (id === "scarf") {
-    const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.042, 6, 12), k.tunic);
+    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.07, 12), k.tunic);
     wrap.position.set(0, -0.235, 0.015);
-    wrap.rotation.x = Math.PI / 2;
+    wrap.scale.z = 0.82;
     const tail = bone(0.045, -0.26, -0.08, 0.095, -0.41, -0.045, 0.035, k.tunic);
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.044, 9, 7), mat(teamTrim(team), 0.5, 0.12));
     knot.position.set(0.025, -0.265, -0.095);
@@ -659,9 +660,7 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
     return;
   }
   if (id === "earpro") {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.018, 5, 12, Math.PI), k.helm);
-    band.position.y = 0.04;
-    band.rotation.z = Math.PI;
+    const band = bone(-0.145, 0.125, 0.005, 0.145, 0.125, 0.005, 0.018, k.helm);
     const cupL = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), k.helm);
     cupL.position.set(-0.165, 0.005, 0);
     cupL.scale.set(0.48, 1, 0.78);
