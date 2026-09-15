@@ -32,6 +32,29 @@ export function lookbackMs(pingMs: number) {
   return Math.max(0, pingMs) + 1000 / TICK_HZ;
 }
 
+/** Probe the game socket this often. One in flight so a hitch cannot flood the window. */
+export const RTT_MS = 500;
+export const RTT_KEEP = 8;
+export const RTT_WAIT_MS = 4000;
+
+/** HUD / lookback ping is the recent minimum so a shader hitch is not a 1000 ms RTT. */
+export function rttOf(samples: number[]) {
+  if (!samples.length) return 0;
+  let min = samples[0]!;
+  for (let i = 1; i < samples.length; i++) {
+    const n = samples[i]!;
+    if (n < min) min = n;
+  }
+  return min;
+}
+
+export function pushRtt(samples: number[], rtt: number, keep = RTT_KEEP) {
+  if (!Number.isFinite(rtt) || rtt < 0) return rttOf(samples);
+  samples.push(rtt);
+  while (samples.length > keep) samples.shift();
+  return rttOf(samples);
+}
+
 export function pushPred(hist: PredSample[], sample: PredSample, keepMs = PRED_KEEP_MS) {
   hist.push(sample);
   const cut = sample.t - keepMs;

@@ -16,7 +16,9 @@ import {
   predAt,
   pushPose,
   pushPred,
+  pushRtt,
   reconcilePredicted,
+  rttOf,
   sampleInterp,
 } from "../src/netFeel.ts";
 import { emptyInput, reconcilePos } from "../src/peers.ts";
@@ -152,6 +154,16 @@ check("sub-slack error is not tugged every snapshot", Math.abs(slackPos.x) < 1e-
 check("hard snap is above 1.6m walk jitter", HARD_SNAP_XZ > 1.6);
 check("1.6m jitter blends instead of teleporting", jitterPos.x > 0 && jitterPos.x < 1.6 && jitterPred.x > 0 && jitterPred.x < 1.6);
 check("lookback at 50 ping is RTT plus one tick", Math.abs(lookbackMs(50) - (50 + 1000 / TICK_HZ)) < 1e-6);
+check("empty rtt window is 0", rttOf([]) === 0);
+{
+  const samples: number[] = [];
+  check("first rtt sample is used", pushRtt(samples, 42) === 42);
+  check("hitch after a good sample is not the displayed ping", pushRtt(samples, 1200) === 42);
+  check("later good samples still win", pushRtt(samples, 38) === 38);
+  for (let i = 0; i < 10; i++) pushRtt(samples, 1100);
+  check("a full window of real 1100ms ping stays 1100", rttOf(samples) === 1100);
+  check("negative rtt is ignored", pushRtt(samples, -4) === 1100);
+}
 check("naive reconcile tugs toward a 50ms-stale pose", naivePull > 0.04, `pull=${naivePull.toFixed(3)}`);
 check("history reconcile ignores a matching 50ms-stale pose", smartPull < 0.02, `pull=${smartPull.toFixed(3)}`);
 check("interp delay is 1–2 snapshots", INTERP_DELAY_MS >= 16 && INTERP_DELAY_MS <= 80, `delay=${INTERP_DELAY_MS}`);

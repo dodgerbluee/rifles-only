@@ -4,6 +4,7 @@
  */
 import { DEFAULT_LOOK, packLook } from "./look";
 import type { LayoutSpec } from "./maps/layout";
+import { RTT_MS, RTT_WAIT_MS, pushRtt } from "./netFeel";
 import { shouldSendInput, unpackSnap, type PackedSnap } from "./netWire";
 
 export type NetRole = "host" | "client" | "offline";
@@ -301,6 +302,9 @@ export function connectNet(url?: string): NetHandle {
   let tries = 0;
   let reconnectTimer = 0;
   let rttTimer = 0;
+  let rttAwaiting = false;
+  let rttSentAt = 0;
+  const rttSamples: number[] = [];
   let lastInput: PlayerInput | null = null;
   let lastInputAt = 0;
   let lastUnpacked: Snapshot | null = null;
@@ -459,7 +463,8 @@ export function connectNet(url?: string): NetHandle {
     }
     if (msg.type === "rtt") {
       const t = Number(msg.t);
-      if (Number.isFinite(t)) handle.pingMs = Math.max(0, performance.now() - t);
+      rttAwaiting = false;
+      if (Number.isFinite(t)) handle.pingMs = pushRtt(rttSamples, performance.now() - t);
       return;
     }
     if (msg.type === "rejected") {
@@ -542,11 +547,15 @@ export function connectNet(url?: string): NetHandle {
       return;
     }
     ws.addEventListener("open", () => {
+      sendRtt();
       rawSend({ type: "hello", name: helloName, skin: helloSkin, look: helloLook, playerKey: helloKey });
     });
     ws.addEventListener("message", onMessage);
     ws.addEventListener("close", () => {
       ws = null;
+      rttAwaiting = false;
+      rttSamples.length = 0;
+      handle.pingMs = 0;
       if (dead) return;
       const wasClient = handle.role === "client";
       handle.role = "offline";
@@ -571,10 +580,16 @@ export function connectNet(url?: string): NetHandle {
     reconnectTimer = window.setTimeout(open, wait);
   }
 
-  rttTimer = window.setInterval(() => {
-    if (handle.role !== "client") return;
-    rawSend({ type: "rtt", t: performance.now() });
-  }, 2000);
+  function sendRtt() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const now = performance.now();
+    if (rttAwaiting && now - rttSentAt < RTT_WAIT_MS) return;
+    rttAwaiting = true;
+    rttSentAt = now;
+    rawSend({ type: "rtt", t: now });
+  }
+
+  rttTimer = window.setInterval(sendRtt, RTT_MS);
 
   open();
   return handle;
