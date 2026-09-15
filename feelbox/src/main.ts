@@ -1262,10 +1262,11 @@ function studioRecord() {
   studio.redo = [];
 }
 
-function studioApply(next: LayoutSpec, opts?: { record?: boolean; checkpoint?: boolean }) {
+function studioApply(next: LayoutSpec, opts?: { record?: boolean; checkpoint?: boolean; sels?: StudioItem[] }) {
   if (next === studio.spec) return false;
   if (opts?.record !== false) studioRecord();
   persistSpec(next, opts?.checkpoint);
+  if (opts?.sels) studio.sels = opts.sels;
   rebuildStudio();
   paintStudio();
   return true;
@@ -1426,7 +1427,7 @@ function paintStudio() {
   const build = document.querySelector<HTMLElement>("#studio-building");
   const bi = studioBuildingIndex(studio.sels);
   const b = bi >= 0 ? studio.spec.buildings?.[bi] : undefined;
-  if (build) build.hidden = !b;
+  if (build) build.hidden = !b || studio.tool === "ramp";
   if (b) {
     const floors = buildingFloors(b);
     const n = document.querySelector("#studio-storeys");
@@ -1943,6 +1944,16 @@ function stampOpening() {
   if (ground) stampOpeningAt(ground.x, ground.z);
 }
 
+function placedStudioSel(prev: LayoutSpec, next: LayoutSpec, tool: ToolId): StudioItem[] | undefined {
+  if (tool === "ramp" && (next.ramps?.length ?? 0) > (prev.ramps?.length ?? 0)) {
+    return [{ kind: "ramp", i: next.ramps!.length - 1 }];
+  }
+  if (tool === "building" && (next.buildings?.length ?? 0) > (prev.buildings?.length ?? 0)) {
+    return [{ kind: "building", i: next.buildings!.length - 1 }];
+  }
+  return [];
+}
+
 function finishStudioDrag() {
   const drag = studio.drag;
   const base = studio.base;
@@ -1983,7 +1994,8 @@ function finishStudioDrag() {
       studio.spec = base;
       studio.base = null;
     }
-    studioApply(next);
+    const prev = studio.spec;
+    studioApply(next, { sels: placedStudioSel(prev, next, studio.tool) });
     const status = document.querySelector("#studio-status");
     if (status) status.textContent = `placed ${studio.tool}`;
     return;
