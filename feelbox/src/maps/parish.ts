@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { makeKit, sky, finish, T } from "./kit";
 import type { BoxFn, MatFn, Kit } from "./kit";
 import type { World } from "../world";
+import type { LayoutSpec } from "./layout";
 
 type Kind = "plaster" | "brick" | "wood" | "cobble";
 
@@ -293,3 +294,87 @@ function subtract1d(a: number, b: number, holes: [number, number][]) {
   }
   return spans;
 }
+
+/** Studio copy of Parish so the streets can be edited and finalized. */
+export const PARISH_SPEC: LayoutSpec = {
+  id: "parish",
+  title: "Parish",
+  blurb: "Norman streets. Plant the Wire at A or B.",
+  theme: "stone",
+  bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
+  buildings: [
+    { x: 8, z: 21.4, w: 11.6, d: 10, floors: 1, doors: [{ wall: "s" }, { wall: "n" }], mat: "plaster" },
+    {
+      x: -18,
+      z: 5.2,
+      w: 8.4,
+      d: 9.6,
+      floors: 2,
+      doors: [{ wall: "e" }],
+      windows: [{ wall: "e", at: -2.8, floor: 0 }, { wall: "w", at: 1.6, floor: 1 }],
+      mat: "brick",
+    },
+    {
+      x: 18,
+      z: 4.7,
+      w: 8.4,
+      d: 10.2,
+      floors: 1,
+      doors: [{ wall: "w" }],
+      windows: [{ wall: "w", at: -2.6, floor: 0 }, { wall: "e", at: -0.4, floor: 0 }],
+      mat: "plaster",
+    },
+    { x: -16.1, z: -8, w: 12.2, d: 12.6, floors: 1, interior: "empty", doors: [{ wall: "e" }], mat: "brick" },
+  ],
+  cover: [
+    { x: -12.8, z: -12, kind: "crate" },
+    { x: -8, z: -10, kind: "crate" },
+    { x: 6, z: -6, kind: "crate" },
+    { x: -8, z: 8, kind: "crate" },
+    { x: 10, z: 12, kind: "crate" },
+    { x: 18, z: -6, kind: "crate" },
+    { x: 20.4, z: 22.6, kind: "crate" },
+  ],
+  climbs: [{ x: -21.2, z: -1.5, dir: "+x", height: 2.8, width: 2.4 }],
+  areas: [
+    { x: 8, z: 21.4, w: 12, d: 11, name: "Chapel" },
+    { x: -16, z: -8, w: 12, d: 14, name: "Gardens" },
+    { x: -18, z: 5.2, w: 9, d: 10, name: "West house" },
+    { x: 18, z: 4.7, w: 9, d: 11, name: "East house" },
+    { x: 2, z: 4, w: 8, d: 8, name: "Square" },
+  ],
+  sites: [
+    { id: "loft", call: "A", name: "Chapel", x: 8, z: 22 },
+    { id: "well", call: "B", name: "Gardens", x: -16, z: -8 },
+  ],
+  plantSpawns: [
+    [8, 29],
+    [7.2, 28.2],
+    [8.8, 28.2],
+    [8, 27.6],
+    [9, 29],
+  ],
+  watchSpawns: [
+    [-6, -20],
+    [-4, -20],
+    [-2, -20],
+    [-6, -18],
+    [0, -18],
+  ],
+  routes: [
+    [[-4, -14], [-8, -8], [-11, -8], [-16, -8]],
+    [[-4, -14], [2, -6], [2, 4], [2, 12], [8, 18], [8, 22]],
+    [[8, 28.4], [8, 22], [8, 18]],
+    [[8, 28.4], [2, 16], [-12, 8], [-12, -8], [-16, -8]],
+    [[8, 28.4], [20, 28], [20, 16], [18, 4], [18, -4], [2, -8], [-4, -10]],
+  ],
+  lamps: [
+    [2, -10],
+    [2, 4],
+    [-12, 2],
+    [18, 4],
+    [8, 18],
+    [10, 28],
+  ],
+};
+

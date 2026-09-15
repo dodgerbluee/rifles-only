@@ -28,6 +28,9 @@ export type PlayerInput = {
   mx: number;
   my: number;
   ping?: number;
+  /** 0 idle, 0–1 toss so killcam can replay the throw. */
+  throw?: number;
+  throwDrop?: boolean;
 };
 
 export type Pawn = {
@@ -60,6 +63,8 @@ export type Pawn = {
   look?: string;
   /** Admin-only identity. Do not show in killfeed. */
   playerKey?: string;
+  throw?: number;
+  throwDrop?: boolean;
 };
 
 /** Admin cow: flaming, no weapons, then explode. */
@@ -264,27 +269,8 @@ export function playWsUrl(): string {
   return `${proto}//${location.host}/play/ws`;
 }
 
-export type ListedServer = {
-  id: string;
-  name: string;
-  map: string;
-  mapTitle: string;
-  phase: string;
-  players: number;
-  max: number;
-  online: boolean;
-};
-
-export async function fetchServers(): Promise<ListedServer[]> {
-  try {
-    const res = await fetch("/api/servers");
-    if (!res.ok) return [];
-    const data = (await res.json()) as unknown;
-    return Array.isArray(data) ? (data as ListedServer[]) : [];
-  } catch {
-    return [];
-  }
-}
+export type { ListedServer } from "./servers";
+export { fetchServers } from "./servers";
 
 let helloName = "Rifle";
 let helloSkin: "rifle" | "field" | "unit" | "frame" = "rifle";

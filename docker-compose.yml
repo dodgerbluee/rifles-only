@@ -16,6 +16,7 @@ services:
       - GAME_WS=ws://game:8081/ws
       - DATA_DIR=/data
       - ACCOUNTS_PATH=/data/accounts.json
+      - INGEST_TOKEN=${INGEST_TOKEN:-rifles-ingest}
     ports:
       - "8080:8080"
     volumes:
@@ -35,6 +36,7 @@ services:
       - GAME_ID=default
       - DATA_DIR=/data
       - ACCOUNTS_PATH=/data/accounts.json
+      - INGEST_TOKEN=${INGEST_TOKEN:-rifles-ingest}
     expose:
       - "8081"
     depends_on:

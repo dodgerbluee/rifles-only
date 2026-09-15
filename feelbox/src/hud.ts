@@ -88,20 +88,25 @@ export function showDeath(opts: {
   place: string;
   spawnName: string;
   remain: number;
+  killcam?: boolean;
 }) {
   deathEl.classList.add("on");
   deathEl.classList.remove("dim");
   document.body.classList.add("dead");
   deathBy.textContent = opts.killer.startsWith("by ") ? opts.killer : `by ${opts.killer}`;
   deathAt.textContent = `Went down at ${opts.place}`;
+  if (opts.killcam) {
+    deathCount.textContent = "Killcam";
+    deathWhere.textContent = "E skip · E again take over a bot";
+    return;
+  }
   const secs = Math.max(0, Math.ceil(opts.remain));
   deathCount.textContent =
     opts.remain < 0 ? "Out this round" : secs <= 0 ? "Deploying now" : `Deploying in ${secs}`;
   deathWhere.textContent =
     opts.remain < 0
-      ? "Click next teammate · E take over a bot"
+      ? "LMB spectate · RMB free look · E take over a bot"
       : `${opts.spawnName} · full health · 5 rounds · 2 smokes`;
-  if (opts.remain < 0) window.setTimeout(() => deathEl.classList.add("dim"), 2400);
 }
 
 export function hideDeath() {
@@ -109,6 +114,11 @@ export function hideDeath() {
   deathEl.classList.remove("dim");
   document.body.classList.remove("dead");
   specEl.classList.remove("on");
+}
+
+export function hideDeathOverlay() {
+  deathEl.classList.remove("on");
+  deathEl.classList.remove("dim");
 }
 
 export function setRoundResult(text: string | null, win = false) {
@@ -405,6 +415,11 @@ export function renderScoreboard(
   m: Match,
   youId: number,
   pingOf: (id: number) => number | null,
+  extra: {
+    board?: Map<string, { kd: number }>;
+    youKey?: string;
+    vs?: (key: string) => { wins: number; losses: number } | null;
+  } = {},
 ) {
   const ember = document.querySelector("#board-ember")!;
   const stone = document.querySelector("#board-stone")!;
@@ -443,7 +458,12 @@ export function renderScoreboard(
     const ping = pingOf(s.id);
     const tags = s.alive ? "" : '<em class="board-dead">Down</em>';
     const pingCls = ping == null ? "" : ping > 110 ? " ping-bad" : ping > 70 ? " ping-ok" : " ping-good";
-    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span class="board-ping${pingCls}">${ping == null ? "—" : Math.round(ping)}</span>`;
+    const career = s.playerKey ? extra.board?.get(s.playerKey) : null;
+    const careerBit = career ? `<em class="board-career">${career.kd.toFixed(2)}</em>` : "";
+    const h2h =
+      extra.youKey && s.playerKey && s.playerKey !== extra.youKey ? extra.vs?.(s.playerKey) : null;
+    const h2hBit = h2h ? `<em class="board-h2h">${h2h.wins}–${h2h.losses}</em>` : "";
+    el.innerHTML = `<span class="board-name"><i class="board-pip"></i><span class="board-who">${actorTag(s.name, s.occupant)}</span>${careerBit}${h2hBit}${tags}</span><span>${l.kills}</span><span>${l.assists}</span><span>${l.deaths}</span><span>${kd(l)}</span><span class="board-ping${pingCls}">${ping == null ? "—" : Math.round(ping)}</span>`;
     return el;
   };
   for (const s of emberSlots.sort(rank)) ember.append(row(s));

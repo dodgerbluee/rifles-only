@@ -174,6 +174,17 @@ export function punchRects(host: XzRect, holes: XzRect[] | undefined, min = HOLE
   return rects;
 }
 
+export function intersectRect(a: XzRect, b: XzRect, min = HOLE_MIN): XzRect[] {
+  const x0 = Math.max(a.x - a.w / 2, b.x - b.w / 2);
+  const x1 = Math.min(a.x + a.w / 2, b.x + b.w / 2);
+  const z0 = Math.max(a.z - a.d / 2, b.z - b.d / 2);
+  const z1 = Math.min(a.z + a.d / 2, b.z + b.d / 2);
+  const w = x1 - x0;
+  const d = z1 - z0;
+  if (w < min || d < min) return [];
+  return [{ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w, d }];
+}
+
 function spans(a: number, b: number, gaps: { c: number; w: number }[]) {
   let out: [number, number][] = [[Math.min(a, b), Math.max(a, b)]];
   for (const g of gaps) {
@@ -243,16 +254,32 @@ export function buildingHasDecks(b: BuildingSpec) {
 
 /** Walkable lid on every building, any storey count. Inset so the walls stay a parapet. */
 export function buildingRoof(b: BuildingSpec, wallH = 6.2): SlabSpec {
-  return {
-    x: b.x,
-    z: b.z,
-    w: Math.max(HOLE_MIN, b.w - T),
-    d: Math.max(HOLE_MIN, b.d - T),
-    y: buildingBase(b) + buildingHeight(b, wallH),
-  };
+  const inner = buildingInner(b);
+  return { ...inner, y: buildingBase(b) + buildingHeight(b, wallH) };
 }
 
-/** Later same-Y decks lose overlapping XZ. User floors (and later buildings) also lose earlier shells so they cannot glow against walls. */
+/** Interior footprint, inset so a painted floor cannot glow on the walls. */
+export function buildingInner(b: BuildingSpec): XzRect {
+  return { x: b.x, z: b.z, w: Math.max(HOLE_MIN, b.w - T), d: Math.max(HOLE_MIN, b.d - T) };
+}
+
+/** Roof, plus interior decks when the shell is not hollow. */
+export function buildingOwnsDeckAt(b: BuildingSpec, y: number, wallH = 6.2, yEps = WALK_Y_EPS) {
+  const base = buildingBase(b);
+  if (Math.abs(y - (base + buildingHeight(b, wallH))) <= yEps) return true;
+  if (!buildingHasDecks(b)) return false;
+  const floors = buildingFloors(b);
+  for (let f = 1; f < floors; f++) {
+    if (Math.abs(y - (base + f * STOREY)) <= yEps) return true;
+  }
+  return false;
+}
+
+/**
+ * Later same-Y decks lose overlapping XZ. User floors lose earlier shells so they
+ * cannot glow against walls. Hollow volumes keep a painted interior deck (Harbor Police).
+ * Ground-level wood still cannot run through a house that already has decks.
+ */
 export function resolveWalkDecks(
   decks: WalkDeck[],
   buildings: BuildingSpec[] = [],
@@ -270,7 +297,18 @@ export function resolveWalkDecks(
     for (let i = 0; i < last; i++) {
       const b = buildings[i]!;
       if (!buildingOccupiesWalkY(b, deck.y, wallH)) continue;
-      pieces = pieces.flatMap((p) => subtractRect(p, buildingShell(b)));
+      const shell = buildingShell(b);
+      if (buildingInterior(b) === "empty" && !buildingOwnsDeckAt(b, deck.y, wallH, yEps)) {
+        const inner = buildingInner(b);
+        const next: XzRect[] = [];
+        for (const p of pieces) {
+          next.push(...subtractRect(p, shell));
+          next.push(...intersectRect(p, inner));
+        }
+        pieces = next;
+        continue;
+      }
+      pieces = pieces.flatMap((p) => subtractRect(p, shell));
     }
     for (const p of pieces) out.push({ x: p.x, z: p.z, w: p.w, d: p.d, y: deck.y });
   }
@@ -496,14 +534,6 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   scene.add(sun);
 
   const lot: XzRect = { x: cx, z: cz, w: gw + 6, d: gd + 6 };
-  const groundHoles = (spec.slabs ?? []).filter((s) => s.y <= DECK_H + WALK_Y_EPS);
-  for (const p of punchRects(lot, groundHoles)) {
-    const gmat = kit.mat(theme.ground, p.w / 2, p.d / 2);
-    gmat.polygonOffset = true;
-    gmat.polygonOffsetFactor = 1;
-    gmat.polygonOffsetUnits = 1;
-    kit.box(p.x, -0.06, p.z, p.w, 0.12, p.d, gmat, true, true);
-  }
   const rim = kit.mat(theme.wall, 20, 6);
   wallAlongX(kit, maxZ, minX, maxX, 0, H, rim, []);
   wallAlongX(kit, minZ, minX, maxX, 0, H, rim, []);
@@ -553,7 +583,16 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   }
 
   for (const s of spec.slabs ?? []) walkDecks.push(s);
-  for (const p of resolveWalkDecks(walkDecks, buildings, H)) {
+  const resolved = resolveWalkDecks(walkDecks, buildings, H);
+  const groundHoles = resolved.filter((s) => s.y <= DECK_H + WALK_Y_EPS);
+  for (const p of punchRects(lot, groundHoles)) {
+    const gmat = kit.mat(theme.ground, p.w / 2, p.d / 2);
+    gmat.polygonOffset = true;
+    gmat.polygonOffsetFactor = 1;
+    gmat.polygonOffsetUnits = 1;
+    kit.box(p.x, -0.06, p.z, p.w, 0.12, p.d, gmat, true, true);
+  }
+  for (const p of resolved) {
     kit.box(p.x, p.y - DECK_H / 2, p.z, p.w, DECK_H, p.d, kit.mat("wood", p.w / 2, p.d / 2), true, true);
   }
 

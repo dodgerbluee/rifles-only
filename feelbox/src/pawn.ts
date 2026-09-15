@@ -13,6 +13,7 @@ import {
   type ShirtId,
   type ShoesId,
 } from "./look";
+import { makeWorldKar } from "./weapons";
 
 export { parseLook, packLook, resolveLook, lookFor, looksEqual, type Appearance } from "./look";
 
@@ -37,7 +38,7 @@ export type PawnParts = {
   body: THREE.Mesh;
   head: THREE.Mesh;
   helm: THREE.Mesh;
-  rifle: THREE.Mesh;
+  rifle: THREE.Object3D;
   cloth: THREE.Mesh[];
   hits: THREE.Mesh[];
   walk?: WalkRig;
@@ -114,6 +115,7 @@ export function buildPawn(root: THREE.Group, team: Team, botId?: number, kit?: P
   root.userData.cloth = parts.cloth;
   root.userData.head = parts.head;
   root.userData.helm = parts.helm;
+  root.userData.rifle = parts.rifle;
   root.userData.walk = parts.walk ?? null;
   root.userData.skin = skinFromLook(look);
   root.userData.look = look;
@@ -159,17 +161,24 @@ export function stepWalk(root: THREE.Group, dist: number, moving: boolean) {
   poseWalk(rig, gait, moving, root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined);
 }
 
+export function setPawnHeldVisible(root: THREE.Object3D, on: boolean) {
+  const rifle = root.userData.rifle as THREE.Object3D | undefined;
+  if (rifle) rifle.visible = on;
+}
+
 export function poseStance(root: THREE.Group, stance: Stance) {
   root.userData.stance = stance;
   const body = root.userData.body instanceof THREE.Mesh ? root.userData.body : undefined;
   const rest = typeof root.userData.bodyRestY === "number" ? root.userData.bodyRestY : BODY_REST_Y;
   const rig = root.userData.walk as WalkRig | null | undefined;
+  root.rotation.order = "YXZ";
+  const yaw = root.rotation.y;
   if (stance === "down") {
-    root.rotation.x = 1.25;
+    root.rotation.set(1.25, yaw, 0);
     return;
   }
   if (stance === "prone") {
-    root.rotation.x = 1.08;
+    root.rotation.set(1.08, yaw, 0);
     if (body) body.position.y = rest;
     if (rig) {
       rig.lHip.rotation.x = 0.18;
@@ -179,7 +188,7 @@ export function poseStance(root: THREE.Group, stance: Stance) {
     }
     return;
   }
-  root.rotation.x = 0;
+  root.rotation.set(0, yaw, 0);
   if (stance === "crouch") {
     if (body) body.position.y = rest - 0.34;
     if (rig) {
@@ -240,7 +249,7 @@ function classicPawn(team: Team, look: Appearance): PawnParts {
     mat(teamHelm(team), 0.6, 0.15),
   );
   helm.position.y = 1.74;
-  const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.62), mat(STEEL, 0.5, 0.3));
+  const rifle = makeWorldKar();
   rifle.position.set(0.22, 1.18, -0.3);
   return { body, head, helm, rifle, cloth: [body], hits: [] };
 }
@@ -326,13 +335,10 @@ function limbsPawn(team: Team, look: Appearance): PawnParts {
   const helm = dressHat(head, look.hat, k, team, cloth);
   dressAccessory(head, look.accessory, k, team, cloth);
 
-  const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.72), k.plate);
-  rifle.position.set(0.08, 1.15, -0.28);
-  rifle.rotation.x = 0.08;
-  rifle.rotation.y = 0.12;
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.16), mat(0x5a3a22, 0.55, 0.08));
-  rifle.add(stock);
-  stock.position.set(0, -0.01, 0.28);
+  const rifle = makeWorldKar();
+  rifle.position.set(0.12, 1.14, -0.3);
+  rifle.rotation.x = 0.06;
+  rifle.rotation.y = 0.1;
 
   return {
     body,

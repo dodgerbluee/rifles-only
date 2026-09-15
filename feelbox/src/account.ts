@@ -247,8 +247,10 @@ export function openRegister() {
 function paintChrome(rec: AccountRecord | null) {
   const login = document.querySelector<HTMLButtonElement>("#home-login");
   const logout = document.querySelector<HTMLButtonElement>("#home-logout");
+  const stats = document.querySelector<HTMLButtonElement>("#home-stats");
   if (login) login.hidden = !!rec;
   if (logout) logout.hidden = !rec;
+  if (stats) stats.hidden = !rec;
 }
 
 function fillIdentity(rec: AccountRecord | null) {

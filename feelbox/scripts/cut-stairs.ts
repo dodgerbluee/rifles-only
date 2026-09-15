@@ -52,6 +52,12 @@ check("Cut north wall still blocks", north.z < 32, `z=${north.z.toFixed(2)}`);
 const cove = buildMap(new THREE.Scene(), "cove");
 const dock = walk3(cove.colliders, -15.6, -16.2, 0, 0, 1, 30);
 check("Depot dock climb is walkable", dock.peak >= 2.4, `y=${dock.peak.toFixed(2)}`);
+const westLand = groundHeight(cove.colliders, -15.6, -12.2, R, 2.6);
+check("Depot west stair landing is floored", westLand >= 2.7, `y=${westLand.toFixed(2)}`);
+const eastLand = groundHeight(cove.colliders, -0.4, -12.2, R, 2.6);
+check("Depot east stair landing is floored", eastLand >= 2.7, `y=${eastLand.toFixed(2)}`);
+const garageLand = groundHeight(cove.colliders, 5.8, -13.2, R, 2.6);
+check("Depot garage stair landing is floored", garageLand >= 2.7, `y=${garageLand.toFixed(2)}`);
 
 const parish = buildMap(new THREE.Scene(), "parish");
 const chapel = walk3(parish.colliders, -22.4, -1.5, 0, 1, 0, 30);
