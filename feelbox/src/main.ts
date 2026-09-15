@@ -298,6 +298,7 @@ function skyOrbit(bounds: { minX: number; maxX: number; minZ: number; maxZ: numb
 let joinCam = skyOrbit(world.bounds);
 let joinOrbiting = false;
 let joinReturn: "lobby" | "play" | "spec" = "lobby";
+let pauseOpenedAt = 0;
 
 function resetJoinCam() {
   joinCam = skyOrbit(world.bounds);
@@ -595,6 +596,7 @@ function openPause() {
   hideJoinTeam();
   const el = document.querySelector<HTMLElement>("#pause");
   if (el) el.hidden = false;
+  pauseOpenedAt = performance.now();
   document.exitPointerLock();
 }
 
@@ -2706,6 +2708,7 @@ addEventListener("contextmenu", (e) => {
   if (studio.on || locker.on || document.body.classList.contains("started")) e.preventDefault();
 });
 document.addEventListener("pointerlockchange", () => {
+  const wasLocked = locked;
   locked = document.pointerLockElement === canvas;
   document.body.classList.toggle("playing", locked);
   if (locked && !document.body.classList.contains("spectating") && !document.body.classList.contains("choosing")) {
@@ -2719,6 +2722,14 @@ document.addEventListener("pointerlockchange", () => {
     smokeHeld = false;
     smokeCharge = 0;
     keys.clear();
+  }
+  if (
+    wasLocked &&
+    !locked &&
+    !overlayOpen() &&
+    (document.body.classList.contains("started") || document.body.classList.contains("spectating"))
+  ) {
+    openPause();
   }
 });
 
@@ -2854,6 +2865,7 @@ addEventListener("keydown", (e) => {
       return;
     }
     if (document.body.classList.contains("paused")) {
+      if (performance.now() - pauseOpenedAt < 280) return;
       leavePauseToGame();
       return;
     }
