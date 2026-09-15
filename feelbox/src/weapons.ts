@@ -192,6 +192,24 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   if (hipOnly) for (const m of parts) m.userData.karHipBarrel = true;
 }
 
+/** Broad Kar98k rear leaf with the reference's deep, rounded U-notch. */
+function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
+  const leaf = new THREE.Shape();
+  leaf.moveTo(-0.024, 0);
+  leaf.lineTo(-0.024, 0.026);
+  leaf.lineTo(-0.008, 0.026);
+  leaf.lineTo(-0.008, 0.016);
+  leaf.quadraticCurveTo(-0.008, 0.006, 0, 0.006);
+  leaf.quadraticCurveTo(0.008, 0.006, 0.008, 0.016);
+  leaf.lineTo(0.008, 0.026);
+  leaf.lineTo(0.024, 0.026);
+  leaf.lineTo(0.024, 0);
+  leaf.closePath();
+  const rear = extrude(leaf, 0.01, steel, 8);
+  rear.userData.karIronRear = true;
+  place(root, rear, 0, floorY, z);
+}
+
 /** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
 function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
   const tubeR = 0.0066;
@@ -361,7 +379,8 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const recTop = axisY + recR;
   const barTop = axisY + barR;
   const uH = scoped ? 0.007 : 0.01;
-  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054);
+  if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
+  else karIronRear(root, -0.08, recTop, steel);
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
