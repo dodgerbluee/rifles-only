@@ -43,6 +43,9 @@ check("iron ADS uses the standard rifle pose", !iron.adsGrip);
 check("iron uses the integrated rear leaf", !!ironRear);
 check("iron has the option-3 aiming bar", !!findFlag(iron.root, "karPoiBar"));
 check("scoped has no iron aiming bar", !findFlag(scoped.root, "karPoiBar"));
+const ironFore = findFlag(iron.root, "karIronForeU");
+check("iron has a square U in front of the rear leaf", !!ironFore);
+check("scoped has no iron fore U", !findFlag(scoped.root, "karIronForeU"));
 {
   const mesh = ironRear as THREE.Mesh;
   mesh.geometry.computeBoundingBox();
@@ -58,6 +61,13 @@ check("scoped has no iron aiming bar", !findFlag(scoped.root, "karPoiBar"));
   check("iron U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
   check("iron U top is wider than the bottom cutout", Number(mesh.userData.karIronTopW) > notchW + 1e-6, `topW=${mesh.userData.karIronTopW} botW=${notchW}`);
   check("iron aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
+}
+if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
+  ironFore.geometry.computeBoundingBox();
+  const foreBox = ironFore.geometry.boundingBox!;
+  const rearBox = (ironRear as THREE.Mesh).geometry.boundingBox!;
+  check("fore U is wider than the rear leaf", foreBox.max.x - foreBox.min.x > rearBox.max.x - rearBox.min.x, `foreW=${foreBox.max.x - foreBox.min.x}`);
+  check("fore U sits ahead of the rear leaf", ironFore.position.z < ironRear.position.z, `z=${ironFore.position.z}`);
 }
 
 let ironFacets = 0;

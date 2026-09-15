@@ -18,6 +18,7 @@ function findFlag(root: THREE.Object3D, key: string) {
 const iron = makeKar98();
 const rear = findFlag(iron.root, "karIronRear");
 const bar = findFlag(iron.root, "karPoiBar");
+const fore = findFlag(iron.root, "karIronForeU");
 const stockY = -0.052;
 const stockZ = -0.15;
 
@@ -28,6 +29,7 @@ check("no extra pitch", iron.adsPitch == null || iron.adsPitch === 0);
 check("no wrap grips", !iron.adsGrip);
 check("has sunk rear leaf", !!rear);
 check("has option-3 aiming bar", !!bar);
+check("has square fore U", !!fore);
 if (rear && rear instanceof THREE.Mesh) {
   rear.geometry.computeBoundingBox();
   const box = rear.geometry.boundingBox!;
@@ -44,6 +46,14 @@ if (bar && bar instanceof THREE.Mesh && rear) {
   check("U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
   check("U top is wider than the bottom cutout", Number(rear.userData.karIronTopW) > notchW + 1e-6, `topW=${rear.userData.karIronTopW} botW=${notchW}`);
   check("aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
+}
+if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
+  fore.geometry.computeBoundingBox();
+  rear.geometry.computeBoundingBox();
+  const foreW = fore.geometry.boundingBox!.max.x - fore.geometry.boundingBox!.min.x;
+  const rearW = rear.geometry.boundingBox!.max.x - rear.geometry.boundingBox!.min.x;
+  check("fore U is wider than the rear leaf", foreW > rearW, `foreW=${foreW} rearW=${rearW}`);
+  check("fore U sits ahead of the rear leaf", fore.position.z < rear.position.z, `z=${fore.position.z}`);
 }
 
 if (failed) {

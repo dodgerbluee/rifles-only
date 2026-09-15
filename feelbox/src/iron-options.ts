@@ -76,7 +76,7 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
     camera.near = 0.02;
     camera.far = 8;
     camera.position.set(0.1, 0.062, 0.05);
-    camera.lookAt(0, 0.044, -0.08);
+    camera.lookAt(0, 0.044, -0.12);
   }
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -110,9 +110,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose as main. Rounded U flared wider at the top than the bottom cutout."),
+    card("ads", "ADS", "Same zoom and eye pose as main. Rounded near U plus a square, wider U in front."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "The U is a sight block in the receiver, not a plate sitting on top."),
+    card("side", "On the rifle", "Square hood sits ahead of the rounded rear leaf."),
   );
 }

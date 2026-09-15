@@ -245,6 +245,41 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   root.add(bar);
 }
 
+/**
+ * Square, wider U just ahead of the rounded rear leaf. CoD1 Kar iron has a
+ * blocky hood in front of the near sight; adsPos is unchanged.
+ */
+function karIronForeU(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
+  const earH = 0.012;
+  const bw = 0.026;
+  const nw = 0.016;
+  const sink = 0.011;
+  const notchFloor = 0.001;
+  const depth = 0.014;
+  const leaf = new THREE.Shape();
+  leaf.moveTo(-bw, -sink);
+  leaf.lineTo(-bw, earH);
+  leaf.lineTo(-nw, earH);
+  leaf.lineTo(-nw, notchFloor);
+  leaf.lineTo(nw, notchFloor);
+  leaf.lineTo(nw, earH);
+  leaf.lineTo(bw, earH);
+  leaf.lineTo(bw, -sink);
+  leaf.closePath();
+  const geo = new THREE.ExtrudeGeometry(leaf, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.0005,
+    bevelSize: 0.0004,
+    bevelSegments: 1,
+    curveSegments: 1,
+  });
+  geo.translate(0, 0, -depth / 2);
+  const hood = new THREE.Mesh(geo, steel);
+  hood.userData.karIronForeU = true;
+  place(root, hood, 0, floorY, z);
+}
+
 /** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
 function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
   const tubeR = 0.0066;
@@ -415,7 +450,10 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const barTop = axisY + barR;
   const uH = scoped ? 0.007 : 0.01;
   if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
-  else karIronRear(root, -0.08, recTop, steel);
+  else {
+    karIronRear(root, -0.08, recTop, steel);
+    karIronForeU(root, -0.16, recTop, steel);
+  }
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
