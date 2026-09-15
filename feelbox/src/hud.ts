@@ -166,7 +166,7 @@ export function updateHud(opts: {
   nadeKind?: "smoke" | "frag" | "stun" | "flash";
   clouds: { x: number; z: number; radius: number; opacity: number }[];
   air?: { x: number; z: number }[];
-  weapon?: "rifle" | "kar" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
+  weapon?: "rifle" | "kar" | "kar2" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
   rifleName?: string;
   loadoutKeys?: string;
   spread?: number;

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RIFLES, makeKar98 } from "./weapons";
+import { RIFLES, makeKar98Two } from "./weapons";
 
 const IRON_FOV = RIFLES.kar.adsFov;
 
@@ -51,7 +51,7 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
   scene.add(key);
   scene.add(new THREE.AmbientLight(0x5a5850, 0.4));
 
-  const view = makeKar98();
+  const view = makeKar98Two();
   view.flash.visible = false;
   const root = view.root;
   const camera = new THREE.PerspectiveCamera(IRON_FOV, width / height, 0.02, 24);

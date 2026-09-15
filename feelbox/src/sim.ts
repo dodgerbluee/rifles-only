@@ -528,6 +528,7 @@ export function createSim(opts?: {
     if (r) {
       if (r.weapon === "mosin") return "mosin";
       if (r.weapon === "karscope") return "karscope";
+      if (r.weapon === "kar2") return "kar2";
       if (r.weapon === "kar" || r.weapon === "rifle") return "kar";
       return undefined;
     }

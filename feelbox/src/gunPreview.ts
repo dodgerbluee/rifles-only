@@ -4,9 +4,9 @@
  */
 import * as THREE from "three";
 import { makeMelee } from "./knife-variants";
-import { type SecondaryId } from "./loadout";
+import { PRIMARY_IDS, type SecondaryId } from "./loadout";
 import { prefs } from "./prefs";
-import { RIFLES, makeKar98, makeKar98Scoped, makeMosin, isRifleId, poseAdsMask } from "./weapons";
+import { RIFLES, makeKar98, makeKar98Two, makeKar98Scoped, makeMosin, isRifleId, poseAdsMask } from "./weapons";
 
 type PreviewKind = "sight" | "inspect";
 
@@ -18,6 +18,7 @@ type Pane = {
 
 const rifles = {
   kar: makeKar98(),
+  kar2: makeKar98Two(),
   karscope: makeKar98Scoped(),
   mosin: makeMosin(),
 } as const;
@@ -31,7 +32,7 @@ scene.add(new THREE.AmbientLight(0x6a6860, 0.35));
 
 const stage = new THREE.Group();
 scene.add(stage);
-for (const id of ["kar", "karscope", "mosin"] as const) {
+for (const id of PRIMARY_IDS) {
   rifles[id].flash.visible = false;
   rifles[id].root.position.set(0, 0, 0);
   rifles[id].root.visible = false;
@@ -125,7 +126,7 @@ export function tickGunPreview(dt: number) {
 }
 
 function pose(id: SecondaryId, kind: PreviewKind) {
-  for (const rifleId of ["kar", "karscope", "mosin"] as const) rifles[rifleId].root.visible = false;
+  for (const rifleId of PRIMARY_IDS) rifles[rifleId].root.visible = false;
   knife.visible = false;
   world.visible = false;
   camera.far = 8;

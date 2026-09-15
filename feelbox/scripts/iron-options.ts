@@ -1,4 +1,4 @@
-import { makeKar98 } from "../src/weapons.ts";
+import { makeKar98Two } from "../src/weapons.ts";
 import * as THREE from "three";
 
 let failed = 0;
@@ -15,7 +15,7 @@ function findFlag(root: THREE.Object3D, key: string) {
   return found;
 }
 
-const iron = makeKar98();
+const iron = makeKar98Two();
 const rear = findFlag(iron.root, "karIronRear");
 const bar = findFlag(iron.root, "karPoiBar");
 const fore = findFlag(iron.root, "karIronForeU");
@@ -87,4 +87,4 @@ if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\niron Kar keeps the live ADS pose; U is smaller and sunk into the receiver");
+console.log("\nKar98k-2 keeps the live ADS pose; two-piece U is sunk into the receiver");

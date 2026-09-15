@@ -11,7 +11,7 @@ const same = parseLoadout({ primary: "mosin", secondary: "mosin" });
 check("primary cannot equal secondary", same.primary === "mosin" && same.secondary === "knife");
 check("karscope is a legal primary", parseLoadout({ primary: "karscope", secondary: "kar" }).primary === "karscope");
 const secs = secondaryChoices("kar");
-check("Kar secondary omits Kar", !secs.includes("kar") && secs.includes("karscope") && secs.includes("mosin") && secs.includes("knife"));
+check("Kar secondary omits Kar", !secs.includes("kar") && secs.includes("kar2") && secs.includes("karscope") && secs.includes("mosin") && secs.includes("knife"));
 const line = hudWeaponLine({ primary: "kar", secondary: "karscope" }, "smoke", { smoke: 1, frag: 1, stun: 1, flash: 1 });
 check("HUD lists both rifles and knife", line.includes("1 KAR") && line.includes("2 KAR 4X") && line.includes("3 KNIFE"));
 const knifeLine = hudWeaponLine(DEFAULT_LOADOUT, "frag", { smoke: 1, frag: 2, stun: 0, flash: 0 });
@@ -22,7 +22,8 @@ check(
   "bots always carry the iron Kar, not a scoped or Mosin fake",
   botRifle() === "kar" && botRifle(0) === "kar" && botRifle(1) === "kar" && botRifle(2) === "kar" && botRifle(8) === "kar",
 );
-check("join picker lists four guns", LOADOUT_IDS.join(",") === "kar,karscope,mosin,knife");
+check("join picker lists Kar98k-2", LOADOUT_IDS.join(",") === "kar,kar2,karscope,mosin,knife");
+check("kar2 is a legal primary", parseLoadout({ primary: "kar2", secondary: "kar" }).primary === "kar2");
 const rifleThenKnife = loadoutFromPicks(["mosin", "knife"]);
 check("rifle then knife packs rifle as 1", !!rifleThenKnife && rifleThenKnife.primary === "mosin" && rifleThenKnife.secondary === "knife");
 const knifeThenRifle = loadoutFromPicks(["knife", "kar"]);
