@@ -396,23 +396,24 @@ function assignTactics(bots: Bot[], world: World, match: Match) {
     b.anchor.copy(siteAnchor(world, b.site, b.id));
   }
 
-  const setSupport = (team: Team, site: "loft" | "well", role: "escort" | "hold") => {
+  const setHomeSupport = (team: Team) => {
     const teamBots = living.filter((b) => b.team === team).sort((a, b) => a.id - b.id);
-    teamBots.forEach((b, i) => {
-      b.role = role;
-      b.anchor.copy(siteAnchor(world, site, i));
+    const index = { loft: 0, well: 0 };
+    teamBots.forEach((b) => {
+      b.role = "hold";
+      b.anchor.copy(siteAnchor(world, b.site, index[b.site]++));
     });
   };
 
   if (match.wire.mode === "planted") {
-    const site = match.wire.site ?? "loft";
-    setSupport(plant, site, "hold");
+    setHomeSupport(plant);
+    setHomeSupport(watch);
     const cutters = living
       .filter((b) => b.team === watch)
       .sort((a, b) => distanceToWire(a, match) - distanceToWire(b, match) || a.id - b.id);
     cutters.forEach((b, i) => {
       b.role = i === 0 ? "cut" : "hold";
-      b.anchor.copy(i === 0 ? wirePoint(match) : siteAnchor(world, site, i - 1));
+      if (i === 0) b.anchor.copy(wirePoint(match));
     });
     syncTacticalRoutes(living, world, match);
     return;
@@ -422,11 +423,12 @@ function assignTactics(bots: Bot[], world: World, match: Match) {
     const recoverers = living
       .filter((b) => b.team === plant)
       .sort((a, b) => distanceToWire(a, match) - distanceToWire(b, match) || a.id - b.id);
+    const index = { loft: 0, well: 0 };
     recoverers.forEach((b, i) => {
-      b.role = i === 0 ? "recover" : "escort";
-      b.anchor.copy(i === 0 ? wirePoint(match) : siteAnchor(world, b.site, i - 1));
+      b.role = i === 0 ? "recover" : b.site === recoverers[0]?.site ? "escort" : "hold";
+      b.anchor.copy(i === 0 ? wirePoint(match) : siteAnchor(world, b.site, index[b.site]++));
     });
-    setSupport(watch, recoverers[0]?.site ?? "loft", "hold");
+    setHomeSupport(watch);
     syncTacticalRoutes(living, world, match);
     return;
   }
@@ -435,12 +437,13 @@ function assignTactics(bots: Bot[], world: World, match: Match) {
   if (carrier) {
     carrier.role = "plant";
     carrier.anchor.copy(sitePoint(world, carrier.site));
-    const escorts = living.filter((b) => b.team === plant && b.id !== carrier.id).sort((a, b) => a.id - b.id);
-    escorts.forEach((b, i) => {
-      b.role = "escort";
-      b.anchor.copy(siteAnchor(world, carrier.site, i));
+    const index = { loft: 0, well: 0 };
+    const planters = living.filter((b) => b.team === plant && b.id !== carrier.id).sort((a, b) => a.id - b.id);
+    planters.forEach((b) => {
+      b.role = b.site === carrier.site ? "escort" : "hold";
+      b.anchor.copy(siteAnchor(world, b.site, index[b.site]++));
     });
-    setSupport(watch, carrier.site, "hold");
+    setHomeSupport(watch);
   }
   syncTacticalRoutes(living, world, match);
 }
