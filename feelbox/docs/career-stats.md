@@ -33,6 +33,79 @@ client Tab     <-- ident K/A/D --  packed snap (this match only)
 client locker  <-- GET /api/career?key=rk_... ------------  lobby
 ```
 
+## Many game servers
+
+Career is **one record per `playerKey` on one lobby**. Playing on two Last Wire
+boxes must add into the same K/D. That is the point of a registration id. Do
+not shard `career.json` by server.
+
+A **game server id already exists**: `GAME_ID` (env, default `"default"`). The
+lobby’s `/api/heartbeat` Map is already keyed by it. Career ingest sends that
+same id. Do not mint a second identifier.
+
+| Key | Whose | Lifetime | Job |
+| --- | --- | --- | --- |
+| `playerKey` | account / lobby | forever | Career primary key. Your record. |
+| `GAME_ID` | this game container | as long as the compose service | Which box sent the round. Server list, ingest idempotency, optional per-box rollup. |
+| `matchId` | this match | until `restartMatch` or process restart | Round 3 on box A ≠ round 3 on box B, and ≠ the next match on the same box. |
+
+`GAME_ID` is **instance identity**. Put it on the **game service in compose**,
+not as the only copy inside `server.json`. `server.json` is match rules (map,
+first-to, friendly fire) and can be shared or pointed at with `SERVER_CONFIG`.
+Two containers from the same image need two ids; env is how you tell them
+apart:
+
+```yaml
+# today
+game:
+  environment:
+    GAME_ID: default
+    GAME_NAME: Last Wire
+
+# later, still one lobby, two matches
+game-wharf:
+  environment:
+    GAME_ID: wharf-1
+    GAME_NAME: Wharf 1
+    LOBBY_URL: http://lobby:8080
+game-ice:
+  environment:
+    GAME_ID: ice-1
+    GAME_NAME: Ice 1
+    LOBBY_URL: http://lobby:8080
+```
+
+Slug: lowercase `a-z0-9-`, stable. Changing `GAME_ID` on a live box makes the
+lobby treat it as a new row; old heartbeat key goes stale. Optional later:
+`id` in `server.json` as a default, overridden by `GAME_ID` (same pattern as
+`GAME_NAME` / `GAME_MAP`). Compose remains the source of truth for “this
+container is box X”.
+
+Idempotency is `"${gameId}:${matchId}:${round}:${kind}"`. Two boxes can both
+finish round 3 in the same second; without `gameId` those ingest ids collide
+and one round is dropped. `matchId` is still required because `GAME_ID` is
+stable across match restarts.
+
+**Do not** give two game services the same `GAME_ID`. Heartbeats already
+overwrite each other in `servers.set(id, …)`. Career would then be the smaller
+problem.
+
+Optional later, not phase 1: a compact `byServer[gameId]` rollup on the career
+line (kills / deaths / rounds / wins, cap ~8 boxes). Locker still shows the
+merged totals. Per-box stats are a filter, not a second dataset.
+
+The real partition is **lobby**, not game. A second lobby is a second
+`accounts.json` and a second `career.json`. Player keys do not transfer.
+Community servers that share this lobby share career; a private lobby does not
+mix with yours.
+
+Joining more than one box is a **proxy** change, not a career change. Today
+`GAME_WS` is a single upstream (`ws://game:8081/ws`). A second game service
+needs the lobby to route `/play/ws?server=wharf-1` (or similar) from the
+server-list id. Heartbeat should carry that ws URL (or the lobby keeps a
+compose map of `GAME_ID` → `ws://…`). Career ingest does not wait on that:
+every game already knows `LOBBY_URL` and POSTs.
+
 ## Two layers
 
 ### Match board (game, already exists)
@@ -55,9 +128,9 @@ round can be ingested.
 
 ### Career (lobby, new)
 
-Keyed by **playerKey**. Survives game restarts and match restarts. Bots are
-never written. Unregistered clients cannot join (`admitPlayer` already requires
-a well-formed key).
+Keyed by **playerKey**. Survives game restarts, match restarts, and hopping
+between game boxes on this lobby. Bots are never written. Unregistered clients
+cannot join (`admitPlayer` already requires a well-formed key).
 
 Derived ratios (K/D, accuracy, HS%, round-win %, ADR, avg nade damage) are
 computed on read. Store only counters.
@@ -142,7 +215,7 @@ Idempotency on ingest:
 ```ts
 type Ingest = {
   token: string;          // shared INGEST_TOKEN, header or body
-  gameId: string;         // GAME_ID
+  gameId: string;         // GAME_ID — unique per game service, not a career shard
   matchId: string;        // new uuid (or start ms) on process start / restartMatch
   round: number;
   kind: "round" | "match";
@@ -271,6 +344,7 @@ Cheap (integer on an existing event):
 - Knife kills, first blood, aces
 - Head-to-head vs registered humans + one bot bucket
 - Per-map W–L later (`maps: { wharf: { rounds, wins } }`) — few ids, still cheap
+- Per-box rollup later (`byServer[gameId]`) — filter, not a second career file
 
 Skip for now (cost or noise):
 
@@ -294,7 +368,7 @@ Skip for now (cost or noise):
 | `server/career.mjs` | Load/save/merge/idempotency/bounds. |
 | `server/lobby.mjs` | Routes above. |
 | `server/accounts.mjs` | Username lookup for `vs` display only. |
-| `docker-compose.yml` + `feelbox/docker-compose.yml` | `INGEST_TOKEN` (or `CAREER_TOKEN`) on both services. |
+| `docker-compose.yml` + `feelbox/docker-compose.yml` | `INGEST_TOKEN` on lobby + every game service. Unique `GAME_ID` per game service (already `default`). |
 | `scripts/career.ts` | Merge, duplicate ingest, vs cap, bot bucket, derived ratios. |
 | `scripts/kill-hud.ts` | Tab still holds; extra snippet does not break layout tests. |
 | `scripts/account.ts` | Career file does not leak into public account. |
@@ -312,6 +386,8 @@ Follow the existing `npx tsx scripts/*.ts` style (see `scripts/account.ts`).
 - Wire-blast / cow damage does not inflate career `damage`.
 - GET board does not include `vs` (keep it small).
 - Empty token rejected when `INGEST_TOKEN` is set.
+- Two ingests, same `matchId+round`, different `gameId` → both apply.
+- Two ingests, same `gameId+matchId+round` → counters move once.
 
 ## Phases
 
