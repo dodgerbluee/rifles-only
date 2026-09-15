@@ -66,9 +66,10 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   check("boxy U is 5% shorter", fore.geometry.boundingBox!.max.y < 0.0144, `maxY=${fore.geometry.boundingBox!.max.y}`);
   check("boxy U is 10% wider", foreW > 0.064, `foreW=${foreW}`);
   const grey = (fore.material as THREE.MeshStandardMaterial).color.getHex();
-  check("boxy U is very dark grey", grey === 0x4a4c4a, `hex=${grey.toString(16)}`);
+  check("boxy U is very dark grey", grey === 0x262826, `hex=${grey.toString(16)}`);
   const ch = Number(fore.userData.karIronChamfer);
   check("boxy U has a small corner chamfer", ch > 0.0015 && ch < 0.0035, `ch=${ch}`);
+  check("boxy U cutout is a bit bigger", Number(fore.userData.karIronHoleW) > 0.025, `holeW=${fore.userData.karIronHoleW}`);
 }
 
 if (failed) {

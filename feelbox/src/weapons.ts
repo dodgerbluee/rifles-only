@@ -240,11 +240,9 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Square hood whose black arms sit outside the rounded U. 5% shorter
- * and 10% wider than the previous hood, very dark grey, with a small
- * diagonal cut on the outer top corners. The near end starts in the
- * rounded leaf; the far end goes toward the muzzle so the rounded U
- * stays in front. adsPos is unchanged.
+ * Square hood whose arms sit outside the rounded U. 5% shorter and
+ * 10% wider, near-black grey, small clipped top corners, slightly
+ * larger inner cutout. Rounded U stays in front. adsPos is unchanged.
  */
 function karIronForeU(
   root: THREE.Group,
@@ -263,7 +261,7 @@ function karIronForeU(
   const earThick = recW * 0.5 + 0.0012 - topW;
   const roundBw = topW + earThick * 1.5;
   const bw = (roundBw + 0.013) * 1.1;
-  const nw = topW + 0.0012;
+  const nw = (topW + 0.0012) * 1.22;
   const sink = 0.011;
   const notchFloor = 0.001;
   const ch = 0.0022;
@@ -289,14 +287,15 @@ function karIronForeU(
   });
   geo.translate(0, 0, -depth / 2);
   const grey = new THREE.MeshStandardMaterial({
-    color: 0x4a4c4a,
-    roughness: 0.52,
-    metalness: 0.38,
+    color: 0x262826,
+    roughness: 0.62,
+    metalness: 0.28,
   });
   const hood = new THREE.Mesh(geo, grey);
   hood.userData.karIronForeU = true;
   hood.userData.karIronDepth = depth;
   hood.userData.karIronOuterW = bw * 2;
+  hood.userData.karIronHoleW = nw * 2;
   hood.userData.karIronChamfer = ch;
   place(root, hood, 0, floorY, z);
 
