@@ -30,7 +30,7 @@ function mapFileName(id) {
 const ACCOUNT_PATH = defaultAccountPath(ROOT);
 const accounts = createAccountBook(ACCOUNT_PATH);
 const career = createCareerBook(defaultCareerPath(ROOT));
-const INGEST_TOKEN = process.env.INGEST_TOKEN ?? "";
+const INGEST_TOKEN = process.env.INGEST_TOKEN ?? "rifles-ingest";
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
@@ -77,11 +77,20 @@ function readJson(req, max = 16 * 1024) {
   });
 }
 
+function privateOrLocalIp(ip) {
+  const v = String(ip || "").replace(/^::ffff:/, "");
+  if (!v || v === "127.0.0.1" || v === "::1" || v === "localhost") return true;
+  if (/^10\./.test(v)) return true;
+  if (/^192\.168\./.test(v)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(v)) return true;
+  return false;
+}
+
+/** Shared token when set. Without a token, trust loopback + docker/LAN peers. */
 function ingestAllowed(req, body) {
   const sent = String(req.headers["x-ingest-token"] || body?.token || "");
   if (INGEST_TOKEN) return sent === INGEST_TOKEN;
-  const ip = req.socket.remoteAddress || "";
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  return privateOrLocalIp(req.socket.remoteAddress);
 }
 
 function careerNames(line) {

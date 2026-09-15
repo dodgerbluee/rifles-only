@@ -249,6 +249,7 @@ export function ingestCareer(data, body) {
   if (data.seen.includes(id)) return { ok: true, duplicate: true };
   const kind = body?.kind === "match" ? "match" : "round";
   const lines = Array.isArray(body?.lines) ? body.lines : [];
+  let applied = 0;
   for (const delta of lines) {
     if (!isPlayerKey(delta?.playerKey)) continue;
     const prev = data.players[delta.playerKey] ?? emptyCareer(delta.playerKey);
@@ -256,7 +257,11 @@ export function ingestCareer(data, body) {
     if (kind === "round") applyRound(prev, delta);
     else applyMatch(prev, delta);
     data.players[delta.playerKey] = prev;
+    applied += 1;
   }
+  // Do not burn the idempotency key when nothing landed — the game can retry
+  // after playerKey bindings catch up.
+  if (!applied) return { ok: false, reason: "lines" };
   data.seen.push(id);
   if (data.seen.length > SEEN_CAP) data.seen.splice(0, data.seen.length - SEEN_CAP);
   return { ok: true, duplicate: false };

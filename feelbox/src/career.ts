@@ -85,9 +85,9 @@ export function vsRecord(opponentKey?: string) {
   return { wins: row.roundWins, losses: Math.max(0, row.rounds - row.roundWins) };
 }
 
-export async function loadCareer(key: string): Promise<CareerView | null> {
+export async function loadCareer(key: string, opts?: { fresh?: boolean }): Promise<CareerView | null> {
   if (!isPlayerKey(key)) return null;
-  if (mine && mineKey === key && Date.now() - mineAt < TTL_MS) return mine;
+  if (!opts?.fresh && mine && mineKey === key && Date.now() - mineAt < TTL_MS) return mine;
   try {
     const res = await fetch(`/api/career?key=${encodeURIComponent(key)}`);
     if (!res.ok) return mine;
@@ -231,7 +231,7 @@ export function statsPageOpen() {
 
 export async function paintStatsPage() {
   const key = accountKey();
-  const view = key ? await loadCareer(key) : null;
+  const view = key ? await loadCareer(key, { fresh: true }) : null;
   paintPage(view);
 }
 

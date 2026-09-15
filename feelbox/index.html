@@ -194,16 +194,41 @@
     <div id="join-team" hidden>
       <p class="join-kicker">Joining <span id="join-who">the match</span></p>
       <p id="join-status" hidden></p>
-      <p class="join-ask">Pick a side</p>
+      <p class="join-ask">Pick a side · choose a rifle</p>
       <div id="join-team-pick" hidden></div>
       <div id="join-loadout" hidden>
+        <div id="gun-preview">
+          <div id="gun-preview-stage">
+            <canvas id="gun-preview-view"></canvas>
+            <div id="gun-preview-glass" aria-hidden="true">
+              <div class="gp-shade"></div>
+              <div class="gp-ring"></div>
+              <div class="gp-reticle">
+                <span class="gp-bar gp-bar-s"></span>
+                <span class="gp-bar gp-bar-l"></span>
+                <span class="gp-bar gp-bar-r"></span>
+              </div>
+            </div>
+          </div>
+          <p id="gun-preview-name">Kar98k</p>
+          <button type="button" id="gun-preview-mode">View sights</button>
+        </div>
         <p class="loadout-label">Primary</p>
         <div id="loadout-primary" class="loadout-row"></div>
         <p class="loadout-label">Secondary</p>
         <div id="loadout-secondary" class="loadout-row"></div>
-        <button type="button" id="loadout-go">Enter match</button>
       </div>
+      <button type="button" id="join-spec">Spectate</button>
       <button type="button" id="join-cancel">Back</button>
+    </div>
+
+    <div id="pause" hidden>
+      <div class="pause-panel">
+        <p class="pause-kicker">Menu</p>
+        <button type="button" id="pause-disconnect">Disconnect</button>
+        <button type="button" id="pause-team">Choose Team</button>
+        <button type="button" id="pause-settings">Settings</button>
+      </div>
     </div>
 
     <div id="settings" hidden>

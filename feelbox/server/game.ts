@@ -16,7 +16,7 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 const PORT = Number(process.env.PORT ?? 8081);
 const LOBBY_URL = process.env.LOBBY_URL ?? "";
 const GAME_ID = process.env.GAME_ID ?? "default";
-const INGEST_TOKEN = process.env.INGEST_TOKEN ?? "";
+const INGEST_TOKEN = process.env.INGEST_TOKEN ?? "rifles-ingest";
 const cfg = loadServerConfig();
 const GAME_NAME = process.env.GAME_NAME ?? cfg.name;
 const HEARTBEAT_MS = 15_000;
@@ -192,7 +192,6 @@ wss.on("connection", (ws) => {
       peer.playerKey = playerKey;
       clearTimeout(helloTimer);
       peer.name = cleanName(msg.name, id);
-      sim.join(id, peer.name, undefined, msg.skin, msg.look, playerKey);
       wireFull = true;
       send(ws, { type: "welcome", id, role: "client" });
       const map = sim.mapState();
@@ -217,8 +216,12 @@ wss.on("connection", (ws) => {
         moderate(event);
         return;
       }
-      if (event?.kind === "joinTeam" && cleanKey(event.playerKey) && !peer.playerKey) {
-        peer.playerKey = cleanKey(event.playerKey);
+      if (event?.kind === "joinTeam") {
+        const key = cleanKey(event.playerKey) || peer.playerKey;
+        if (key) {
+          peer.playerKey = key;
+          event.playerKey = key;
+        }
       }
       sim.event(id, event);
       if (event?.kind === "changeMap") {
@@ -239,6 +242,32 @@ wss.on("connection", (ws) => {
   });
 });
 
+/** Retry queue so a 401/blip does not drop a finished round forever. */
+const careerOutbox: object[] = [];
+let careerFlushing = false;
+
+function enqueueCareer(body: object | null | undefined) {
+  if (!body) return;
+  careerOutbox.push(body);
+  if (careerOutbox.length > 64) careerOutbox.splice(0, careerOutbox.length - 64);
+  void flushCareer();
+}
+
+async function flushCareer() {
+  if (careerFlushing || !LOBBY_URL) return;
+  careerFlushing = true;
+  try {
+    while (careerOutbox.length) {
+      const body = careerOutbox[0]!;
+      const ok = await ingestCareer(body);
+      if (!ok) break;
+      careerOutbox.shift();
+    }
+  } finally {
+    careerFlushing = false;
+  }
+}
+
 let last = Date.now();
 setInterval(() => {
   const now = Date.now();
@@ -246,9 +275,13 @@ setInterval(() => {
   last = now;
   sim.tick(dt);
   const drain = sim.drainCareer();
-  if (drain.round) void ingestCareer(drain.round);
-  if (drain.match) void ingestCareer(drain.match);
+  enqueueCareer(drain.round);
+  enqueueCareer(drain.match);
 }, 1000 / TICK_HZ).unref?.();
+
+setInterval(() => {
+  void flushCareer();
+}, 2000).unref?.();
 
 setInterval(() => {
   const snap = stampKeys(sim.snapshot());
@@ -269,10 +302,10 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS).unref?.();
 
-async function ingestCareer(body) {
-  if (!LOBBY_URL) return;
+async function ingestCareer(body: object) {
+  if (!LOBBY_URL) return false;
   try {
-    await fetch(new URL("/api/career/ingest", LOBBY_URL), {
+    const res = await fetch(new URL("/api/career/ingest", LOBBY_URL), {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -280,8 +313,14 @@ async function ingestCareer(body) {
       },
       body: JSON.stringify({ ...body, token: INGEST_TOKEN }),
     });
-  } catch {
-    /* lobby may be restarting */
+    if (!res.ok) {
+      console.warn(`[career] ingest ${res.status}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[career] ingest failed", err);
+    return false;
   }
 }
 
