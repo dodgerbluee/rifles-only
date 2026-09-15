@@ -206,7 +206,8 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const barW = 0.003;
   const barH = earH * 0.7;
   const barD = 0.008;
-  // 2× the aiming rectangle cut out of each side of the U, plus the bar.
+  const depth = 0.018;
+  // 2× the aiming rectangle of empty sky on each side of the bar.
   const cutW = barW + 2 * (2 * barW);
   const nw = cutW * 0.5;
   const notchFloor = 0.001;
@@ -220,7 +221,16 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   leaf.lineTo(bw, earH);
   leaf.lineTo(bw, -sink);
   leaf.closePath();
-  const rear = extrude(leaf, 0.018, steel, 1);
+  const geo = new THREE.ExtrudeGeometry(leaf, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.0005,
+    bevelSize: 0.0004,
+    bevelSegments: 1,
+    curveSegments: 1,
+  });
+  geo.translate(0, 0, -depth / 2);
+  const rear = new THREE.Mesh(geo, steel);
   rear.userData.karIronRear = true;
   rear.userData.karIronNotchW = cutW;
   place(root, rear, 0, floorY, z);
