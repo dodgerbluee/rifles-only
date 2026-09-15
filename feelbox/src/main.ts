@@ -239,7 +239,7 @@ import {
 } from "./peers";
 import { prefs, savePrefs } from "./prefs";
 import { bindCrosshairSettings } from "./crosshair";
-import { LOOK_SLOTS, applyLookChoice, lookView, type LookSlot } from "./look";
+import { LOOK_GROUPS, LOOK_SLOTS, applyLookChoice, lookBodyCam, lookDetailCam, lookView, type LookSlot } from "./look";
 import { setStepVolume, tickSteps } from "./steps";
 import { createHoldSound, isActivelyCutting, tickHoldSound } from "./holdSound";
 import { applyLine, noteHit, noteKill, line, resetStats, swapLines } from "./stats";
@@ -337,6 +337,7 @@ lockerPawn.visible = false;
 scene.add(lockerPawn);
 const locker = {
   on: false,
+  onboarding: false,
   dragging: false,
   team: (prefs.team ?? "ember") as "ember" | "stone",
   zoom: 1,
@@ -347,6 +348,7 @@ const locker = {
   fov: 34,
   slot: "face" as LookSlot,
 };
+const lockerBodyCam = new THREE.PerspectiveCamera(42, 1, 0.12, 80);
 const match = createMatch();
 {
   const you = humanSlot(match);
@@ -491,8 +493,9 @@ function leaveToLobby() {
     studio.orbiting = false;
     studio.panning = false;
     studioGhost.visible = false;
-    document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab", "locker", "locker-drag");
+    document.body.classList.remove("studio", "studio-nav", "studio-walk", "studio-hand", "studio-grab", "locker", "locker-drag", "onboarding");
     locker.on = false;
+    locker.onboarding = false;
     lockerPawn.visible = false;
   }
   net.destroy();
@@ -1348,21 +1351,37 @@ function commitLook() {
 function paintLocker() {
   const panel = document.querySelector<HTMLElement>("#locker");
   if (panel) panel.hidden = !locker.on;
+  const pip = document.querySelector<HTMLElement>("#locker-pip");
+  if (pip) pip.hidden = !locker.on;
+  document.body.classList.toggle("onboarding", locker.on && locker.onboarding);
   const nameEl = document.querySelector<HTMLInputElement>("#locker-name");
   if (nameEl && nameEl !== document.activeElement) nameEl.value = prefs.name;
   const secs = document.querySelector("#locker-secs");
   if (secs && !secs.childElementCount) {
-    for (const slot of LOOK_SLOTS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.dataset.slot = slot.key;
-      b.textContent = slot.label;
-      b.addEventListener("click", (e) => {
-        e.stopPropagation();
-        locker.slot = slot.key;
-        paintLocker();
-      });
-      secs.append(b);
+    for (const group of LOOK_GROUPS) {
+      const wrap = document.createElement("div");
+      wrap.className = "locker-secs-group";
+      const title = document.createElement("p");
+      title.className = "locker-secs-title";
+      title.textContent = group.title;
+      const row = document.createElement("div");
+      row.className = "locker-secs-row";
+      for (const key of group.keys) {
+        const slot = LOOK_SLOTS.find((s) => s.key === key);
+        if (!slot) continue;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.slot = slot.key;
+        b.textContent = slot.label;
+        b.addEventListener("click", (e) => {
+          e.stopPropagation();
+          locker.slot = slot.key;
+          paintLocker();
+        });
+        row.append(b);
+      }
+      wrap.append(title, row);
+      secs.append(wrap);
     }
   }
   secs?.querySelectorAll<HTMLButtonElement>("button").forEach((b) => {
@@ -1371,7 +1390,8 @@ function paintLocker() {
   const slot = LOOK_SLOTS.find((s) => s.key === locker.slot) ?? LOOK_SLOTS[0]!;
   const hint = document.querySelector("#locker-slot-hint");
   if (hint) {
-    const cam = slot.view === "melee" ? "Held melee" : slot.view === "body" ? "Full body" : "Head and shoulders";
+    const cam =
+      slot.view === "melee" ? "Detail · held melee" : slot.view === "body" ? "Detail · kit part" : "Detail · head";
     const rule =
       slot.key === "hair" || slot.key === "hat"
         ? " · Only buzz fits under a hat"
@@ -1408,10 +1428,24 @@ function paintLocker() {
   paintIdentity();
   const title = document.querySelector("#start-title");
   const blurb = document.querySelector("#start-blurb");
-  if (title) title.textContent = locker.on ? "Player" : "Servers";
+  const kicker = document.querySelector("#locker-kicker");
+  const lead = document.querySelector("#locker-lead");
+  const steps = document.querySelector<HTMLElement>("#locker-steps");
+  const saveBtn = document.querySelector<HTMLButtonElement>("#locker-save-look");
+  const backBtn = document.querySelector<HTMLButtonElement>("#locker-back");
+  if (steps) steps.hidden = !locker.onboarding;
+  if (kicker) kicker.textContent = locker.onboarding ? "Set up your player" : "Preferences";
+  if (lead) {
+    lead.textContent = locker.onboarding
+      ? "Pick a display name and look. Finish returns you to Servers."
+      : "Name, look, and preview colors. Settings (sens, crosshair) stay in the gear.";
+  }
+  if (saveBtn) saveBtn.textContent = locker.onboarding ? "Finish" : "Save";
+  if (backBtn) backBtn.textContent = "Back";
+  if (title) title.textContent = locker.on ? "Preferences" : "Home";
   if (blurb) {
     blurb.textContent = locker.on
-      ? "Pick a slot. Close-up for the head, full body for kit. Ember and Stone colors apply when you join."
+      ? "Detail view of the part you edit · inset shows the full body."
       : "Pick a match. Ember plants the Wire. First to six.";
   }
 }
@@ -1428,16 +1462,11 @@ function dressLockerPawn() {
 }
 
 function lockerCamTarget() {
-  const view = lookView(locker.slot);
-  if (view === "melee") {
-    return { dist: 2.05 * locker.zoom, aimY: 1.08, fov: 38 };
-  }
-  const portrait = view === "portrait";
-  const base = portrait ? 1.62 : 3.55;
+  const base = lookDetailCam(locker.slot);
   return {
-    dist: base * locker.zoom,
-    aimY: portrait ? 1.52 : 0.92,
-    fov: portrait ? 34 : 42,
+    dist: base.dist * locker.zoom,
+    aimY: base.aimY,
+    fov: base.fov,
   };
 }
 
@@ -1453,6 +1482,45 @@ function applyLockerCam() {
   camera.near = 0.12;
   camera.far = 80;
   camera.updateProjectionMatrix();
+}
+
+function applyLockerBodyCam() {
+  const body = lookBodyCam();
+  const dist = body.dist * Math.min(1.15, Math.max(0.85, locker.zoom));
+  const { theta, phi } = locker;
+  lockerBodyCam.position.set(
+    dist * Math.sin(theta) * Math.sin(phi),
+    body.aimY + dist * Math.cos(theta),
+    dist * Math.sin(theta) * Math.cos(phi),
+  );
+  lockerBodyCam.lookAt(0, body.aimY, 0);
+  lockerBodyCam.fov = body.fov;
+  lockerBodyCam.near = 0.12;
+  lockerBodyCam.far = 80;
+}
+
+function renderLockerPip() {
+  const pip = document.querySelector<HTMLElement>("#locker-pip");
+  if (!pip || pip.hidden) return;
+  const rect = pip.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return;
+  const dpr = renderer.getPixelRatio();
+  const x = Math.floor(rect.left * dpr);
+  const y = Math.floor((innerHeight - rect.bottom) * dpr);
+  const w = Math.max(1, Math.floor(rect.width * dpr));
+  const h = Math.max(1, Math.floor(rect.height * dpr));
+  applyLockerBodyCam();
+  lockerBodyCam.aspect = rect.width / rect.height;
+  lockerBodyCam.updateProjectionMatrix();
+  const full = new THREE.Vector2();
+  renderer.getDrawingBufferSize(full);
+  renderer.clearDepth();
+  renderer.setScissorTest(true);
+  renderer.setScissor(x, y, w, h);
+  renderer.setViewport(x, y, w, h);
+  renderer.render(scene, lockerBodyCam);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, full.x, full.y);
 }
 
 function rebuildLocker() {
@@ -1480,15 +1548,17 @@ function rebuildLocker() {
   applyLockerCam();
 }
 
-function enterLocker() {
+function enterLocker(opts?: { onboarding?: boolean }) {
   if (studio.on) leaveStudio();
   stopReel();
   document.body.classList.remove("bestplay");
   locker.on = true;
+  locker.onboarding = !!opts?.onboarding;
   locker.dragging = false;
   locker.team = prefs.team ?? "ember";
   hideJoinTeam();
   document.body.classList.add("locker");
+  document.body.classList.toggle("onboarding", locker.onboarding);
   document.body.classList.remove("settings");
   rebuildLocker();
   paintLocker();
@@ -1497,9 +1567,12 @@ function enterLocker() {
 
 function leaveLocker(reload = true) {
   locker.on = false;
+  locker.onboarding = false;
   locker.dragging = false;
   lockerPawn.visible = false;
-  document.body.classList.remove("locker", "locker-drag");
+  document.body.classList.remove("locker", "locker-drag", "onboarding");
+  const pip = document.querySelector<HTMLElement>("#locker-pip");
+  if (pip) pip.hidden = true;
   paintLocker();
   camera.near = 0.05;
   camera.far = 85;
@@ -1880,7 +1953,7 @@ bindIdentity({
     paintLocker();
   },
   onRegistered() {
-    enterLocker();
+    enterLocker({ onboarding: true });
   },
 });
 
@@ -1930,6 +2003,13 @@ bindIdentity({
     e.stopPropagation();
     leaveLocker();
   });
+  document.querySelector("#locker-save-look")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (locker.onboarding) {
+      // account.ts also listens and persists the look; then leave to home.
+      queueMicrotask(() => leaveLocker());
+    }
+  });
   document.querySelector("#locker-name")?.addEventListener("input", (e) => {
     const el = e.currentTarget as HTMLInputElement;
     prefs.name = el.value.slice(0, 18);
@@ -1937,8 +2017,6 @@ bindIdentity({
     if (you) you.name = displayName(prefs.name);
     setNetName(prefs.name);
     savePrefs();
-    const setName = document.querySelector<HTMLInputElement>("#set-name");
-    if (setName) setName.value = prefs.name;
   });
   document.querySelector("#locker-sides")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement | null)?.closest("button");
@@ -2371,28 +2449,17 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
 });
 {
   const panel = document.querySelector<HTMLElement>("#settings")!;
-  const nameEl = document.querySelector<HTMLInputElement>("#set-name")!;
   const sensEl = document.querySelector<HTMLInputElement>("#set-sens")!;
   const sensV = document.querySelector("#set-sens-v")!;
   const volEl = document.querySelector<HTMLInputElement>("#set-vol")!;
   const volV = document.querySelector("#set-vol-v")!;
   const paint = () => {
-    nameEl.value = prefs.name;
     sensEl.value = String(prefs.sens);
     sensV.textContent = prefs.sens.toFixed(2);
     volEl.value = String(prefs.volume);
     volV.textContent = `${Math.round(prefs.volume * 100)}%`;
   };
   paint();
-  nameEl.addEventListener("input", () => {
-    prefs.name = nameEl.value.slice(0, 18);
-    const you = humanSlot(match);
-    if (you) you.name = displayName(prefs.name);
-    setNetName(prefs.name);
-    savePrefs();
-    const lockerName = document.querySelector<HTMLInputElement>("#locker-name");
-    if (lockerName) lockerName.value = prefs.name;
-  });
   sensEl.addEventListener("input", () => {
     prefs.sens = Number(sensEl.value);
     savePrefs();
@@ -5492,6 +5559,7 @@ function frame(now: number) {
   }
 
   renderer.render(scene, camera);
+  if (locker.on) renderLockerPip();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

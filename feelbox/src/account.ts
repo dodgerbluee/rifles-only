@@ -217,6 +217,15 @@ function setErr(sel: string, message: string) {
 function authCopy(mode: "register" | "login") {
   const kicker = document.querySelector("#auth-kicker");
   if (kicker) kicker.textContent = mode === "login" ? "Log in" : "Register";
+  const steps = document.querySelector<HTMLElement>("#auth-steps");
+  if (steps) steps.hidden = mode !== "register";
+  const lead = document.querySelector("#home-account-lead");
+  if (lead) {
+    lead.textContent =
+      mode === "login"
+        ? "Log in to keep your name and look across devices."
+        : "Create an account, then set your name and look.";
+  }
 }
 
 function showAuth(mode: "register" | "login") {
@@ -239,6 +248,16 @@ export function openLogin() {
   document.querySelector<HTMLInputElement>("#login-user")?.focus();
 }
 
+export function openRegister() {
+  authOpen = true;
+  document.body.classList.add("register");
+  const panel = document.querySelector<HTMLElement>("#register");
+  if (panel) panel.hidden = false;
+  showAuth("register");
+  panel?.scrollIntoView({ block: "nearest" });
+  document.querySelector<HTMLInputElement>("#reg-email")?.focus();
+}
+
 function fillIdentity(rec: AccountRecord | null) {
   const panel = document.querySelector<HTMLElement>("#register");
   document.body.classList.toggle("register", !rec);
@@ -255,7 +274,7 @@ function fillIdentity(rec: AccountRecord | null) {
     showAuth(login && !login.hidden ? "login" : "register");
   }
   const name = rec?.username || rec?.name || "";
-  const nameEls = ["#locker-name", "#set-name", "#home-id-name"] as const;
+  const nameEls = ["#locker-name", "#home-id-name"] as const;
   for (const sel of nameEls) {
     const el = document.querySelector<HTMLInputElement | HTMLElement>(sel);
     if (!el) continue;
@@ -265,6 +284,8 @@ function fillIdentity(rec: AccountRecord | null) {
       el.textContent = name;
     }
   }
+  const accountH = document.querySelector("#home-account-h");
+  if (accountH) accountH.textContent = "Account";
 }
 
 function takeSession(data: AuthBody): AccountRecord | null {
@@ -419,7 +440,13 @@ export function bindIdentity(opts?: { onChange?: () => void; onRegistered?: () =
     e.stopPropagation();
     const look = packLook(prefs.look);
     const next = saveCharacter(look);
-    if (!next) return;
+    if (!next) {
+      // Guest / local prefs still persist the look.
+      prefs.lookId = look;
+      savePrefs();
+      notify();
+      return;
+    }
     prefs.playerKey = next.playerKey;
     prefs.lookId = next.look;
     savePrefs();

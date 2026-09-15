@@ -102,44 +102,74 @@
       </button>
       <div class="start-top">
         <p class="kicker">Rifles Only</p>
-        <p class="title" id="start-title">Servers</p>
+        <p class="title" id="start-title">Home</p>
         <p id="start-blurb">Pick a match. Ember plants the Wire. First to six.</p>
       </div>
-      <div id="server-list"></div>
-      <div id="home-id">
-        <p class="home-id-name" id="home-id-name"></p>
-        <button type="button" id="home-logout">Log out</button>
-      </div>
-      <div id="home-actions">
-        <button type="button" id="home-login">Log in</button>
-        <button type="button" id="home-studio">Map studio</button>
-        <button type="button" id="home-locker">Player</button>
-      </div>
-      <div id="register" hidden>
-        <p class="locker-kicker" id="auth-kicker">Log in</p>
-        <form id="auth-register" hidden>
-          <label class="locker-stack"><span>Email</span><input id="reg-email" type="email" autocomplete="email" maxlength="120" required /></label>
-          <label class="locker-stack"><span>Username</span><input id="reg-user" type="text" autocomplete="username" maxlength="18" spellcheck="false" required /></label>
-          <label class="locker-stack"><span>Password</span><input id="reg-pass" type="password" autocomplete="new-password" maxlength="200" required /></label>
-          <p id="reg-err" class="locker-err" hidden></p>
-          <p class="locker-hint">Email is just for the account — we don’t verify it. Username and password keep your player.</p>
-          <button type="submit" id="reg-go">Create account</button>
-          <button type="button" id="auth-to-login" class="locker-text">Already have an account? Log in</button>
-        </form>
-        <form id="auth-login">
-          <label class="locker-stack"><span>Username or email</span><input id="login-user" type="text" autocomplete="username" maxlength="120" spellcheck="false" required /></label>
-          <label class="locker-stack"><span>Password</span><input id="login-pass" type="password" autocomplete="current-password" maxlength="200" required /></label>
-          <p id="login-err" class="locker-err" hidden></p>
-          <button type="submit" id="login-go">Log in</button>
-          <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
-        </form>
-      </div>
+
+      <section id="home-servers" class="home-section" aria-labelledby="home-servers-h">
+        <h2 class="home-heading" id="home-servers-h">Servers</h2>
+        <p class="home-lead">Join a live match. First to six.</p>
+        <div id="server-list"></div>
+      </section>
+
+      <section id="home-account" class="home-section" aria-labelledby="home-account-h">
+        <h2 class="home-heading" id="home-account-h">Account</h2>
+        <p class="home-lead" id="home-account-lead">Log in to keep your name and look across devices.</p>
+        <div id="home-id">
+          <p class="home-id-name" id="home-id-name"></p>
+          <button type="button" id="home-logout">Log out</button>
+        </div>
+        <div id="home-actions" class="home-account-actions">
+          <button type="button" id="home-login">Log in</button>
+        </div>
+        <div id="register" hidden>
+          <p class="locker-kicker" id="auth-kicker">Log in</p>
+          <p class="auth-steps" id="auth-steps" hidden>
+            <span class="auth-step on" data-step="1">1 · Account</span>
+            <span class="auth-step" data-step="2">2 · Preferences</span>
+          </p>
+          <form id="auth-register" hidden>
+            <label class="locker-stack"><span>Email</span><input id="reg-email" type="email" autocomplete="email" maxlength="120" required /></label>
+            <label class="locker-stack"><span>Username</span><input id="reg-user" type="text" autocomplete="username" maxlength="18" spellcheck="false" required /></label>
+            <label class="locker-stack"><span>Password</span><input id="reg-pass" type="password" autocomplete="new-password" maxlength="200" required /></label>
+            <p id="reg-err" class="locker-err" hidden></p>
+            <p class="locker-hint">Email is just for the account — we don’t verify it. Username and password keep your player.</p>
+            <div class="locker-footer">
+              <button type="button" id="auth-to-login" class="locker-text">Already have an account? Log in</button>
+              <button type="submit" id="reg-go">Continue</button>
+            </div>
+          </form>
+          <form id="auth-login">
+            <label class="locker-stack"><span>Username or email</span><input id="login-user" type="text" autocomplete="username" maxlength="120" spellcheck="false" required /></label>
+            <label class="locker-stack"><span>Password</span><input id="login-pass" type="password" autocomplete="current-password" maxlength="200" required /></label>
+            <p id="login-err" class="locker-err" hidden></p>
+            <div class="locker-footer">
+              <button type="button" id="auth-to-register" class="locker-text">Need an account? Register</button>
+              <button type="submit" id="login-go">Log in</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="home-play" class="home-section" aria-labelledby="home-play-h">
+        <h2 class="home-heading" id="home-play-h">Play</h2>
+        <p class="home-lead">Preferences for your player. Map studio for sketches.</p>
+        <div class="home-play-actions">
+          <button type="button" id="home-locker">Preferences</button>
+          <button type="button" id="home-studio">Map studio</button>
+        </div>
+      </section>
+
       <div id="locker" hidden>
-        <p class="locker-kicker">Player</p>
+        <p class="locker-kicker" id="locker-kicker">Preferences</p>
+        <p class="auth-steps" id="locker-steps" hidden>
+          <span class="auth-step" data-step="1">1 · Account</span>
+          <span class="auth-step on" data-step="2">2 · Preferences</span>
+        </p>
+        <p class="locker-lead" id="locker-lead">Name, look, and preview colors. Settings (sens, crosshair) stay in the gear.</p>
         <label class="locker-name"><span>Name</span><input id="locker-name" type="text" maxlength="18" /></label>
-        <button type="button" id="locker-save-look">Save character</button>
-        <p class="locker-label">Design a player</p>
         <div id="locker-look">
+          <p class="locker-label">Character</p>
           <div id="locker-secs" class="locker-secs"></div>
           <p id="locker-slot-hint" class="locker-slot-hint"></p>
           <div id="locker-opts" class="locker-opts"></div>
@@ -149,8 +179,14 @@
           <button type="button" data-side="ember">Ember</button>
           <button type="button" data-side="stone">Stone</button>
         </div>
-        <p class="locker-hint">Drag to turn · colors follow the side you join · Melee is cosmetic (same hit range)</p>
-        <button type="button" id="locker-back">Back</button>
+        <p class="locker-hint">Drag the figure to turn · main view = detail · inset = full body · melee reach is the same on every option</p>
+        <div class="locker-footer">
+          <button type="button" id="locker-back">Back</button>
+          <button type="button" id="locker-save-look">Save</button>
+        </div>
+      </div>
+      <div id="locker-pip" hidden aria-hidden="true">
+        <span class="locker-pip-label">Full body</span>
       </div>
     </div>
 
@@ -171,7 +207,7 @@
 
     <div id="settings">
       <p class="admin-kicker">Settings</p>
-      <label class="admin-knob"><span>Name</span><input id="set-name" type="text" maxlength="18" /></label>
+      <p class="admin-hint">Game feel. Name and character live under Preferences on the home screen.</p>
       <label class="admin-knob"><span>Mouse sens</span><input id="set-sens" type="range" min="0.15" max="4" step="0.05" /><b id="set-sens-v">1.00</b></label>
       <label class="admin-knob"><span>Sound</span><input id="set-vol" type="range" min="0" max="1" step="0.01" /><b id="set-vol-v">70%</b></label>
       <div class="admin-knob"><span>Team</span><div id="set-team"></div></div>

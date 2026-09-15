@@ -7,10 +7,13 @@ import {
   BEARDS,
   DEFAULT_LOOK,
   HAIR_UNDER_HAT,
+  LOOK_GROUPS,
   LOOK_SLOTS,
   MELEES,
   applyLookChoice,
   isPackedLook,
+  lookBodyCam,
+  lookDetailCam,
   lookFor,
   lookView,
   packLook,
@@ -30,6 +33,10 @@ function check(name: string, ok: boolean, extra = "") {
 check("nine locker slots", LOOK_SLOTS.length === 9);
 check("accessory slot exists", LOOK_SLOTS.some((s) => s.key === "accessory"));
 check("melee slot exists", LOOK_SLOTS.some((s) => s.key === "melee"));
+check("three preference groups", LOOK_GROUPS.length === 3 && LOOK_GROUPS.every((g) => g.keys.length > 0));
+check("groups cover every slot", LOOK_GROUPS.flatMap((g) => g.keys).sort().join() === LOOK_SLOTS.map((s) => s.key).sort().join());
+check("detail cam zooms shirt above feet", lookDetailCam("shirt").aimY > lookDetailCam("shoes").aimY);
+check("body cam is a full figure", lookBodyCam().dist > lookDetailCam("face").dist);
 check("ten beards including none", BEARDS.length === 10 && BEARDS[0]!.id === "none");
 check("six accessories including none", ACCESSORIES.length === 6 && ACCESSORIES[0]!.id === "none");
 check("eleven melees including bat", MELEES.length === 11 && MELEES[10]!.id === "bat" && MELEES[0]!.id === "clip");

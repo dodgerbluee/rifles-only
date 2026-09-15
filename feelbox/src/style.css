@@ -860,7 +860,7 @@ body.dead:not(.bestplay) #hitmark {
   overflow: auto;
 }
 
-#start > *:not(#open-settings) {
+#start > *:not(#open-settings):not(#locker-pip) {
   width: min(760px, 100%);
   margin-left: 0;
   margin-right: auto;
@@ -892,6 +892,151 @@ body.dead:not(.bestplay) #hitmark {
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+
+.home-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(760px, 100%);
+  margin: 8px 0 4px;
+  padding: 14px 0 8px;
+  border-top: 1px solid rgba(232, 217, 168, 0.16);
+}
+
+.home-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e8d9a8;
+}
+
+.home-lead {
+  margin: 0;
+  color: #8d8676;
+  font-size: 12px;
+  max-width: 42rem;
+}
+
+.home-play-actions,
+.home-account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.auth-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0;
+  width: 100%;
+}
+
+.auth-steps[hidden] {
+  display: none !important;
+}
+
+.auth-step {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8d8676;
+}
+
+.auth-step.on {
+  color: #e8d9a8;
+}
+
+.locker-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(232, 217, 168, 0.16);
+}
+
+.locker-footer .locker-text {
+  margin-right: auto;
+}
+
+.locker-footer #reg-go,
+.locker-footer #login-go,
+.locker-footer #locker-save-look {
+  margin-left: auto;
+}
+
+.locker-secs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.locker-secs-group + .locker-secs-group {
+  margin-top: 6px;
+}
+
+.locker-secs-title {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8d8676;
+}
+
+.locker-secs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+}
+
+.locker-lead {
+  margin: 0;
+  color: #8d8676;
+  font-size: 12px;
+}
+
+#locker-pip {
+  display: none;
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  width: min(220px, 34vw);
+  height: min(320px, 48vh);
+  z-index: 21;
+  pointer-events: none;
+  border: 1px solid rgba(232, 217, 168, 0.35);
+  background: rgba(18, 20, 16, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+#locker-pip .locker-pip-label {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #e8d9a8;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+body.locker #locker-pip {
+  display: block;
+}
+
+body.locker #locker-pip[hidden] {
+  display: none !important;
 }
 
 #open-settings {
@@ -1345,10 +1490,6 @@ body.settings #settings {
   display: block;
 }
 
-#settings .admin-knob:has(input[type="text"]) {
-  grid-template-columns: 70px 1fr;
-}
-
 #map-pick {
   display: none;
 }
@@ -1359,15 +1500,16 @@ body.settings #settings {
   gap: 6px;
   justify-content: flex-start;
   max-width: none;
-  margin: 12px 0 4px;
+  margin: 4px 0 0;
   width: 100%;
 }
 
 #home-studio,
 #home-locker,
 #home-login,
-#locker-back {
-  margin: 8px 0 0;
+#locker-back,
+#locker-save-look {
+  margin: 0;
   background: #1c1e18;
   color: #e8d9a8;
   border: 1px solid rgba(232, 217, 168, 0.35);
@@ -1380,14 +1522,25 @@ body.settings #settings {
   font-weight: 650;
 }
 
+#locker-back,
+#locker-save-look {
+  width: auto;
+  min-width: 110px;
+  text-align: center;
+}
+
 #home-actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: min(760px, 100%);
+  width: 100%;
 }
 
 body:not(.register) #home-login {
+  display: none;
+}
+
+body.register #home-play {
   display: none;
 }
 
@@ -1417,6 +1570,9 @@ body.locker #locker {
   display: flex;
 }
 
+body.locker #home-servers,
+body.locker #home-account,
+body.locker #home-play,
 body.locker #server-list,
 body.locker #home-actions,
 body.locker #home-id,
@@ -1433,6 +1589,10 @@ body.locker #start .start-top,
 body.locker #locker,
 body.locker #open-settings {
   pointer-events: auto;
+}
+
+body.locker.onboarding #start .start-top {
+  display: none;
 }
 
 body.locker #view {
@@ -1494,14 +1654,20 @@ body.locker.locker-drag #view {
 
 #reg-go,
 #login-go,
-#home-logout,
-#locker-save-look {
+#home-logout {
   background: #1c1e18;
   color: #e8d9a8;
   border: 1px solid rgba(232, 217, 168, 0.35);
-  padding: 8px 10px;
+  padding: 10px 14px;
   font: inherit;
+  font-weight: 650;
+  letter-spacing: 0.06em;
   cursor: pointer;
+}
+
+#reg-go,
+#login-go {
+  min-width: 120px;
 }
 
 #reg-go:disabled,
@@ -1516,6 +1682,10 @@ body.locker.locker-drag #view {
   align-items: flex-start;
   gap: 10px;
   width: min(440px, 100%);
+  margin-top: 4px;
+  padding: 12px;
+  background: rgba(28, 30, 24, 0.55);
+  border: 1px solid rgba(232, 217, 168, 0.22);
 }
 
 #register form {
@@ -1582,10 +1752,6 @@ body.register #home-id,
   font-weight: 650;
 }
 
-#locker-save-look {
-  margin-top: 4px;
-}
-
 #locker-look {
   display: flex;
   flex-direction: column;
@@ -1595,8 +1761,8 @@ body.register #home-id,
 
 .locker-secs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
 }
 
@@ -1615,6 +1781,21 @@ body.register #home-id,
 .locker-secs button.on {
   border-color: #e8d9a8;
   color: #e8d9a8;
+}
+
+#locker-save-look {
+  background: #e8d9a8;
+  color: #14140f;
+  border-color: #e8d9a8;
+}
+
+#locker-save-look:hover {
+  border-color: #f2e6c0;
+  background: #f2e6c0;
+}
+
+body.locker.onboarding #locker-back {
+  display: none;
 }
 
 .locker-slot-hint {
@@ -1692,9 +1873,6 @@ body.register #home-id,
   color: #8d8676;
 }
 
-#locker-back {
-  margin-top: 12px;
-}
 
 body.locker #match-bar,
 body.locker #round-tag,
