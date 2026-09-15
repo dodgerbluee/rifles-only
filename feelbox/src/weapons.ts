@@ -25,7 +25,7 @@ export type RifleSpec = {
   adsFov: number;
   /** Mouse scale while ADS. */
   adsSens: number;
-  /** Zoomed world + 3D tube. Reticle is 2D; the housing stays in the viewmodel. */
+  /** CoD1-style screen glass. Viewmodel hides once the zoom is in. */
   glass: boolean;
 };
 
@@ -44,8 +44,10 @@ export type RifleView = {
   bolt: THREE.Group;
   rounds: THREE.Mesh[];
   clip: THREE.Group;
-  /** Local points where ADS hands wrap a glass tube. */
-  scopeGrip?: { left: THREE.Vector3; right: THREE.Vector3 };
+  /** Local points where iron ADS hands wrap the barrel. */
+  adsGrip?: { left: THREE.Vector3; right: THREE.Vector3 };
+  /** Extra pitch so iron ADS looks down onto the barrel, not down a tube. */
+  adsPitch?: number;
 };
 
 export type RightArm = {
@@ -180,85 +182,164 @@ function alignY(mesh: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) {
 }
 
 /** Kar98k tangent rear: open-top U (two uprights + floor). No hood. */
-function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material, earH = 0.009, gap = 0.0052) {
+function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material, earH = 0.009, gap = 0.0052, hipOnly = false) {
   const thick = 0.0028;
-  place(root, cylY(thick, earH, steel, 6), -gap, floorY + earH * 0.5, z);
-  place(root, cylY(thick, earH, steel, 6), gap, floorY + earH * 0.5, z);
-  place(root, cylX(thick, gap * 2 + thick, steel, 6), 0, floorY, z);
+  const parts = [
+    place(root, cylY(thick, earH, steel, 6), -gap, floorY + earH * 0.5, z),
+    place(root, cylY(thick, earH, steel, 6), gap, floorY + earH * 0.5, z),
+    place(root, cylX(thick, gap * 2 + thick, steel, 6), 0, floorY, z),
+  ];
+  if (hipOnly) for (const m of parts) m.userData.karHipBarrel = true;
+}
+
+/** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
+function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
+  const tubeR = 0.0066;
+  const tubeLen = 0.15;
+  const axisY = recTop + 0.01 + tubeR;
+  const midZ = -0.055;
+  place(root, cylZ(tubeR, tubeLen, steel, 10), 0, axisY, midZ);
+  place(root, cylZ(0.008, 0.018, steel, 10), 0, axisY, midZ + tubeLen * 0.5 + 0.004);
+  const ocular = new THREE.Mesh(new THREE.TorusGeometry(0.0042, 0.0011, 8, 16), steel);
+  ocular.rotation.x = Math.PI / 2;
+  ocular.userData.karOcular = true;
+  place(root, ocular, 0, axisY, midZ + tubeLen * 0.5 + 0.012);
+  place(root, cylZ(0.0085, 0.02, steel, 10), 0, axisY, midZ - tubeLen * 0.5 - 0.002);
+  const obj = new THREE.Mesh(new THREE.TorusGeometry(0.006, 0.0012, 8, 16), steel);
+  obj.rotation.x = Math.PI / 2;
+  place(root, obj, 0, axisY, midZ - tubeLen * 0.5 - 0.01);
+  const mountH = axisY - recTop;
+  place(root, cylY(0.0022, mountH, steel, 6), 0, recTop + mountH * 0.5, midZ + 0.04);
+  place(root, cylY(0.0022, mountH, steel, 6), 0, recTop + mountH * 0.5, midZ - 0.04);
+  return { axisY, ocularZ: ocular.position.z };
 }
 
 /**
- * CoD1 ZF-style tube: faceted sleeves, stepped ocular, turret on top.
- * ADS looks into the eyepiece; a black mask hides the zoomed world around the bore.
+ * CoD1 iron picture — faceted barrel in the face, dark bore, T-ears on the band.
+ * Not a sniper tube.
  */
-function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
-  const segs = 8;
-  const bore = 0.015;
-  const axisY = recTop + 0.02;
-  const midZ = -0.04;
+function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material) {
   const g = new THREE.Group();
-  g.position.set(0, axisY, midZ);
+  g.userData.karAdsCup = true;
+  g.visible = false;
   root.add(g);
 
-  const blued = new THREE.MeshStandardMaterial({ color: 0x161714, roughness: 0.42, metalness: 0.62 });
-  const worn = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.55, metalness: 0.5 });
-  const boreMat = new THREE.MeshBasicMaterial({ color: 0x070806, side: THREE.BackSide });
-  const maskMat = new THREE.MeshBasicMaterial({ color: 0x050605, depthWrite: true });
+  const segs = 8;
+  const nearR = 0.04;
+  const wall = 0.011;
+  const hole = 0.0038;
+  const faceZ = 0.024;
+  const eye = 0.078;
+  const lookLift = 0.01;
+  const blued = new THREE.MeshStandardMaterial({
+    color: 0x2a2c26,
+    roughness: 0.55,
+    metalness: 0.36,
+    flatShading: true,
+  });
+  const worn = new THREE.MeshStandardMaterial({
+    color: 0x3c3e36,
+    roughness: 0.6,
+    metalness: 0.26,
+    flatShading: true,
+  });
+  const dark = new THREE.MeshStandardMaterial({
+    color: 0x151613,
+    roughness: 0.78,
+    metalness: 0.18,
+    flatShading: true,
+  });
+  const skin = new THREE.MeshStandardMaterial({
+    color: 0xb08968,
+    roughness: 0.78,
+    metalness: 0.04,
+    flatShading: true,
+  });
+  const stockMat = new THREE.MeshStandardMaterial({
+    color: 0x5a3824,
+    roughness: 0.88,
+    metalness: 0.02,
+    flatShading: true,
+  });
+  const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
 
-  function sleeve(z: number, len: number, r: number, mat: THREE.Material) {
-    place(g, pipeZ(r, len, mat, segs), 0, 0, z);
-    const lining = pipeZ(bore, len * 0.98, boreMat, segs);
-    lining.position.set(0, 0, z);
-    g.add(lining);
+  const nearLen = 0.07;
+  const inner = nearR - wall;
+  place(g, pipeZ(nearR, nearLen, blued, segs), 0, axisY, faceZ - nearLen * 0.5);
+  place(g, cylZ(0.033, 0.038, worn, segs), 0, axisY, faceZ - nearLen - 0.012);
+  place(g, cylZ(0.027, 0.034, blued, segs), 0, axisY, faceZ - nearLen - 0.046);
+  place(g, cylZ(0.021, 0.036, worn, segs), 0, axisY, faceZ - nearLen - 0.08);
+
+  const lip = ringZ(inner, nearR, blued, segs);
+  lip.userData.karBarrelFace = true;
+  place(g, lip, 0, axisY, faceZ);
+  const plug = ringZ(hole, inner * 0.98, dark, segs);
+  place(g, plug, 0, axisY, faceZ - 0.028);
+
+  const earH = 0.022;
+  const earZ = faceZ - 0.012;
+  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.018), blued);
+  leftEar.position.set(-0.01, axisY + nearR + earH * 0.5, earZ);
+  g.add(leftEar);
+  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.018), blued);
+  rightEar.position.set(0.01, axisY + nearR + earH * 0.5, earZ);
+  g.add(rightEar);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.005, 0.018), blued);
+  bar.position.set(0, axisY + nearR + earH - 0.002, earZ);
+  g.add(bar);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.01, 0.012), worn);
+  blade.position.set(0, axisY + nearR + 0.006, earZ + 0.002);
+  g.add(blade);
+
+  const lug = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.018, 0.028), worn);
+  lug.position.set(-nearR * 0.65, axisY - nearR * 0.45, faceZ - 0.02);
+  g.add(lug);
+
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.042, 0.2), stockMat);
+  stock.position.set(-0.062, axisY - 0.05, faceZ - 0.02);
+  stock.rotation.z = 0.28;
+  g.add(stock);
+
+  function wrapHand(side: 1 | -1) {
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 5), skin);
+    palm.scale.set(0.85, 1.05, 1.3);
+    palm.position.set(side * (nearR + 0.012), axisY + 0.004, faceZ - 0.042);
+    g.add(palm);
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.006, 0.015, 2, 5), skin);
+    thumb.position.set(side * nearR * 0.82, axisY + nearR * 0.85, faceZ - 0.018);
+    thumb.rotation.z = -side * 0.85;
+    thumb.rotation.x = 0.25;
+    g.add(thumb);
+    for (let i = 0; i < 4; i++) {
+      const t = i / 3;
+      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0048, 0.016, 2, 5), skin);
+      f.position.set(
+        side * (nearR + 0.004 - t * 0.004),
+        axisY + nearR * 0.35 - t * 0.008,
+        faceZ - 0.028 - t * 0.008,
+      );
+      f.rotation.z = -side * 0.95;
+      f.rotation.x = 0.45;
+      g.add(f);
+    }
   }
+  wrapHand(-1);
+  wrapHand(1);
 
-  // Rear cup (closest to the eye) → body → objective.
-  sleeve(0.07, 0.02, 0.028, blued);
-  sleeve(0.054, 0.014, 0.023, worn);
-  sleeve(0.036, 0.016, 0.019, blued);
-  sleeve(0.004, 0.05, 0.0145, steel);
-  sleeve(-0.04, 0.028, 0.016, worn);
-  sleeve(-0.068, 0.018, 0.018, blued);
-
-  const lip = ringZ(bore, 0.028, blued, segs);
-  lip.userData.karOcular = true;
-  place(g, lip, 0, 0, 0.08);
-  place(g, ringZ(bore, 0.023, worn, segs), 0, 0, 0.061);
-  place(g, ringZ(bore, 0.019, blued, segs), 0, 0, 0.044);
-  place(g, ringZ(bore, 0.016, worn, segs), 0, 0, -0.054);
-  place(g, ringZ(bore, 0.018, blued, segs), 0, 0, -0.077);
-
-  place(g, cylY(0.0052, 0.012, blued, segs), 0, 0.018, 0.018);
-  place(g, cylY(0.0064, 0.004, worn, segs), 0, 0.025, 0.018);
-  const earH = 0.007;
-  place(g, cylY(0.0016, earH, blued, 5), -0.0036, 0.028 + earH * 0.15, 0.018);
-  place(g, cylY(0.0016, earH, blued, 5), 0.0036, 0.028 + earH * 0.15, 0.018);
-  place(g, cylX(0.0013, 0.008, blued, 5), 0, 0.033, 0.018);
-
-  const windage = cylX(0.0036, 0.014, worn, 6);
-  windage.position.set(0.016, 0, 0.01);
-  g.add(windage);
-
-  const mountH = axisY - recTop;
-  place(root, cylY(0.003, mountH, steel, 6), 0, recTop + mountH * 0.5, midZ + 0.036);
-  place(root, cylY(0.003, mountH, steel, 6), 0, recTop + mountH * 0.5, midZ - 0.03);
-  place(root, cylZ(0.0042, 0.018, steel, 6), 0, recTop + 0.001, midZ + 0.036);
-  place(root, cylZ(0.0042, 0.018, steel, 6), 0, recTop + 0.001, midZ - 0.03);
-
-  const mask = ringZ(bore * 0.92, 0.9, maskMat, 32);
-  mask.position.set(0, 0, -0.09);
+  const mask = ringZ(nearR * 1.15, 1.6, maskMat, 32);
+  mask.position.set(0, axisY, faceZ - 0.18);
   mask.frustumCulled = false;
-  mask.userData.karScopeMask = true;
-  mask.visible = false;
   g.add(mask);
 
-  const ocularZ = midZ + 0.08;
   return {
     axisY,
-    ocularZ,
+    faceZ,
+    eye,
+    lookY: axisY + lookLift,
+    pitch: -0.34,
     grip: {
-      left: new THREE.Vector3(-0.036, axisY - 0.01, ocularZ - 0.048),
-      right: new THREE.Vector3(0.036, axisY - 0.01, ocularZ - 0.048),
+      left: new THREE.Vector3(-nearR - 0.01, axisY, faceZ - 0.04),
+      right: new THREE.Vector3(nearR + 0.01, axisY, faceZ - 0.04),
     },
   };
 }
@@ -275,7 +356,7 @@ function makeBolt(root: THREE.Group, home: THREE.Vector3, knob: THREE.Vector3) {
   return bolt;
 }
 
-function buildKar98(scoped: boolean): RifleView {
+function buildKar98(scoped: boolean, world = false): RifleView {
   const root = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x1c1e1a, roughness: 0.3, metalness: 0.7 });
   const wood = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.84, metalness: 0.02 });
@@ -283,41 +364,57 @@ function buildKar98(scoped: boolean): RifleView {
   const axisY = 0.034;
   const recR = 0.013;
   const barR = 0.0072;
-  place(root, capZ(0.028, 0.12, wood), 0, 0.002, 0.18);
-  place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
-  place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
+  const butt = place(root, capZ(0.028, 0.12, wood), 0, 0.002, 0.18);
+  const comb = place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
+  const wrist = place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
   place(root, capZ(0.016, 0.3, wood), 0, 0.012, -0.18);
-  place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
-  place(root, cylZ(barR, 0.42, steel, 8), 0, axisY, -0.3);
+  const rec = place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
+  const ironAds = !scoped && !world;
+  const barrel = place(root, cylZ(barR, 0.42, steel, 8), 0, axisY, -0.3);
+  if (ironAds) {
+    rec.userData.karHipBarrel = true;
+    barrel.userData.karHipBarrel = true;
+    butt.userData.karHipBarrel = true;
+    comb.userData.karHipBarrel = true;
+    wrist.userData.karHipBarrel = true;
+  }
 
   const bolt = makeBolt(root, new THREE.Vector3(0, axisY, 0.02), new THREE.Vector3(0.056, -0.031, 0));
   place(bolt, cylX(0.005, 0.048, steel, 6), 0.034, 0.004, 0);
   place(bolt, cylY(0.005, 0.034, steel, 6), 0.056, -0.014, 0);
+  if (ironAds) bolt.userData.karHipBarrel = true;
 
   const recTop = axisY + recR;
   const barTop = axisY + barR;
   const uH = scoped ? 0.007 : 0.01;
-  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054);
+  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054, ironAds);
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
-  place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
-  place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
+  const postRamp = place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
+  const post = place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
   const wingH = postH + (scoped ? 0.004 : 0.006);
-  place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
-  place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
-  if (!scoped) {
-    place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ);
+  const wingL = place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
+  const wingR = place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
+  const postBar = !scoped ? place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ) : undefined;
+  if (ironAds) {
+    for (const m of [postRamp, post, wingL, wingR, postBar]) {
+      if (m) m.userData.karHipBarrel = true;
+    }
   }
 
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
   let adsPos = new THREE.Vector3(0, -(recTop + postH), -0.15);
-  let scopeGrip: RifleView["scopeGrip"];
+  let adsGrip: RifleView["adsGrip"];
+  let adsPitch: number | undefined;
   if (scoped) {
     const scope = karScope(root, recTop, steel);
-    adsPos = new THREE.Vector3(0, -scope.axisY, -(scope.ocularZ + 0.11));
-    scopeGrip = scope.grip;
-    place(root, capZ(0.022, 0.08, wood), -0.01, 0.004, 0.06);
+    adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
+  } else if (ironAds) {
+    const barrel = karIronBarrel(root, axisY, steel);
+    adsPos = new THREE.Vector3(0, -barrel.lookY, -(barrel.faceZ + barrel.eye));
+    adsGrip = barrel.grip;
+    adsPitch = barrel.pitch;
   }
 
   const flash = flashMesh(0, axisY, -0.52);
@@ -325,7 +422,7 @@ function buildKar98(scoped: boolean): RifleView {
   const id: RifleId = scoped ? "karscope" : "kar";
   const { rounds, clip } = makeAmmoKit(root, axisY, id, steel);
   root.position.copy(hipPos);
-  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip, scopeGrip };
+  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip, adsGrip, adsPitch };
 }
 
 /** Karabiner 98k: iron U + post, CoD1 rifle picture. */
@@ -335,7 +432,7 @@ export function makeKar98(): RifleView {
 
 /** Third-person held Kar — same mesh as the iron viewmodel, not a stub or scoped glass. */
 export function makeWorldKar() {
-  const view = makeKar98();
+  const view = buildKar98(false, true);
   view.flash.visible = false;
   view.clip.visible = false;
   for (const round of view.rounds) round.visible = false;
@@ -349,7 +446,7 @@ export function makeWorldKar() {
   return gun;
 }
 
-/** Same rifle with a ZF tube. ADS looks into the 3D ocular; reticle is 2D. */
+/** Same rifle with ZF glass. ADS uses the screen overlay. */
 export function makeKar98Scoped(): RifleView {
   return buildKar98(true);
 }
@@ -647,15 +744,16 @@ export function rifleWrist(view: RifleView, boltK: number, out = _wrist) {
   return out.copy(_grip).lerp(_knob, follow);
 }
 
-export function poseScopeMask(view: RifleView, on: boolean) {
+export function poseAdsMask(view: RifleView, on: boolean) {
   view.root.traverse((c) => {
-    if (c.userData.karScopeMask) c.visible = on;
+    if (c.userData.karAdsCup) c.visible = on;
+    if (c.userData.karHipBarrel) c.visible = !on;
   });
 }
 
-/** Palm on the left or right of the ZF ocular. */
-export function scopeWrist(view: RifleView, side: 1 | -1, out = _wrist) {
-  const grip = view.scopeGrip;
+/** Palm on the left or right of the iron barrel. */
+export function adsWrist(view: RifleView, side: 1 | -1, out = _wrist) {
+  const grip = view.adsGrip;
   if (!grip) return rifleWrist(view, 0, out);
   const p = side < 0 ? grip.left : grip.right;
   return cameraLocal(view.root, p.x, p.y, p.z, out);

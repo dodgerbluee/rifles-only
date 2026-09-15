@@ -215,8 +215,7 @@ import {
   poseArm,
   reloadBoltK,
   rifleWrist,
-  scopeWrist,
-  poseScopeMask,
+  poseAdsMask,
   knifeWrist,
   nadeWrist,
   RIFLES,
@@ -2634,6 +2633,7 @@ scene.add(camera);
 
 const VM_LAYER = 1;
 const VM_FOV = 80;
+const VM_NEAR = 0.02;
 camera.layers.enable(VM_LAYER);
 
 function markViewmodel(obj: THREE.Object3D) {
@@ -2681,8 +2681,8 @@ function setKarGlass(kind: RifleId, aiming: boolean, zoom: number) {
   karGlassEl.style.opacity = on ? String(Math.min(1, (zoom - 0.04) / 0.7)) : "0";
 }
 
-function glassHidesRifle(_kind: RifleId, _aiming: boolean, _zoom: number) {
-  return false;
+function glassHidesRifle(kind: RifleId, aiming: boolean, zoom: number) {
+  return aiming && RIFLES[kind].glass && zoom > 0.7;
 }
 
 function selectLoadoutSlot(slot: 1 | 2 | 3) {
@@ -2699,7 +2699,7 @@ function poseIdleRifles() {
   for (const id of PRIMARY_IDS) {
     if (id !== rifleKind) {
       poseAmmo(rifles[id], mag, magCap(), 0);
-      poseScopeMask(rifles[id], false);
+      poseAdsMask(rifles[id], false);
     }
   }
 }
@@ -2759,6 +2759,12 @@ function hideArms() {
   leftArm.root.visible = false;
   arm.root.scale.setScalar(1);
   leftArm.root.scale.setScalar(1);
+  arm.hand.scale.setScalar(1);
+  leftArm.hand.scale.setScalar(1);
+  arm.sleeve.visible = true;
+  arm.forearm.visible = true;
+  leftArm.sleeve.visible = true;
+  leftArm.forearm.visible = true;
 }
 
 function poseHeldHands(
@@ -2772,12 +2778,18 @@ function poseHeldHands(
     bash: number;
   },
 ) {
-  const wrap = opts.aiming && opts.rifleOn && !!hold.scopeGrip;
+  const wrap = opts.aiming && opts.rifleOn && !!hold.adsGrip;
   const handsOn = (opts.rifleOn || opts.knifeOn || opts.nadeOn) && (!opts.aiming || wrap);
   arm.root.visible = handsOn;
   leftArm.root.visible = wrap;
-  arm.root.scale.setScalar(wrap ? 0.62 : 1);
-  leftArm.root.scale.setScalar(wrap ? 0.62 : 1);
+  arm.root.scale.setScalar(1);
+  leftArm.root.scale.setScalar(1);
+  arm.sleeve.visible = !wrap;
+  arm.forearm.visible = !wrap;
+  leftArm.sleeve.visible = !wrap;
+  leftArm.forearm.visible = !wrap;
+  arm.hand.scale.setScalar(wrap ? 0.62 : 1);
+  leftArm.hand.scale.setScalar(wrap ? 0.62 : 1);
   if (wrap) for (const r of hold.rounds) r.visible = false;
   if (!handsOn) return;
   if (opts.knifeOn) {
@@ -2787,8 +2799,8 @@ function poseHeldHands(
     poseArm(arm, nadeWrist(nadeView));
     leftArm.root.visible = false;
   } else if (wrap) {
-    poseArm(arm, scopeWrist(hold, 1), 0.85);
-    poseArm(leftArm, scopeWrist(hold, -1), -0.85);
+    arm.root.visible = false;
+    leftArm.root.visible = false;
   } else poseArm(arm, rifleWrist(hold, opts.boltK));
 }
 
@@ -4806,14 +4818,14 @@ function applyReelHands(cam: Pose) {
   const hold = rifles[kind];
   const rest = (cam.ads ? hold.adsPos : hold.hipPos).clone();
   const g = hold.root;
-  const wrap = aiming && !!hold.scopeGrip;
+  const wrap = aiming && !!hold.adsGrip;
   g.position.copy(rest);
   g.position.z += cam.kick;
-  g.rotation.x = (cam.ads ? 0 : 0.1) - cam.punchP * (wrap ? 0 : 0.04);
+  g.rotation.x = wrap && hold.adsPitch != null ? hold.adsPitch : (cam.ads ? 0 : 0.1) - cam.punchP * (wrap ? 0 : 0.04);
   g.rotation.y = cam.ads ? 0 : 0.22;
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * (wrap ? 0 : 0.05);
   poseBolt(hold, 0);
-  poseScopeMask(hold, wrap);
+  poseAdsMask(hold, wrap);
   hold.root.updateMatrixWorld(true);
   if (throwing) poseThrow(nadeView, cam.throw ?? 0, !!cam.throwDrop);
   else if (nadeOn && !bashing) {
@@ -5274,8 +5286,7 @@ function frame(now: number) {
   leanInput = 0;
   if (locked && alive && keys.has("KeyQ")) leanInput -= 1;
   if (locked && alive && keys.has("KeyE")) leanInput += 1;
-  const shiftAds = keys.has("ShiftLeft") || keys.has("ShiftRight");
-  ads = locked && alive && weapon === "rifle" && (adsMouse || shiftAds);
+  ads = locked && alive && weapon === "rifle" && adsMouse;
   document.body.classList.toggle("ads", ads);
   if (diveT > 0) diveT = Math.max(0, diveT - dt);
   if (bashT > 0) bashT = Math.max(0, bashT - dt);
@@ -5925,14 +5936,14 @@ function frame(now: number) {
         }
         const hold = liveRifle();
         const rest = (ads ? hold.adsPos : hold.hipPos).clone();
-        const wrap = aiming && !!hold.scopeGrip;
+        const wrap = aiming && !!hold.adsGrip;
         const g = hold.root;
         g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
-        g.rotation.x = (ads ? 0 : 0.1) - punchP * (wrap ? 0 : 0.04);
+        g.rotation.x = wrap && hold.adsPitch != null ? hold.adsPitch : (ads ? 0 : 0.1) - punchP * (wrap ? 0 : 0.04);
         g.rotation.y = ads ? 0 : 0.22;
         g.rotation.z = (ads ? 0 : 0.06) + punchY * (wrap ? 0 : 0.05);
-        poseScopeMask(hold, wrap);
+        poseAdsMask(hold, wrap);
         const reloadK = reloading > 0 ? 1 - reloading / RELOAD : 0;
         if (reloading > 0 && weapon === "rifle") {
           if (!ads) applyReloadPose(g, rifleKind, reloadK);
@@ -6337,7 +6348,7 @@ function frame(now: number) {
       hold.root.position.copy(hold.hipPos);
       hold.root.rotation.set(0.1, 0.22, 0.06);
       poseBolt(hold, 0);
-      poseScopeMask(hold, false);
+      poseAdsMask(hold, false);
       hold.root.updateMatrixWorld(true);
       poseHeldHands(hold, {
         aiming: false,
@@ -6537,12 +6548,14 @@ function frame(now: number) {
     renderLockerPip();
     renderer.toneMappingExposure = prevExposure;
   } else {
-    const scopeVm = rifles.karscope.root.visible && (watching ? lastReelAds : ads);
-    if (scopeVm) {
+    const ironVm = rifles.kar.root.visible && (watching ? lastReelAds : ads);
+    if (ironVm) {
       const savedFov = camera.fov;
+      const savedNear = camera.near;
       camera.layers.set(0);
       renderer.render(scene, camera);
       camera.fov = VM_FOV;
+      camera.near = VM_NEAR;
       camera.updateProjectionMatrix();
       camera.layers.set(VM_LAYER);
       renderer.autoClear = false;
@@ -6550,6 +6563,7 @@ function frame(now: number) {
       renderer.render(scene, camera);
       renderer.autoClear = true;
       camera.fov = savedFov;
+      camera.near = savedNear;
       camera.updateProjectionMatrix();
       camera.layers.enable(0);
       camera.layers.enable(VM_LAYER);

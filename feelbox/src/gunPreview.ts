@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { makeMelee } from "./knife-variants";
 import { type SecondaryId } from "./loadout";
 import { prefs } from "./prefs";
-import { RIFLES, makeKar98, makeKar98Scoped, makeMosin, isRifleId } from "./weapons";
+import { RIFLES, makeKar98, makeKar98Scoped, makeMosin, isRifleId, poseAdsMask } from "./weapons";
 
 type PreviewKind = "sight" | "inspect";
 
@@ -141,6 +141,7 @@ function pose(id: SecondaryId, kind: PreviewKind) {
   }
   if (!isRifleId(id)) return;
   const hold = rifles[id];
+  poseAdsMask(hold, false);
   if (kind === "sight") {
     world.visible = true;
     camera.far = 24;
@@ -153,8 +154,9 @@ function pose(id: SecondaryId, kind: PreviewKind) {
     }
     hold.root.visible = true;
     hold.root.position.copy(hold.adsPos);
-    hold.root.rotation.set(0, 0, 0);
-    camera.fov = RIFLES[id].adsFov;
+    hold.root.rotation.set(hold.adsPitch ?? 0, 0, 0);
+    poseAdsMask(hold, !!hold.adsGrip);
+    camera.fov = hold.adsGrip ? 80 : RIFLES[id].adsFov;
     camera.near = 0.02;
     camera.position.set(0, 0, 0);
     camera.rotation.set(0, 0, 0);
