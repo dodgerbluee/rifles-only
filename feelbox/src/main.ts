@@ -2591,8 +2591,12 @@ function poseHeldHands(
   const handsOn = (opts.rifleOn || opts.knifeOn || opts.nadeOn) && (!opts.aiming || wrap);
   arm.root.visible = handsOn;
   leftArm.root.visible = wrap;
-  arm.root.scale.setScalar(wrap ? 0.62 : 1);
-  leftArm.root.scale.setScalar(wrap ? 0.62 : 1);
+  arm.root.scale.setScalar(wrap ? 0.4 : 1);
+  leftArm.root.scale.setScalar(wrap ? 0.4 : 1);
+  arm.sleeve.visible = !wrap;
+  arm.forearm.visible = !wrap;
+  leftArm.sleeve.visible = !wrap;
+  leftArm.forearm.visible = !wrap;
   if (wrap) for (const r of hold.rounds) r.visible = false;
   if (!handsOn) return;
   if (opts.knifeOn) {

@@ -180,11 +180,14 @@ function alignY(mesh: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3) {
 }
 
 /** Kar98k tangent rear: open-top U (two uprights + floor). No hood. */
-function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material, earH = 0.009, gap = 0.0052) {
+function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material, earH = 0.009, gap = 0.0052, hipOnly = false) {
   const thick = 0.0028;
-  place(root, cylY(thick, earH, steel, 6), -gap, floorY + earH * 0.5, z);
-  place(root, cylY(thick, earH, steel, 6), gap, floorY + earH * 0.5, z);
-  place(root, cylX(thick, gap * 2 + thick, steel, 6), 0, floorY, z);
+  const parts = [
+    place(root, cylY(thick, earH, steel, 6), -gap, floorY + earH * 0.5, z),
+    place(root, cylY(thick, earH, steel, 6), gap, floorY + earH * 0.5, z),
+    place(root, cylX(thick, gap * 2 + thick, steel, 6), 0, floorY, z),
+  ];
+  if (hipOnly) for (const m of parts) m.userData.karHipBarrel = true;
 }
 
 /** ZF39-style tube on the receiver. ADS glass is 2D; this is the hip silhouette. */
@@ -214,77 +217,78 @@ function karScope(root: THREE.Group, recTop: number, steel: THREE.Material) {
  * ADS sits behind this band and looks down the tube.
  */
 function karIronBarrel(root: THREE.Group, axisY: number, steel: THREE.Material) {
+  const g = new THREE.Group();
+  g.userData.karAdsCup = true;
+  g.visible = false;
+  root.add(g);
+
   const segs = 8;
-  const bore = 0.0084;
-  const nearR = 0.026;
+  const bore = 0.009;
+  const nearR = 0.034;
   const faceZ = 0.02;
-  const eye = 0.048;
+  const eye = 0.11;
   const blued = new THREE.MeshStandardMaterial({ color: 0x141612, roughness: 0.38, metalness: 0.7 });
   const worn = new THREE.MeshStandardMaterial({ color: 0x262820, roughness: 0.5, metalness: 0.5 });
-  const boreMat = new THREE.MeshBasicMaterial({ color: 0x060705, side: THREE.BackSide });
+  const boreMat = new THREE.MeshBasicMaterial({ color: 0x050604, side: THREE.BackSide });
   const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
+  const stockMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.84, metalness: 0.02 });
 
   function sleeve(z: number, len: number, r: number, mat: THREE.Material) {
-    place(root, pipeZ(r, len, mat, segs), 0, axisY, z);
-    const lining = pipeZ(Math.min(bore, r * 0.72), len * 0.98, boreMat, segs);
+    place(g, pipeZ(r, len, mat, segs), 0, axisY, z);
+    const lining = pipeZ(Math.min(bore, r * 0.55), len * 0.98, boreMat, segs);
     lining.position.set(0, axisY, z);
-    root.add(lining);
+    g.add(lining);
   }
 
-  sleeve(faceZ - 0.012, 0.03, nearR, blued);
-  sleeve(faceZ - 0.036, 0.022, 0.021, worn);
-  sleeve(faceZ - 0.062, 0.032, 0.016, steel);
-  sleeve(-0.22, 0.28, 0.009, steel);
-  sleeve(-0.42, 0.12, 0.01, worn);
+  sleeve(faceZ - 0.014, 0.032, nearR, blued);
+  sleeve(faceZ - 0.042, 0.026, 0.027, worn);
+  sleeve(faceZ - 0.072, 0.034, 0.02, steel);
+  sleeve(faceZ - 0.11, 0.04, 0.015, worn);
 
   const lip = ringZ(bore, nearR, blued, segs);
   lip.userData.karBarrelFace = true;
-  place(root, lip, 0, axisY, faceZ);
-  place(root, ringZ(bore, 0.021, worn, segs), 0, axisY, faceZ - 0.024);
-  place(root, ringZ(bore * 0.85, 0.01, worn, segs), 0, axisY, -0.48);
+  place(g, lip, 0, axisY, faceZ);
+  place(g, ringZ(bore, 0.027, worn, segs), 0, axisY, faceZ - 0.028);
+  place(g, ringZ(bore * 0.8, 0.02, steel, segs), 0, axisY, faceZ - 0.055);
+  place(g, ringZ(bore * 0.7, 0.015, worn, segs), 0, axisY, faceZ - 0.09);
 
-  const earH = 0.02;
+  const earH = 0.026;
   const earY = axisY + nearR;
-  const earZ = faceZ - 0.006;
-  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.007, earH, 0.012), blued);
-  leftEar.position.set(-0.009, earY + earH * 0.42, earZ);
-  root.add(leftEar);
-  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.007, earH, 0.012), blued);
-  rightEar.position.set(0.009, earY + earH * 0.42, earZ);
-  root.add(rightEar);
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.005, 0.012), blued);
+  const earZ = faceZ - 0.004;
+  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.009, earH, 0.014), blued);
+  leftEar.position.set(-0.012, earY + earH * 0.4, earZ);
+  g.add(leftEar);
+  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.009, earH, 0.014), blued);
+  rightEar.position.set(0.012, earY + earH * 0.4, earZ);
+  g.add(rightEar);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.006, 0.014), blued);
   bar.position.set(0, earY + earH * 0.82, earZ);
-  root.add(bar);
-  place(root, cylY(0.0015, 0.01, worn, 5), 0, earY + 0.006, earZ);
+  g.add(bar);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.012, 0.008), worn);
+  blade.position.set(0, earY + 0.008, earZ + 0.002);
+  g.add(blade);
 
-  const lug = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.014, 0.022), worn);
-  lug.position.set(-0.01, axisY - nearR + 0.002, faceZ - 0.012);
-  root.add(lug);
+  const lug = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.016, 0.024), worn);
+  lug.position.set(-0.014, axisY - nearR + 0.004, faceZ - 0.016);
+  g.add(lug);
 
-  const stock = new THREE.Mesh(
-    new THREE.BoxGeometry(0.09, 0.055, 0.14),
-    new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.84, metalness: 0.02 }),
-  );
-  stock.position.set(-0.058, axisY - 0.038, faceZ - 0.01);
-  stock.rotation.z = 0.42;
-  stock.userData.karAdsStock = true;
-  stock.visible = false;
-  root.add(stock);
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.05, 0.2), stockMat);
+  stock.position.set(-0.072, axisY - 0.048, faceZ - 0.02);
+  stock.rotation.z = 0.38;
+  g.add(stock);
 
-  const mask = ringZ(nearR * 0.98, 1.2, maskMat, 32);
-  mask.position.set(0, axisY, faceZ - 0.09);
+  const mask = ringZ(nearR * 1.02, 1.4, maskMat, 32);
+  mask.position.set(0, axisY, faceZ - 0.12);
   mask.frustumCulled = false;
-  mask.userData.karAdsMask = true;
-  mask.visible = false;
-  root.add(mask);
+  g.add(mask);
 
   return {
     axisY,
     faceZ,
     eye,
     grip: {
-      left: new THREE.Vector3(-0.042, axisY - 0.006, faceZ - 0.028),
-      right: new THREE.Vector3(0.042, axisY - 0.006, faceZ - 0.028),
+      left: new THREE.Vector3(-0.052, axisY - 0.004, faceZ - 0.038),
+      right: new THREE.Vector3(0.052, axisY - 0.004, faceZ - 0.038),
     },
   };
 }
@@ -313,30 +317,36 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   place(root, new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), wood), 0, -0.028, 0.22);
   place(root, capZ(0.02, 0.1, wood), 0, 0.01, 0.04);
   place(root, capZ(0.016, 0.3, wood), 0, 0.012, -0.18);
-  place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
+  const rec = place(root, cylZ(recR, 0.14, steel), 0, axisY, -0.02);
   const ironAds = !scoped && !world;
-  if (!ironAds) {
-    place(root, cylZ(barR, 0.42, steel, 8), 0, axisY, -0.3);
+  const barrel = place(root, cylZ(barR, 0.42, steel, 8), 0, axisY, -0.3);
+  if (ironAds) {
+    rec.userData.karHipBarrel = true;
+    barrel.userData.karHipBarrel = true;
   }
 
   const bolt = makeBolt(root, new THREE.Vector3(0, axisY, 0.02), new THREE.Vector3(0.056, -0.031, 0));
   place(bolt, cylX(0.005, 0.048, steel, 6), 0.034, 0.004, 0);
   place(bolt, cylY(0.005, 0.034, steel, 6), 0.056, -0.014, 0);
+  if (ironAds) bolt.userData.karHipBarrel = true;
 
   const recTop = axisY + recR;
   const barTop = axisY + barR;
   const uH = scoped ? 0.007 : 0.01;
-  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054);
+  karLeafRear(root, -0.08, recTop, steel, uH, scoped ? 0.0046 : 0.0054, ironAds);
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
-  place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
-  place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
+  const postRamp = place(root, cylY(0.0032, rampH, steel, 6), 0, barTop + rampH * 0.5, postZ);
+  const post = place(root, cylY(0.0017, postH, steel, 5), 0, recTop + postH * 0.5, postZ);
   const wingH = postH + (scoped ? 0.004 : 0.006);
-  place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
-  place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
-  if (!scoped) {
-    place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ);
+  const wingL = place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
+  const wingR = place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
+  const postBar = !scoped ? place(root, cylX(0.0012, 0.01, steel, 5), 0, recTop + wingH * 0.72, postZ) : undefined;
+  if (ironAds) {
+    for (const m of [postRamp, post, wingL, wingR, postBar]) {
+      if (m) m.userData.karHipBarrel = true;
+    }
   }
 
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
@@ -680,7 +690,8 @@ export function rifleWrist(view: RifleView, boltK: number, out = _wrist) {
 
 export function poseAdsMask(view: RifleView, on: boolean) {
   view.root.traverse((c) => {
-    if (c.userData.karAdsMask || c.userData.karAdsStock) c.visible = on;
+    if (c.userData.karAdsCup) c.visible = on;
+    if (c.userData.karHipBarrel) c.visible = !on;
   });
 }
 
