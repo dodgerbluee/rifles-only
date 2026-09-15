@@ -3558,6 +3558,34 @@ body.podium #scoreboard .board-dead {
   padding: 0 5px;
 }
 
+@media (max-width: 720px) {
+  .stands {
+    gap: 8px;
+  }
+
+  .stand .who,
+  .stand.gold .who {
+    font-size: 16px;
+  }
+
+  .stand .stat {
+    font-size: 10px;
+  }
+
+  body.podium #scoreboard .board-cols {
+    grid-template-columns: 1fr;
+  }
+
+  body.podium #scoreboard .board-col {
+    max-height: 18vh;
+  }
+
+  body.podium #scoreboard #board-ember-score,
+  body.podium #scoreboard #board-stone-score {
+    font-size: 24px;
+  }
+}
+
 @media (max-height: 800px) {
   .board-panel {
     padding: 14px 16px 12px;

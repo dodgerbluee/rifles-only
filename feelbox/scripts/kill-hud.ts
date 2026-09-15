@@ -127,6 +127,7 @@ check(
     /body\.podium #end-stack\s*\{[^}]*justify-content:\s*flex-end/.test(css) &&
     !/body\.podium #scoreboard\s*\{[^}]*right:\s*16px/.test(css),
 );
+check("narrow screens stack the end-game board columns", /@media \(max-width: 720px\)[\s\S]*body\.podium #scoreboard \.board-cols\s*\{[^}]*grid-template-columns:\s*1fr/.test(css));
 check("olympic stands show gold silver bronze blocks", css.includes(".stand.gold .block") && css.includes(".stand.silver .block") && css.includes(".stand.bronze .block") && !css.includes(".stand .block {\n  display: none"));
 const hud = readFileSync(join(root, "src/hud.ts"), "utf8");
 check("scoreboard rows mark You", hud.includes('class="board-you">You'));
