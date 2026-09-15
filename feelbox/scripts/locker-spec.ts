@@ -35,6 +35,7 @@ check("accessory slot exists", LOOK_SLOTS.some((s) => s.key === "accessory"));
 check("melee slot exists", LOOK_SLOTS.some((s) => s.key === "melee"));
 check("three preference groups", LOOK_GROUPS.length === 3 && LOOK_GROUPS.every((g) => g.keys.length > 0));
 check("groups cover every slot", LOOK_GROUPS.flatMap((g) => g.keys).sort().join() === LOOK_SLOTS.map((s) => s.key).sort().join());
+check("groups stay Head Kit Melee labels", LOOK_GROUPS.map((g) => g.title).join("/") === "Head/Kit/Melee");
 check("detail cam zooms shirt above feet", lookDetailCam("shirt").aimY > lookDetailCam("shoes").aimY);
 check("body cam is a full figure", lookBodyCam().dist > lookDetailCam("face").dist);
 check("ten beards including none", BEARDS.length === 10 && BEARDS[0]!.id === "none");
