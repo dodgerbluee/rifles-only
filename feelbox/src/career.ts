@@ -1,4 +1,4 @@
-import { accountKey, isPlayerKey } from "./account";
+import { accountKey, isPlayerKey, loadAccount } from "./account";
 
 export type CareerVs = {
   key: string;
@@ -70,10 +70,6 @@ function pct(n: number) {
   return `${Math.round(n * 100)}%`;
 }
 
-export function formatKd(n: number) {
-  return fmt(n);
-}
-
 export function myCareer() {
   return mine;
 }
@@ -130,68 +126,118 @@ export async function loadBoard(keys: string[]): Promise<Map<string, BoardSnippe
   return board;
 }
 
-export function paintHomeRecord(view: CareerView | null) {
-  const el = document.querySelector("#home-id-record");
-  if (!el) return;
-  if (!view || (view.rounds <= 0 && view.matches <= 0)) {
-    el.textContent = "";
-    return;
-  }
-  const losses = Math.max(0, view.matches - view.matchWins);
-  el.textContent = `${view.matchWins}–${losses} · ${fmt(view.kd)} K/D`;
+function hero(label: string, value: string, note = "") {
+  return `<div class="stats-hero-card"><p class="stats-hero-label">${label}</p><p class="stats-hero-value">${value}</p>${
+    note ? `<p class="stats-hero-note">${note}</p>` : ""
+  }</div>`;
 }
 
-function row(label: string, value: string) {
-  return `<span class="record-label">${label}</span><span class="record-val">${value}</span>`;
+function cell(label: string, value: string) {
+  return `<div class="stats-cell"><span class="stats-cell-label">${label}</span><span class="stats-cell-value">${value}</span></div>`;
 }
 
-export function paintLockerRecord(view: CareerView | null) {
-  const root = document.querySelector<HTMLElement>("#locker-record");
-  const grid = document.querySelector("#locker-record-grid");
-  const rivals = document.querySelector("#locker-record-rivals");
-  if (!root || !grid) return;
-  root.hidden = false;
+function paintPage(view: CareerView | null) {
+  const title = document.querySelector("#stats-title");
+  const lead = document.querySelector("#stats-lead");
+  const empty = document.querySelector<HTMLElement>("#stats-empty");
+  const body = document.querySelector<HTMLElement>("#stats-body");
+  const overview = document.querySelector("#stats-overview");
+  const combat = document.querySelector("#stats-combat");
+  const utility = document.querySelector("#stats-utility");
+  const rivals = document.querySelector("#stats-rivals");
+  if (!title || !lead || !empty || !body || !overview || !combat || !utility || !rivals) return;
+
+  const rec = loadAccount();
+  const who = rec?.username || rec?.name || "Player";
+  title.textContent = who;
+  lead.textContent = "Career across every Last Wire box on this lobby.";
+
   if (!view || (view.rounds <= 0 && view.matches <= 0)) {
-    grid.innerHTML = `<p class="locker-hint">Play a match to start a record.</p>`;
-    if (rivals) rivals.innerHTML = "";
+    empty.hidden = false;
+    body.hidden = true;
     return;
   }
-  const losses = Math.max(0, view.matches - view.matchWins);
-  const acc = view.shots > 0 ? pct(view.accuracy) : "—";
-  const hs = view.rifleKills > 0 ? pct(view.hsPct) : "—";
-  const nadeAvg = view.nadesFrag > 0 ? fmt(view.nadeAvg, 1) : "—";
-  grid.innerHTML = [
-    row("Matches", `${view.matchWins}–${losses}`),
-    row("Rounds", `${pct(view.roundWinPct)} · ${view.roundWins}/${view.rounds}`),
-    row("K / A / D", `${view.kills} / ${view.assists} / ${view.deaths}`),
-    row("K/D", fmt(view.kd)),
-    row("ADR", fmt(view.adr, 1)),
-    row("Accuracy", acc),
-    row("HS%", hs),
-    row("Nades", `${Math.round(view.nadeDamage)} dmg · ${nadeAvg} / frag`),
-    row("Plants / cuts", `${view.plants} / ${view.cuts}`),
-    row("Aces", String(view.aces)),
-    row("First blood", String(view.firstBloods)),
-    row("Knife", String(view.knifeKills)),
+
+  empty.hidden = true;
+  body.hidden = false;
+
+  const matchLosses = Math.max(0, view.matches - view.matchWins);
+  const roundLosses = Math.max(0, view.rounds - view.roundWins);
+  overview.innerHTML = [
+    hero("Matches", `${view.matchWins}–${matchLosses}`, pct(view.matchWinPct)),
+    hero("Rounds", `${view.roundWins}–${roundLosses}`, pct(view.roundWinPct)),
+    hero("K / D", fmt(view.kd), `${view.kills} / ${view.deaths}`),
+    hero("ADR", fmt(view.adr, 1), `${Math.round(view.damage)} total damage`),
   ].join("");
-  if (!rivals) return;
-  const list = (view.vs ?? []).filter((v) => v.key !== "bot" && v.rounds > 0).slice(0, 8);
+
+  combat.innerHTML = [
+    cell("Kills", String(view.kills)),
+    cell("Assists", String(view.assists)),
+    cell("Deaths", String(view.deaths)),
+    cell("Accuracy", view.shots > 0 ? pct(view.accuracy) : "—"),
+    cell("Headshot %", view.rifleKills > 0 ? pct(view.hsPct) : "—"),
+    cell("Rifle kills", String(view.rifleKills)),
+    cell("Head kills", String(view.headKills)),
+    cell("Shots", String(view.shots)),
+    cell("Hits", String(view.hits)),
+    cell("Aces", String(view.aces)),
+    cell("First blood", String(view.firstBloods)),
+    cell("Knife kills", String(view.knifeKills)),
+  ].join("");
+
+  utility.innerHTML = [
+    cell("Nade damage", String(Math.round(view.nadeDamage))),
+    cell("Avg / frag", view.nadesFrag > 0 ? fmt(view.nadeAvg, 1) : "—"),
+    cell("Nade kills", String(view.nadeKills)),
+    cell("Frags thrown", String(view.nadesFrag)),
+    cell("Smokes", String(view.nadesSmoke)),
+    cell("Stuns", String(view.nadesStun)),
+    cell("Flashes", String(view.nadesFlash)),
+    cell("Plants", String(view.plants)),
+    cell("Cuts", String(view.cuts)),
+  ].join("");
+
+  const list = (view.vs ?? []).filter((v) => v.key !== "bot" && v.rounds > 0).slice(0, 12);
   if (!list.length) {
-    rivals.innerHTML = "";
+    rivals.innerHTML = `<p class="stats-muted">No head-to-head record yet.</p>`;
     return;
   }
-  rivals.innerHTML = `<p class="locker-label">Rivals</p>${list
+  rivals.innerHTML = `<div class="stats-rivals">${list
     .map((v) => {
       const name = v.username || "Rifle";
       const lost = Math.max(0, v.rounds - v.roundWins);
-      return `<p class="record-rival"><span>${name}</span><span>${v.roundWins}–${lost}</span></p>`;
+      const kd = v.deaths <= 0 ? (v.kills === 0 ? "0.00" : v.kills.toFixed(2)) : (v.kills / v.deaths).toFixed(2);
+      return `<div class="stats-rival"><span class="stats-rival-name">${name}</span><span class="stats-rival-wl">${v.roundWins}–${lost}</span><span class="stats-rival-kd">${kd} K/D</span></div>`;
     })
-    .join("")}`;
+    .join("")}</div>`;
 }
 
-export async function paintCareer() {
+export function openStatsPage() {
+  const page = document.querySelector<HTMLElement>("#stats-page");
+  if (page) page.hidden = false;
+  document.body.classList.add("stats-page");
+  void paintStatsPage();
+}
+
+export function closeStatsPage() {
+  const page = document.querySelector<HTMLElement>("#stats-page");
+  if (page) page.hidden = true;
+  document.body.classList.remove("stats-page");
+}
+
+export function statsPageOpen() {
+  return document.body.classList.contains("stats-page");
+}
+
+export async function paintStatsPage() {
   const key = accountKey();
   const view = key ? await loadCareer(key) : null;
-  paintHomeRecord(view);
-  paintLockerRecord(view);
+  paintPage(view);
+}
+
+/** Keep chrome button in sync with login state. */
+export function paintStatsChrome() {
+  const btn = document.querySelector<HTMLButtonElement>("#home-stats");
+  if (!btn) return;
+  btn.hidden = !accountKey();
 }
