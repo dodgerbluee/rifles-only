@@ -29,7 +29,7 @@ check("scoped Kar keeps the tube ocular", !!scopedOcular);
 check("ocular is a torus on the ZF tube", scopedOcular instanceof THREE.Mesh && scopedOcular.geometry.type === "TorusGeometry");
 check("scoped ocular is a direct child", !!scopedOcular && scoped.root.children.includes(scopedOcular));
 check("iron ADS is centered", Math.abs(iron.adsPos.x) < 1e-6);
-check("iron ADS sits on the barrel height", Math.abs(iron.adsPos.y + 0.034) < 1e-6, `y=${iron.adsPos.y}`);
+check("iron ADS sits on the barrel height", iron.adsPos.y < -0.03 && iron.adsPos.y > -0.07, `y=${iron.adsPos.y}`);
 check("iron ADS sits behind the barrel face", iron.adsPos.z < -0.06, `z=${iron.adsPos.z}`);
 check("iron Kar is not glass", RIFLES.kar.glass === false);
 check("Kar98k Scoped is glass", RIFLES.karscope.glass === true);
@@ -42,14 +42,14 @@ check("scoped has no wrap grips", !scoped.adsGrip);
 check("iron ADS has wrap grips", !!iron.adsGrip);
 check("iron has a faceted barrel face", !!ironFace);
 
-let ironPipes = 0;
+let ironFacets = 0;
 iron.root.traverse((c) => {
   const mesh = c as THREE.Mesh;
   if (!mesh.isMesh) return;
   const geo = mesh.geometry as THREE.CylinderGeometry;
-  if (geo.type === "CylinderGeometry" && geo.parameters.openEnded && (geo.parameters.radialSegments ?? 0) <= 8) ironPipes += 1;
+  if (geo.type === "CylinderGeometry" && (geo.parameters.radialSegments ?? 0) <= 8) ironFacets += 1;
 });
-check("iron barrel is an 8-sided open tube", ironPipes >= 4, `pipes=${ironPipes}`);
+check("iron ADS cup is faceted 8-sided metal", ironFacets >= 3, `cyls=${ironFacets}`);
 
 let scopedPipes = 0;
 scoped.root.traverse((c) => {

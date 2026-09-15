@@ -201,7 +201,6 @@ import {
   poseArm,
   reloadBoltK,
   rifleWrist,
-  adsWrist,
   poseAdsMask,
   knifeWrist,
   nadeWrist,
@@ -2614,14 +2613,8 @@ function poseHeldHands(
     poseArm(arm, nadeWrist(nadeView));
     leftArm.root.visible = false;
   } else if (wrap) {
-    poseArm(arm, adsWrist(hold, 1), 0);
-    poseArm(leftArm, adsWrist(hold, -1), 0);
-    arm.hand.quaternion.identity();
-    arm.hand.rotateY(-Math.PI / 2);
-    arm.hand.rotateX(0.55);
-    leftArm.hand.quaternion.identity();
-    leftArm.hand.rotateY(Math.PI / 2);
-    leftArm.hand.rotateX(0.55);
+    arm.root.visible = false;
+    leftArm.root.visible = false;
   } else poseArm(arm, rifleWrist(hold, opts.boltK));
 }
 
