@@ -465,6 +465,13 @@ export const HARBOR_SPEC: LayoutSpec = {
       "z": -15.25,
       "w": 8.82,
       "d": 9.82,
+      "y": 0.16
+    },
+    {
+      "x": 2.75,
+      "z": -15.25,
+      "w": 8.82,
+      "d": 9.82,
       "y": 2.88,
       "holes": [
         {
@@ -1627,6 +1634,15 @@ export const HARBOR_SPEC: LayoutSpec = {
       "dir": "-z",
       "height": 2.8,
       "width": 2.2
+    }
+  ],
+  "areas": [
+    {
+      "x": 2.75,
+      "z": -15.25,
+      "w": 8.5,
+      "d": 9.5,
+      "name": "Police"
     }
   ],
   "sites": [

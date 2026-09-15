@@ -2,19 +2,31 @@
  * Best-play must hold for the recap, and thrown nades must show up in snapshots.
  */
 import { createSim } from "../src/sim.ts";
-import { BESTPLAY_HOLD, claimSlot, createMatch, tickMatch, trySkipBestPlay } from "../src/match.ts";
+import { BESTPLAY_HOLD, claimSlot, createMatch, recapHoldFromReel, tickMatch, trySkipBestPlay } from "../src/match.ts";
 import {
   FAST_RATE,
+  LAST_POST,
   PLAY_RATE,
+  POST_SLOW,
+  PRE_SLOW,
   TAPE_MIN_DT,
+  advancePlayT,
   createTape,
+  inSlowWindow,
+  killcamWindow,
+  lerpTapeWeapon,
+  playBounds,
   pushFrame,
+  pushKill,
   recapWindow,
   reelDrivesBotMeshes,
+  reelWallTime,
   reelWorldPawnVisible,
   samplePoses,
+  sampleTape,
   type Pose,
 } from "../src/replay.ts";
+import { fullNades, nextHeldNade, spendNade, throwProgress } from "../src/smoke.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -62,6 +74,10 @@ duo.phase = "bestplay";
 duo.endT = BESTPLAY_HOLD;
 check("two humans stay on the recap", !trySkipBestPlay(duo) && duo.phase === "bestplay", `phase=${duo.phase}`);
 
+check("reel wall shorter than the 22s fallback ends Best Play with the reel", recapHoldFromReel(8) < 9 && recapHoldFromReel(8) > 8);
+check("long reels still cannot exceed the fallback hold", recapHoldFromReel(40) === BESTPLAY_HOLD);
+check("empty reel still gets a short hold, not the 22s leftover", recapHoldFromReel(0) <= 2.4);
+
 const youId = 3;
 const botId = 8;
 check("offline recap drives bot meshes", reelDrivesBotMeshes("offline"));
@@ -77,6 +93,12 @@ for (let i = 0; i < 4; i++) sim.tick(1 / 30);
 const seated = sim.snapshot();
 const me = seated.pawns.find((p) => p.netId === 1);
 check("joined pawn exists", !!me);
+const botGuns = seated.pawns.filter((p) => p.netId === 0);
+check(
+  "dedicated bot snapshots use the iron Kar, never scoped glass",
+  botGuns.length > 0 && botGuns.every((p) => p.weapon === "kar"),
+  `weapons=${botGuns.map((p) => p.weapon).join(",")}`,
+);
 if (!me) {
   console.error("cannot throw without a seated pawn");
   process.exit(1);
@@ -176,6 +198,82 @@ while (skipT < 4 && skipWall < 20) {
   skipWall += hz60;
 }
 check("FAST_RATE skip is 10× wall time", Math.abs(skipWall - 4 / FAST_RATE) < 0.05, `wall=${skipWall.toFixed(3)}`);
+
+const nadeTape = createTape();
+pushFrame(nadeTape, 0, [poseAt(1, 0)], { nades: [{ x: 0, y: 1, z: 0, kind: "frag" }], clouds: [] });
+pushFrame(nadeTape, 0.2, [poseAt(1, 1)], { nades: [{ x: 4, y: 1, z: 0, kind: "frag" }], clouds: [] });
+pushFrame(nadeTape, 0.4, [poseAt(1, 2)], { nades: [], clouds: [{ x: 4, y: 1, z: 0, radius: 3, opacity: 0.8 }] });
+const midNade = sampleTape(nadeTape, 0.1).nades[0];
+check("tape nades interpolate along the throw", !!midNade && midNade.x > 1.5 && midNade.x < 2.5, `x=${midNade?.x}`);
+check("later tape frame drops the airborne nade", sampleTape(nadeTape, 0.4).nades.length === 0);
+check("later tape frame keeps the cloud that existed then", sampleTape(nadeTape, 0.4).clouds.length === 1);
+
+const killsTape = createTape();
+for (let i = 0; i <= 40; i++) pushFrame(killsTape, i * 0.25, [poseAt(2, i)]);
+pushKill(killsTape, { t: 2, killerId: 2, victimId: 3, victimName: "A" });
+pushKill(killsTape, { t: 8, killerId: 2, victimId: 4, victimName: "B" });
+const clips = [
+  { t: 2, killerId: 2, victimId: 3, victimName: "A" },
+  { t: 8, killerId: 2, victimId: 4, victimName: "B" },
+];
+const bounds = playBounds(clips, killsTape);
+check("reel hangs past the last kill", bounds.end >= 8 + LAST_POST, `end=${bounds.end} lastPost=${LAST_POST}`);
+check("last kill is still in the slow window after old post", inSlowWindow(8 + POST_SLOW + 0.4, clips));
+check("gap before the last kill is not slow", !inSlowWindow(5.5, clips));
+
+let playT = 4;
+playT = advancePlayT(playT, 0.05, clips);
+check("FAST_RATE does not skip into the last kill", playT <= 8 - 1.55 + 1e-9, `playT=${playT}`);
+playT = 8 - 1.55 - 0.01;
+playT = advancePlayT(playT, 0.05, clips);
+check("advance lands on the next kill window instead of jumping over it", Math.abs(playT - (8 - 1.55)) < 1e-6, `playT=${playT}`);
+
+const wall = reelWallTime(clips, killsTape);
+check("multi-kill reel wall time covers the last kill hang", wall > LAST_POST + PRE_SLOW, `wall=${wall.toFixed(2)}`);
+
+const cam = killcamWindow(killsTape, 4, 8);
+check("killcam follows the killer", cam.killerId === 2);
+check("killcam lasts 3-5 seconds", cam.end - cam.start >= 3 && cam.end - cam.start <= 5, `span=${(cam.end - cam.start).toFixed(2)}`);
+
+const bag = fullNades();
+check("full bag starts with one frag", bag.frag === 1 && bag.smoke === 2);
+spendNade(bag, "frag");
+check("spending the last frag would otherwise swap to smoke", nextHeldNade(bag, "frag") === "smoke");
+check("killcam still holds the frag until the toss finishes", throwProgress(0.4, 0.4) < 0.02);
+check("mid-toss is a real throw pose, not a rest hold", throwProgress(0.2, 0.4) > 0.45 && throwProgress(0.2, 0.4) < 0.55);
+
+const tossTape = createTape();
+pushFrame(tossTape, 0, [{ ...poseAt(2, 0), weapon: "frag", throw: 0.2 }]);
+pushFrame(tossTape, 0.2, [{ ...poseAt(2, 0.2), weapon: "smoke", throw: 0 }]);
+const midToss = sampleTape(tossTape, 0.05).poses.get(2);
+check("tape interpolates throw progress", (midToss?.throw ?? 0) > 0.1, `throw=${midToss?.throw}`);
+check(
+  "killcam keeps the frag during the toss instead of swapping to smoke",
+  lerpTapeWeapon(
+    { ...poseAt(2, 0), weapon: "frag", throw: 0.35 },
+    { ...poseAt(2, 1), weapon: "smoke", throw: 0 },
+    0.8,
+  ) === "frag",
+);
+
+const leftover = createSim({ name: "Last Wire", freezeTime: 0.05, perTeam: 2, botSkill: "easy" });
+leftover.join(1, "Reed", "ember");
+leftover.join(2, "Pal", "stone");
+for (let i = 0; i < 40; i++) leftover.tick(0.05);
+check("duo reached live", leftover.snapshot().phase === "live", `phase=${leftover.snapshot().phase}`);
+for (const p of leftover.snapshot().pawns) {
+  if (p.team === "ember") leftover.slay(p.id);
+}
+leftover.tick(0.05);
+for (let i = 0; i < 120; i++) leftover.tick(0.05);
+check("duo entered bestplay", leftover.snapshot().phase === "bestplay", `phase=${leftover.snapshot().phase}`);
+leftover.event(1, { kind: "skipRecap" });
+leftover.tick(0.05);
+check(
+  "reel-end skipRecap concludes even with two humans",
+  leftover.snapshot().phase !== "bestplay",
+  `phase=${leftover.snapshot().phase}`,
+);
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

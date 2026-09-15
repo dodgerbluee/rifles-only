@@ -9,6 +9,7 @@ import { asLayoutSpec, buildingFloors, buildingInterior, type LayoutSpec } from 
 import { botTargets, createBots, despawnBot, HEAD_POP_RATE, hurtBot, popHead, popPawnHead, refillBotPawn, resetBots, restoreHead, restorePawnHead, spawnBot, updateBots, updateGore, type Bot } from "./bots";
 import {
   hideDeath,
+  hideDeathOverlay,
   hidePodium,
   holdScoreboard,
   paintNetMeter,
@@ -36,6 +37,8 @@ import {
   nadeColor,
   NADE_MAX,
   NADE_ORDER,
+  nextHeldNade,
+  throwProgress,
   smokeBlocksLos,
   smokeCoverage,
   stunDuration,
@@ -66,6 +69,7 @@ import {
   roundFrozen,
   slotById,
   tickMatch,
+  recapHoldFromReel,
   trySkipBestPlay,
   vacateSlot,
   waitingForPlayers,
@@ -157,14 +161,15 @@ import {
   writeBrowserLibrary,
   type StudioLibrary,
 } from "./maps/studio-lib";
-import { buildPawn, pawnStyle, poseStance, setPawnCloth, stepWalkFromPos, teamCloth, packLook } from "./pawn";
+import { buildPawn, pawnStyle, poseStance, setPawnCloth, setPawnHeldVisible, stepWalkFromPos, teamCloth, packLook } from "./pawn";
 import { clearPodium, mountPodium, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
+  advancePlayT,
   clearTape,
   createTape,
-  FAST_RATE,
   inSlowWindow,
+  killcamWindow,
   killsReached,
   pickMvp,
   playBounds,
@@ -172,12 +177,14 @@ import {
   pushKill,
   recapWindow,
   reelDrivesBotMeshes,
+  reelWallTime,
   reelWorldPawnVisible,
-  samplePoses,
+  sampleTape,
   PLAY_RATE,
   watchLabel,
   type KillClip,
   type Pose,
+  type TapeFx,
 } from "./replay";
 import {
   makeKar98,
@@ -204,6 +211,7 @@ import {
   GUN_BLURB,
   PRIMARY_IDS,
   bindKeys,
+  botRifle,
   gunName,
   hudWeaponLine,
   parseLoadout,
@@ -509,7 +517,9 @@ function leaveToLobby() {
   hideJoinTeam();
   studio.playing = false;
   stopReel();
-  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "bestplay", "podium", "studio-play");
+  if (killCam) stopKillCam();
+  freeLook = false;
+  document.body.classList.remove("started", "playing", "admin", "settings", "dead", "ads", "bestplay", "podium", "studio-play", "killcam");
   document.exitPointerLock();
   paintJoin();
   void refreshServers();
@@ -581,6 +591,14 @@ type Reel = {
 let reel: Reel | null = null;
 let reelPlayed = false;
 let lastRecord = -1;
+let killCam: { killerId: number; playT: number; endT: number } | null = null;
+let freeLook = false;
+const specFly = { x: 0, y: 8, z: 0 };
+let viewFx: TapeFx = { nades: [], clouds: [] };
+
+function viewingTape() {
+  return reel !== null || killCam !== null;
+}
 let seenPhase = match.phase;
 let cowUntil = 0;
 let cowId: number | null = null;
@@ -2334,6 +2352,7 @@ let boltDur = RIFLES.kar.cycle;
 let throwT = 0;
 let throwDur = 0.4;
 let throwDrop = false;
+let throwHeld: NadeKind | null = null;
 let flashT = 0;
 let stunT = 0;
 let lastMelee = -10;
@@ -2529,7 +2548,7 @@ document.querySelector("#open-settings")!.addEventListener("click", (e) => {
   panel.addEventListener("mousedown", (e) => e.stopPropagation());
 }
 addEventListener("contextmenu", (e) => {
-  if (studio.on || locker.on) e.preventDefault();
+  if (studio.on || locker.on || document.body.classList.contains("started")) e.preventDefault();
 });
 document.addEventListener("pointerlockchange", () => {
   locked = document.pointerLockElement === canvas;
@@ -2666,6 +2685,10 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyV" && locked && !e.repeat) tryBash();
   if ((e.code === "ControlLeft" || e.code === "ControlRight") && locked && !e.repeat) tryProne();
   if (e.code === "KeyE" && locked && !e.repeat && !alive) {
+    if (killCam) {
+      stopKillCam();
+      return;
+    }
     tryTakeover();
     return;
   }
@@ -2787,7 +2810,15 @@ addEventListener("mousedown", (e) => {
   }
   if (!locked) return;
   if (!alive) {
-    if (e.button === 0 || e.button === 2) cycleSpec(e.button === 2 ? -1 : 1);
+    if (killCam || match.phase === "bestplay") return;
+    if (e.button === 2) {
+      toggleFreeLook();
+      return;
+    }
+    if (e.button === 0) {
+      if (freeLook) freeLook = false;
+      cycleSpec(1);
+    }
     return;
   }
   if (e.button === 0) {
@@ -2846,6 +2877,8 @@ addEventListener("wheel", (e) => {
     return;
   }
   if (!locked || alive) return;
+  if (killCam || match.phase === "bestplay") return;
+  if (freeLook) freeLook = false;
   cycleSpec(e.deltaY > 0 ? 1 : -1);
 }, { passive: false });
 addEventListener("mousemove", (e) => {
@@ -2904,7 +2937,15 @@ addEventListener("mousemove", (e) => {
     } else if (studio.painting) stampStudio();
     return;
   }
-  if (!locked || !alive) return;
+  if (!locked) return;
+  if (!alive) {
+    if (freeLook) {
+      yaw -= e.movementX * MOUSE * prefs.sens;
+      pitch -= e.movementY * MOUSE * prefs.sens;
+      pitch = Math.max(-1.4, Math.min(1.4, pitch));
+    }
+    return;
+  }
   const adsScale = ads ? RIFLES[rifleKind].adsSens : 1;
   const scale = adsScale * MOUSE * prefs.sens * (stunT > 0 ? 0.28 : 1);
   yaw -= e.movementX * scale;
@@ -2957,8 +2998,42 @@ function isNade(w: string): w is NadeKind {
   return w === "smoke" || w === "frag" || w === "stun" || w === "flash";
 }
 
-function paintNadeView() {
-  (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(nadeKind));
+function paintNadeView(kind: NadeKind = throwHeld ?? nadeKind) {
+  (nadeBody.material as THREE.MeshStandardMaterial).color.set(nadeColor(kind));
+}
+
+function liveThrowK() {
+  return throwProgress(throwT, throwDur);
+}
+
+function livePoseWeapon(): Pose["weapon"] {
+  if (throwT > 0 && throwHeld) return throwHeld;
+  if (weapon === "rifle") return rifleKind;
+  if (weapon === "knife" || isNade(weapon)) return weapon;
+  return rifleKind;
+}
+
+function armThrow(kind: NadeKind, dur: number, drop: boolean) {
+  throwHeld = kind;
+  throwDrop = drop;
+  throwDur = dur;
+  throwT = dur;
+  paintNadeView(kind);
+  recordSnap();
+}
+
+function finishThrow() {
+  const kind = throwHeld;
+  throwHeld = null;
+  if (!kind || !isNade(weapon) || nadeKind !== kind) return;
+  const next = nextHeldNade(nadeBag, kind);
+  if (next === "rifle") {
+    weapon = "rifle";
+    return;
+  }
+  nadeKind = next;
+  weapon = next;
+  paintNadeView(next);
 }
 
 function selectNade() {
@@ -3027,17 +3102,7 @@ function tryThrowSmoke(power = 0.55) {
   }
   liveRifle().root.position.z += 0.02;
   bang(90, 0.07, 0.04);
-  throwDrop = false;
-  throwDur = 0.4;
-  throwT = 0.4;
-  if (isNade(weapon) && nadeBag[nadeKind] <= 0) {
-    const next = NADE_ORDER.find((k) => nadeBag[k] > 0);
-    if (next) {
-      nadeKind = next;
-      weapon = next;
-      paintNadeView();
-    } else weapon = "rifle";
-  }
+  armThrow(kind, 0.4, false);
 }
 
 function tryDropSmoke() {
@@ -3067,17 +3132,7 @@ function tryDropSmoke() {
     dropSmoke(scene, origin, kind);
   }
   bang(70, 0.05, 0.03);
-  throwDrop = true;
-  throwDur = 0.24;
-  throwT = 0.24;
-  if (isNade(weapon) && nadeBag[nadeKind] <= 0) {
-    const next = NADE_ORDER.find((k) => nadeBag[k] > 0);
-    if (next) {
-      nadeKind = next;
-      weapon = next;
-      paintNadeView();
-    } else weapon = "rifle";
-  }
+  armThrow(kind, 0.24, true);
 }
 
 function releaseSmoke() {
@@ -3273,20 +3328,20 @@ function shotPeople(
   return true;
 }
 
-type SpecT = { id: number; name: string; bot: boolean; x: number; y: number; z: number; yaw: number; pitch: number };
+type SpecT = { id: number; name: string; bot: boolean; team: Team; x: number; y: number; z: number; yaw: number; pitch: number };
 
 function specRoster(): SpecT[] {
   if (net.role === "client" && lastSnap) {
     const me = lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId);
-    const team = me?.team;
-    if (!team) return [];
+    if (!me) return [];
     const out: SpecT[] = [];
     for (const p of lastSnap.pawns) {
-      if (!p.alive || p.team !== team || (p.netId ?? 0) === net.peerId) continue;
+      if (!p.alive || (p.netId ?? 0) === net.peerId || p.id === me.id) continue;
       out.push({
         id: p.id,
         name: p.name,
         bot: (p.netId ?? 0) === 0,
+        team: p.team,
         x: p.x,
         y: p.y + 1.52,
         z: p.z,
@@ -3296,15 +3351,16 @@ function specRoster(): SpecT[] {
     }
     return out;
   }
-  const team = slotById(match, playerId)?.team;
-  if (!team) return [];
+  const self = slotById(match, playerId);
+  if (!self) return [];
   const out: SpecT[] = [];
   for (const b of bots) {
-    if (b.hp <= 0 || b.team !== team || b.id === possessId) continue;
+    if (b.hp <= 0 || b.id === possessId) continue;
     out.push({
       id: b.id,
       name: slotById(match, b.id)?.name ?? "Rifle",
       bot: true,
+      team: b.team,
       x: b.x,
       y: b.y + 1.52,
       z: b.z,
@@ -3313,11 +3369,12 @@ function specRoster(): SpecT[] {
     });
   }
   for (const r of remotes.values()) {
-    if (!r.alive || r.team !== team) continue;
+    if (!r.alive) continue;
     out.push({
       id: r.slotId,
       name: r.name,
       bot: false,
+      team: r.team,
       x: r.x,
       y: r.y + (r.crouch ? 1.1 : 1.64),
       z: r.z,
@@ -3347,9 +3404,84 @@ function cycleSpec(dir: number) {
   specId = list[(i + dir + list.length) % list.length]!.id;
 }
 
+function specMateTeam() {
+  if (net.role === "client" && lastSnap) {
+    return lastSnap.pawns.find((p) => (p.netId ?? 0) === net.peerId)?.team;
+  }
+  return slotById(match, playerId)?.team;
+}
+
+function toggleFreeLook() {
+  freeLook = !freeLook;
+  if (!freeLook) return;
+  specFly.x = camera.position.x;
+  specFly.y = camera.position.y;
+  specFly.z = camera.position.z;
+  yaw = camera.rotation.y;
+  pitch = camera.rotation.x;
+}
+
+function tickSpecFly(dt: number) {
+  const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 28 : 14;
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  const rx = Math.cos(yaw);
+  const rz = -Math.sin(yaw);
+  if (keys.has("KeyW")) {
+    specFly.x += fx * speed * dt;
+    specFly.z += fz * speed * dt;
+  }
+  if (keys.has("KeyS")) {
+    specFly.x -= fx * speed * dt;
+    specFly.z -= fz * speed * dt;
+  }
+  if (keys.has("KeyD")) {
+    specFly.x += rx * speed * dt;
+    specFly.z += rz * speed * dt;
+  }
+  if (keys.has("KeyA")) {
+    specFly.x -= rx * speed * dt;
+    specFly.z -= rz * speed * dt;
+  }
+  if (keys.has("Space")) specFly.y += speed * dt;
+  if (keys.has("ControlLeft") || keys.has("ControlRight") || keys.has("KeyC")) specFly.y -= speed * dt;
+  const { minX, maxX, minZ, maxZ } = world.bounds;
+  specFly.x = Math.max(minX - 8, Math.min(maxX + 8, specFly.x));
+  specFly.z = Math.max(minZ - 8, Math.min(maxZ + 8, specFly.z));
+  specFly.y = Math.max(0.4, Math.min(48, specFly.y));
+}
+
+function hideLiveSpecSubject(id: number | null) {
+  if (net.role === "client") {
+    for (const [pid, g] of clientPawns) {
+      if (pid === id) {
+        g.visible = false;
+        setPawnHeldVisible(g, false);
+      }
+    }
+    return;
+  }
+  for (const b of bots) {
+    if (b.id === possessId) {
+      b.root.visible = false;
+      continue;
+    }
+    const hide = id != null && b.id === id;
+    b.root.visible = b.hp > 0 && !hide;
+    setPawnHeldVisible(b.root, !hide);
+  }
+  for (const r of remotes.values()) {
+    const hide = id != null && r.slotId === id;
+    r.root.visible = r.alive && !hide;
+    setPawnHeldVisible(r.root, !hide);
+  }
+}
+
 function tryTakeover() {
+  if (killCam) return;
   const spec = specTarget();
   if (!spec?.bot) return;
+  if (spec.team !== specMateTeam()) return;
   if (net.role === "client") {
     net.sendEvent({ kind: "takeover", slotId: spec.id });
     return;
@@ -3369,6 +3501,9 @@ function tryTakeover() {
   prone = false;
   crouch = false;
   bot.root.visible = false;
+  killCam = null;
+  freeLook = false;
+  document.body.classList.remove("killcam");
   hideDeath();
   setSpec(`On ${spec.name} · their rifle, their score`);
 }
@@ -3703,10 +3838,21 @@ function collectPoses(): Pose[] {
         pitch: self ? pitch : p.pitch,
         eye: self ? eyeOff() : 1.52,
         alive: self ? alive : p.alive,
-        weapon: pawnPoseWeapon(self ? (weapon === "rifle" ? rifleKind : weapon) : p.weapon),
+        weapon: pawnPoseWeapon(self ? livePoseWeapon() : p.netId === 0 ? botRifle(p.id) : p.weapon),
         ads: self ? ads && weapon === "rifle" : p.ads,
         bash: self && bashT > 0 ? 1 - bashT / 0.42 : 0,
-        fov: self && ads && weapon === "rifle" ? RIFLES[rifleKind].adsFov : p.ads ? 68 : 90,
+        throw: self ? liveThrowK() : p.throw ?? 0,
+        throwDrop: self ? throwDrop : !!p.throwDrop,
+        fov:
+          self && ads && weapon === "rifle"
+            ? RIFLES[rifleKind].adsFov
+            : p.netId === 0
+              ? p.ads
+                ? RIFLES.kar.adsFov
+                : 90
+              : p.ads
+                ? 68
+                : 90,
         kick: self ? gunKickZ : 0,
         punchP: self ? punchP : 0,
         punchY: self ? punchY : 0,
@@ -3724,9 +3870,11 @@ function collectPoses(): Pose[] {
       pitch,
       eye: eyeOff(),
       alive,
-      weapon: weapon === "rifle" ? rifleKind : weapon,
+      weapon: livePoseWeapon(),
       ads: ads && weapon === "rifle",
       bash: bashT > 0 ? 1 - bashT / 0.42 : 0,
+      throw: liveThrowK(),
+      throwDrop,
       fov,
       kick: gunKickZ,
       punchP,
@@ -3744,10 +3892,12 @@ function collectPoses(): Pose[] {
       pitch: b.lookPitch,
       eye: 1.52,
       alive: b.hp > 0,
-      weapon: PRIMARY_IDS[Math.abs(b.id) % PRIMARY_IDS.length]!,
+      weapon: botRifle(b.id),
       ads: b.aim,
       bash: 0,
-      fov: b.aim ? 68 : 90,
+      throw: 0,
+      throwDrop: false,
+      fov: b.aim ? RIFLES.kar.adsFov : 90,
       kick: b.flash > 0.4 ? 0.06 : 0,
       punchP: b.flash > 0.4 ? 0.8 : 0,
       punchY: 0,
@@ -3767,6 +3917,8 @@ function collectPoses(): Pose[] {
       weapon: isNade(r.weapon) ? r.weapon : r.weapon === "knife" ? r.weapon : rifleFromWeapon(r.weapon),
       ads: r.ads,
       bash: 0,
+      throw: r.throw,
+      throwDrop: r.throwDrop,
       fov: r.ads ? 64 : 90,
       kick: 0,
       punchP: 0,
@@ -3791,9 +3943,68 @@ function tapeTime() {
   return lastSnap?.time ?? time;
 }
 
+function collectFx(): TapeFx {
+  if (net.role !== "host" && lastSnap) {
+    return { nades: lastSnap.nades ?? [], clouds: lastSnap.clouds ?? [] };
+  }
+  return { nades: activeNades(), clouds: activeClouds() };
+}
+
 function recordSnap() {
-  pushFrame(tape, tapeTime(), collectPoses());
+  pushFrame(tape, tapeTime(), collectPoses(), collectFx());
   lastRecord = time;
+}
+
+function worldPawnRoots(id: number) {
+  const out: THREE.Group[] = [];
+  for (const b of bots) if (b.id === id) out.push(b.root);
+  for (const r of remotes.values()) if (r.slotId === id) out.push(r.root);
+  const g = clientPawns.get(id);
+  if (g) out.push(g);
+  if (id === playerId) out.push(ghost);
+  return out;
+}
+
+function hideViewSubject(viewId: number) {
+  for (const root of worldPawnRoots(viewId)) {
+    root.visible = false;
+    setPawnHeldVisible(root, false);
+  }
+}
+
+function startKillCam(victimId: number) {
+  if (killCam || match.phase === "bestplay" || match.phase === "matchover" || studio.on || locker.on) return;
+  recordSnap();
+  const win = killcamWindow(tape, victimId, tapeTime());
+  killCam = { killerId: win.killerId, playT: win.start, endT: win.end };
+  freeLook = false;
+  document.body.classList.add("dead", "killcam");
+  showDeath({
+    killer: killedBy || "a rifleman",
+    place: calloutAt(px, pz, py),
+    spawnName: "next round",
+    remain: -1,
+    killcam: true,
+  });
+  cycleSpec(1);
+}
+
+function stopKillCam() {
+  if (!killCam) return;
+  killCam = null;
+  document.body.classList.remove("killcam");
+  hideDeathOverlay();
+  document.body.classList.add("dead");
+  lastReelAds = false;
+}
+
+function tickKillCam(dt: number) {
+  if (!killCam) return;
+  killCam.playT += dt;
+  const sampled = sampleTape(tape, killCam.playT);
+  viewFx = { nades: sampled.nades, clouds: sampled.clouds };
+  applyReel(sampled.poses, killCam.killerId, false);
+  if (killCam.playT >= killCam.endT) stopKillCam();
 }
 
 function frag(killerId: number, victimId: number, victimName: string, x: number, y: number, z: number) {
@@ -3814,21 +4025,24 @@ function reelViewName(id: number) {
 function startReel() {
   if (!inMatch()) return;
   if (studio.on || locker.on) return;
+  stopKillCam();
   recordSnap();
   mouseDown = false;
   clearFire(fireQ);
+  freeLook = false;
   for (const b of bots) restoreHead(b);
   for (const g of clientPawns.values()) restorePawnHead(g);
   const mvp = pickMvp(tape, match, playerId);
   const t0 = tape.frames[0]?.t ?? 0;
   const t1 = tape.frames[tape.frames.length - 1]?.t ?? 0;
   const clips =
-    mvp?.clips.filter((c) => c.t >= t0 - 0.6 && c.t <= t1 + 0.6) ?? [];
+    mvp?.clips.filter((c) => c.t >= t0 - 1.2 && c.t <= t1 + 1.2) ?? [];
   const recap = clips.length === 0 ? recapWindow(tape) : null;
   if (!mvp || clips.length === 0) {
     if (!recap) {
     if (!studio.on && !locker.on) document.body.classList.add("bestplay");
     hideDeath();
+    document.body.classList.remove("killcam");
     bestplayKicker.textContent = "Best play";
     bestplayName.textContent = "No clip";
     bestplayStat.textContent = "Nothing to replay this round";
@@ -3843,6 +4057,7 @@ function startReel() {
       recap: true,
       skipAt: time + 1.1,
     };
+    holdBestPlay(2.4);
     return;
     }
     const you = slotById(match, playerId);
@@ -3881,16 +4096,25 @@ function startReel() {
   }
   if (!studio.on && !locker.on) document.body.classList.add("bestplay");
   hideDeath();
-  applyReel(samplePoses(tape, reel.playT), reel.mvpId, true);
+  document.body.classList.remove("killcam");
+  holdBestPlay(reelWallTime(reel.clips, tape));
+  const sampled = sampleTape(tape, reel.playT);
+  viewFx = { nades: sampled.nades, clouds: sampled.clouds };
+  applyReel(sampled.poses, reel.mvpId, true);
+}
+
+function holdBestPlay(wall: number) {
+  if (net.role === "client" || match.phase !== "bestplay") return;
+  match.endT = recapHoldFromReel(wall, match.endT);
 }
 
 function trySkipReel() {
   const solo = humanCount(match) <= 1;
   if (reel && time < reel.skipAt && !solo) return;
   if (!reel && !solo) return;
-  if (solo) net.sendEvent({ kind: "skipRecap" });
   if (reel) stopReel();
   else if (net.role !== "client") trySkipBestPlay(match);
+  else net.sendEvent({ kind: "skipRecap" });
 }
 
 function stopReel() {
@@ -3898,12 +4122,30 @@ function stopReel() {
   lastReelAds = false;
   ghost.visible = false;
   for (const b of bots) {
-    b.root.visible = true;
+    b.root.rotation.order = "YXZ";
+    poseStance(b.root, b.hp > 0 ? "stand" : "down");
+    setPawnHeldVisible(b.root, true);
+    b.root.visible = b.id !== possessId;
     restoreHead(b);
   }
+  for (const r of remotes.values()) {
+    poseStance(r.root, r.alive ? "stand" : "down");
+    setPawnHeldVisible(r.root, true);
+    r.root.visible = true;
+  }
+  for (const g of clientPawns.values()) setPawnHeldVisible(g, true);
+  const recapOpen = match.phase === "bestplay";
   reel = null;
   reelPlayed = true;
-  if (net.role !== "client" && match.phase === "bestplay") concludeBestPlay(match);
+  if (!recapOpen) return;
+  if (net.role !== "client") concludeBestPlay(match);
+  else net.sendEvent({ kind: "skipRecap" });
+}
+
+function applyViewSample(t: number, viewId: number, snap: boolean) {
+  const sampled = sampleTape(tape, t);
+  viewFx = { nades: sampled.nades, clouds: sampled.clouds };
+  applyReel(sampled.poses, viewId, snap);
 }
 
 function tickReel(dt: number) {
@@ -3914,12 +4156,12 @@ function tickReel(dt: number) {
   if (reel.recap) {
     reel.playT += dt * (tape.frames.length < 2 ? 1 : PLAY_RATE);
     bestplayPace.textContent = time >= reel.skipAt || humanCount(match) <= 1 ? "Space to skip" : "Live";
-    applyReel(samplePoses(tape, reel.playT), reel.mvpId, false);
+    applyViewSample(reel.playT, reel.mvpId, false);
     if (reel.playT >= reel.endT) stopReel();
     return;
   }
   const live = inSlowWindow(reel.playT, reel.clips);
-  reel.playT += dt * (live ? PLAY_RATE : FAST_RATE);
+  reel.playT = advancePlayT(reel.playT, dt, reel.clips);
   bestplayPace.textContent =
     time >= reel.skipAt || humanCount(match) <= 1
       ? live
@@ -3935,7 +4177,7 @@ function tickReel(dt: number) {
     bestplayKill.textContent = `Kill ${n} / ${reel.clips.length}`;
     flashHit(true);
     bang(260, 0.08, 0.06);
-    const poses = samplePoses(tape, clip.t);
+    const poses = sampleTape(tape, clip.t).poses;
     const killer = poses.get(clip.killerId);
     const victim = poses.get(clip.victimId);
     if (killer && victim) {
@@ -3945,8 +4187,19 @@ function tickReel(dt: number) {
       );
     }
   }
-  applyReel(samplePoses(tape, reel.playT), reel.mvpId, false);
+  applyViewSample(reel.playT, reel.mvpId, false);
   if (reel.playT >= reel.endT) stopReel();
+}
+
+function poseTapePawn(root: THREE.Group, p: Pose, viewId: number) {
+  const show = reelWorldPawnVisible(p.id, viewId);
+  root.visible = show;
+  root.position.set(p.x, p.y, p.z);
+  root.rotation.order = "YXZ";
+  root.rotation.y = p.yaw;
+  poseStance(root, p.alive ? "stand" : "down");
+  stepWalkFromPos(root, p.x, p.z, p.alive);
+  setPawnHeldVisible(root, show && isRifleId(p.weapon));
 }
 
 function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
@@ -3959,11 +4212,7 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
         g.visible = false;
         continue;
       }
-      g.visible = reelWorldPawnVisible(id, mvpId);
-      g.position.set(p.x, p.y, p.z);
-      g.rotation.y = p.yaw;
-      poseStance(g, p.alive ? "stand" : "down");
-      stepWalkFromPos(g, p.x, p.z, p.alive);
+      poseTapePawn(g, p, mvpId);
     }
     for (const b of bots) b.root.visible = false;
   } else {
@@ -3978,35 +4227,31 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
       b.z = p.z;
       b.yaw = p.yaw;
       b.hp = p.alive ? 100 : 0;
-      b.root.visible = reelWorldPawnVisible(b.id, mvpId);
-      b.root.position.set(p.x, p.y, p.z);
-      b.root.rotation.y = p.yaw;
-      poseStance(b.root, p.alive ? "stand" : "down");
-      stepWalkFromPos(b.root, p.x, p.z, p.alive);
+      poseTapePawn(b.root, p, mvpId);
       restoreHead(b);
       setPawnCloth(b.cloth, p.alive ? teamCloth(b.team) : 0x2a3224);
     }
     for (const r of remotes.values()) {
       const p = poses.get(r.slotId);
       if (!p) {
+        r.root.visible = r.slotId !== mvpId;
         if (r.slotId === mvpId) r.root.visible = false;
         continue;
       }
-      r.root.visible = reelWorldPawnVisible(r.slotId, mvpId);
-      r.root.position.set(p.x, p.y, p.z);
-      r.root.rotation.y = p.yaw;
-      poseStance(r.root, p.alive ? "stand" : "down");
-      stepWalkFromPos(r.root, p.x, p.z, p.alive);
+      poseTapePawn(r.root, p, mvpId);
     }
   }
   const you = poses.get(playerId);
   if (you && mvpId !== playerId) {
     ghost.visible = true;
     ghost.position.set(you.x, you.y, you.z);
+    ghost.rotation.order = "YXZ";
     ghost.rotation.y = you.yaw;
     poseStance(ghost, you.alive ? "stand" : "down");
     stepWalkFromPos(ghost, you.x, you.z, you.alive);
+    setPawnHeldVisible(ghost, isRifleId(you.weapon));
   } else ghost.visible = false;
+  hideViewSubject(mvpId);
   const cam = poses.get(mvpId);
   if (cam) {
     camera.position.set(cam.x, cam.y + cam.eye, cam.z);
@@ -4020,15 +4265,18 @@ function applyReel(poses: Map<number, Pose>, mvpId: number, _snap: boolean) {
 
 function applyReelHands(cam: Pose) {
   const bashing = cam.bash > 0.02;
-  const rifleOn = isRifleId(cam.weapon) && !bashing;
+  const throwing = (cam.throw ?? 0) > 0.02;
+  const nadeOn = isNade(cam.weapon as Weapon);
+  const rifleOn = isRifleId(cam.weapon) && !bashing && !throwing;
   const kind: RifleId = rifleFromWeapon(cam.weapon);
   const camFov = cam.fov || (cam.ads ? RIFLES[kind].adsFov : 90);
   const zoom = adsZoomK(kind, camFov);
   const aiming = cam.ads && rifleOn;
   showRifle(kind, rifleOn && !glassHidesRifle(kind, aiming, zoom));
   setKarGlass(kind, aiming, zoom);
-  knife.visible = cam.weapon === "knife" || bashing;
-  nadeView.visible = isNade(cam.weapon as Weapon) && !bashing;
+  knife.visible = (cam.weapon === "knife" || bashing) && !throwing;
+  nadeView.visible = (nadeOn || throwing) && !bashing;
+  if (nadeOn) paintNadeView(cam.weapon as NadeKind);
   if (bashing) poseKnifeSlash(knife, cam.bash);
   else poseKnifeRest(knife);
   const hold = rifles[kind];
@@ -4041,17 +4289,19 @@ function applyReelHands(cam: Pose) {
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * 0.05;
   poseBolt(hold, 0);
   hold.root.updateMatrixWorld(true);
-  if (isNade(cam.weapon as Weapon) && !bashing) {
+  if (throwing) poseThrow(nadeView, cam.throw ?? 0, !!cam.throwDrop);
+  else if (nadeOn && !bashing) {
     nadeView.rotation.set(0, 0, 0);
     nadeView.position.set(0.18, -0.2, -0.2);
+    nadeView.visible = true;
   }
   hideRifleFlash();
   if (rifleOn) hold.flash.visible = cam.flash;
-  const handsOn = !cam.ads && (rifleOn || knife.visible || nadeView.visible);
+  const handsOn = !cam.ads && (rifleOn || knife.visible || nadeView.visible || throwing);
   arm.root.visible = handsOn;
   if (handsOn) {
     if (bashing || cam.weapon === "knife") poseArm(arm, knifeWrist(knife), cam.bash * 0.8);
-    else if (isNade(cam.weapon as Weapon)) poseArm(arm, nadeWrist(nadeView));
+    else if (throwing || nadeOn) poseArm(arm, nadeWrist(nadeView));
     else poseArm(arm, rifleWrist(hold, 0));
   }
   camera.fov = camFov;
@@ -4150,13 +4400,7 @@ function hurtPlayer(amount: number, source: string, killerId?: number, force = f
       }
       markDead(match, victim, px, py, pz);
     }
-    showDeath({
-      killer: source,
-      place: calloutAt(px, pz, py),
-      spawnName: "next round",
-      remain: -1,
-    });
-    cycleSpec(1);
+    startKillCam(victim);
   }
 }
 
@@ -4167,6 +4411,9 @@ function roundSpawn() {
   const spawn = list[2]!;
   possessId = null;
   specId = null;
+  killCam = null;
+  freeLook = false;
+  document.body.classList.remove("killcam");
   prone = false;
   diveT = 0;
   diveVx = 0;
@@ -4190,6 +4437,8 @@ function roundSpawn() {
   spawnProtectUntil = time + 1.2;
   nadeBag = { ...NADE_MAX };
   nadeKind = "smoke";
+  throwT = 0;
+  throwHeld = null;
   paintNadeView();
   flashT = 0;
   stunT = 0;
@@ -4210,6 +4459,8 @@ function roundSpawn() {
     r.root.rotation.set(0, spawnYaw(spawnAt, world), 0);
     r.root.visible = true;
     r.nades = fullNades();
+    r.throw = 0;
+    r.throwDrop = false;
     restorePawnHead(r.root);
   }
   clearTape(tape);
@@ -4494,7 +4745,10 @@ function frame(now: number) {
   if (diveT > 0) diveT = Math.max(0, diveT - dt);
   if (bashT > 0) bashT = Math.max(0, bashT - dt);
   if (boltT > 0) boltT = Math.max(0, boltT - dt);
-  if (throwT > 0) throwT = Math.max(0, throwT - dt);
+  if (throwT > 0) {
+    throwT = Math.max(0, throwT - dt);
+    if (throwT <= 0) finishThrow();
+  }
   if (flashT > 0) flashT = Math.max(0, flashT - dt);
   if (stunT > 0) stunT = Math.max(0, stunT - dt);
 
@@ -4613,7 +4867,7 @@ function frame(now: number) {
     ctx: audio,
   });
 
-  if (roundCombatOpen(match.phase) && time - lastRecord >= 1 / 14) {
+  if (roundCombatOpen(match.phase) && !viewingTape() && time - lastRecord >= 1 / 20) {
     recordSnap();
   }
 
@@ -4821,13 +5075,17 @@ function frame(now: number) {
 
   if (!inMatch()) {
     if (reel) stopReel();
+    if (killCam) stopKillCam();
   } else if (match.phase === "bestplay") {
-    if (rules.highlights && !reelPlayed) tickReel(dt);
+    if (killCam) tickKillCam(dt);
+    else if (rules.highlights && !reelPlayed) tickReel(dt);
     else if (reel) stopReel();
   } else if (reel) {
     stopReel();
+  } else if (killCam) {
+    tickKillCam(dt);
   }
-  const watching = reel !== null;
+  const watching = viewingTape();
   document.body.classList.toggle("ads", watching ? lastReelAds : ads);
 
   if (net.role === "host" && !reeling) {
@@ -4857,7 +5115,7 @@ function frame(now: number) {
     if (!studio.on && !locker.on && snapMap && snapMap !== mapId && !lastSnap.mapCustom && MAPS.some((m) => m.id === snapMap)) {
       loadMap(snapMap);
     }
-    if (!reel && !studio.on && !locker.on) {
+    if (!viewingTape() && !studio.on && !locker.on) {
       syncClientPawns(scene, lastSnap.pawns, net.peerId, clientPawns, dt, {
         forceSnap: lastSnap.round !== seenRound,
         now: performance.now(),
@@ -4910,6 +5168,7 @@ function frame(now: number) {
           killedBy = kill?.killerName ?? "a rifleman";
           lastDamage = `Killed · ${killedBy}`;
           lastHit = "down";
+          startKillCam(me.id);
         }
         playerId = me.id;
         hp = me.hp;
@@ -4951,19 +5210,23 @@ function frame(now: number) {
     seenRound = match.round;
     nadeBag = { ...NADE_MAX };
     nadeKind = "smoke";
+    throwT = 0;
+    throwHeld = null;
     predHist.length = 0;
     paintNadeView();
   }
 
   if (alive || match.phase === "bestplay" || match.phase === "matchover" || match.phase === "settle") {
-    hideDeath();
-  } else {
-    showDeath({
-      killer: killedBy || "a rifleman",
-      place: calloutAt(px, pz, py),
-      spawnName: "next round",
-      remain: -1,
-    });
+    if (!killCam) {
+      hideDeathOverlay();
+      if (alive || match.phase === "bestplay" || match.phase === "matchover") {
+        hideDeath();
+        document.body.classList.remove("killcam");
+      } else document.body.classList.remove("dead");
+    }
+  } else if (!killCam) {
+    document.body.classList.add("dead");
+    hideDeathOverlay();
   }
 
   const eyeY = py + eyeOff();
@@ -5030,9 +5293,27 @@ function frame(now: number) {
         for (const r of remotes.values()) r.root.visible = true;
       }
     } else {
-      const spec = !alive && !studio.on ? specTarget() : undefined;
-      if (spec) {
+      const spec = !alive && !studio.on && !freeLook ? specTarget() : undefined;
+      if (!alive && !studio.on && freeLook) {
+        tickSpecFly(dt);
+        camera.position.set(specFly.x, specFly.y, specFly.z);
+        camera.rotation.order = "YXZ";
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+        camera.rotation.z = 0;
+        fov += (90 - fov) * Math.min(1, dt * 10);
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+        showRifle(rifleKind, false);
+        setKarGlass(rifleKind, false, 0);
+        knife.visible = false;
+        nadeView.visible = false;
+        arm.root.visible = false;
+        hideLiveSpecSubject(null);
+        setSpec("Free look · LMB spectate · E take over a bot");
+      } else if (spec) {
         camera.position.set(spec.x, spec.y, spec.z);
+        camera.rotation.order = "YXZ";
         camera.rotation.y = spec.yaw;
         camera.rotation.x = spec.pitch;
         camera.rotation.z = 0;
@@ -5044,11 +5325,13 @@ function frame(now: number) {
         knife.visible = false;
         nadeView.visible = false;
         arm.root.visible = false;
+        hideLiveSpecSubject(spec.id);
+        const mate = spec.team === specMateTeam();
         setSpec(
-          `${spec.name}${spec.bot ? " · E take over" : " · human"} · click next`,
+          `${spec.name}${spec.bot && mate ? " · E take over" : spec.bot ? " · bot" : " · human"} · LMB next · RMB free look`,
         );
       } else {
-        setSpec(alive ? (possessId != null ? `On ${slotById(match, possessId)?.name ?? "bot"} · their score` : null) : "No living teammates");
+        setSpec(alive ? (possessId != null ? `On ${slotById(match, possessId)?.name ?? "bot"} · their score` : null) : "No one to spectate · RMB free look");
         camera.position.set(px + rightX * leanM, eyeY, pz + rightZ * leanM);
         camera.rotation.y = yaw;
         camera.rotation.x = (alive ? pitch : Math.min(pitch + 0.35, 0.6)) - punchP * 0.018;
@@ -5072,7 +5355,10 @@ function frame(now: number) {
         nadeView.visible = !studio.on && alive && !bashing && (isNade(weapon) || throwing) && !cowedSelf;
         if (bashing) poseKnifeSlash(knife, 1 - bashT / 0.42);
         else poseKnifeRest(knife);
-        if (throwing) poseThrow(nadeView, throwK, throwDrop);
+        if (throwing) {
+          if (throwHeld) paintNadeView(throwHeld);
+          poseThrow(nadeView, throwK, throwDrop);
+        }
         else if (isNade(weapon)) {
           nadeView.rotation.x = Math.sin(time * 3) * 0.04;
           nadeView.position.set(0.18, -0.2, -0.2 - smokeCharge * 0.18);
@@ -5111,7 +5397,11 @@ function frame(now: number) {
 
   setCook(alive && isNade(weapon) && smokeHeld, smokeCharge);
 
-  if (isClient) {
+  if (watching) {
+    applyNadeSnap(scene, viewFx.nades);
+    applyCloudSnap(scene, viewFx.clouds);
+    billowClouds(dt);
+  } else if (isClient) {
     applyNadeSnap(scene, lastSnap?.nades ?? []);
     applyCloudSnap(scene, lastSnap?.clouds ?? []);
     billowClouds(dt);
@@ -5304,7 +5594,7 @@ function frame(now: number) {
     nadeKind,
     clouds: lastSnap?.clouds ?? activeClouds(),
     air: lastSnap?.nades ?? activeNades(),
-    weapon: weapon === "rifle" ? rifleKind : weapon,
+    weapon: livePoseWeapon(),
     rifleName: RIFLES[rifleKind].name,
     loadoutKeys: hudWeaponLine(prefs.loadout, nadeKind, nadeBag),
     spread: watching ? (lastReelAds ? 8 : 26) : spreadPx(hipSpread),
@@ -5336,7 +5626,7 @@ function frame(now: number) {
         pitch,
         hp,
         alive,
-        weapon: weapon === "rifle" ? rifleKind : weapon,
+        weapon: livePoseWeapon(),
         ads,
         crouch,
         prone,
@@ -5348,6 +5638,8 @@ function frame(now: number) {
         skin: prefs.skin,
         look: packLook(prefs.look),
         cow: isCow(playerId),
+        throw: liveThrowK(),
+        throwDrop,
       },
       bots,
       remotes,
@@ -5366,12 +5658,14 @@ function frame(now: number) {
         fire: studio.on || locker.on || isCow(playerId) ? false : wantShot,
         ads: studio.on || locker.on ? false : ads,
         lean: studio.on || locker.on ? 0 : lean,
-        weapon: weapon === "rifle" ? rifleKind : weapon,
+        weapon: livePoseWeapon(),
         crouch: studio.on || locker.on ? false : crouch,
         prone: studio.on || locker.on ? false : prone,
         jump: studio.on || locker.on ? false : keys.has("Space"),
         use: studio.on || locker.on ? false : wantUse,
         ping: net.pingMs,
+        throw: liveThrowK(),
+        throwDrop,
       }),
     );
   }

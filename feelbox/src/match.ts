@@ -65,7 +65,14 @@ export type WireActor = {
 
 export const FREEZE_TIME = 2.8;
 export const END_HOLD = 4.2;
-export const BESTPLAY_HOLD = 10;
+export const BESTPLAY_HOLD = 22;
+
+/** Cap the Best Play phase to the reel's wall time so the tag does not linger after playback. */
+export function recapHoldFromReel(wall: number, hold = BESTPLAY_HOLD) {
+  if (!Number.isFinite(wall) || wall <= 0) return Math.min(hold, 2.4);
+  return Math.max(0.35, Math.min(hold, wall + 0.45));
+}
+
 export const FIRST_TO = 6;
 export const SWAP_AFTER = 5;
 export const CHAMPIONS_HOLD = 20;
