@@ -14,7 +14,88 @@ export type Site = {
   y: number;
   z: number;
   r: number;
+  w?: number;
+  d?: number;
 };
+
+/** Painted plant pad. Missing w/d fall back to a square around r. */
+export function siteExtent(s: { r?: number; w?: number; d?: number }) {
+  const w = s.w ?? (s.r ?? 3) * 2;
+  const d = s.d ?? (s.r ?? 3) * 2;
+  return { w, d };
+}
+
+const SITE_STROKE = 0.055;
+const SITE_MARK = 2.6;
+
+/** Thin gold frame on the plantable pad. Not a filled slab. */
+export function addSiteOutline(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  d: number,
+  opacity = 0.4,
+) {
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xd4b45a,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const h = 0.02;
+  const lift = y + 0.028;
+  const hw = w / 2;
+  const hd = d / 2;
+  const strip = (cx: number, cz: number, sx: number, sz: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, h, sz), mat);
+    m.position.set(cx, lift, cz);
+    m.renderOrder = 2;
+    parent.add(m);
+  };
+  strip(x, z + hd, w, SITE_STROKE);
+  strip(x, z - hd, w, SITE_STROKE);
+  strip(x + hw, z, SITE_STROKE, d);
+  strip(x - hw, z, SITE_STROKE, d);
+}
+
+export function addSiteMarker(parent: THREE.Object3D, pos: THREE.Vector3, letter: string) {
+  if (typeof document === "undefined") {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(SITE_MARK, SITE_MARK),
+      new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
+    );
+    mesh.position.copy(pos);
+    parent.add(mesh);
+    return;
+  }
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  g.strokeStyle = "rgba(216, 180, 90, 0.78)";
+  g.lineWidth = 7;
+  g.beginPath();
+  g.arc(128, 128, 114, 0, Math.PI * 2);
+  g.stroke();
+  g.font = "bold 148px sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.lineWidth = 10;
+  g.strokeStyle = "rgba(16, 17, 12, 0.42)";
+  g.strokeText(letter, 128, 140);
+  g.fillStyle = "#efe2b4";
+  g.fillText(letter, 128, 140);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
+  sprite.position.copy(pos);
+  sprite.scale.set(SITE_MARK, SITE_MARK, 1);
+  parent.add(sprite);
+}
 
 export type World = {
   id?: string;
@@ -105,10 +186,10 @@ export function buildWorld(scene: THREE.Scene): World {
 
   buildWharf(box, mat, scene, tex);
 
-  siteMarker(scene, new THREE.Vector3(-9, 5.9, 20.5), "A");
-  siteMarker(scene, new THREE.Vector3(-10, 3.15, 11.15), "A");
-  siteMarker(scene, new THREE.Vector3(10, 3.35, -16), "B");
-  siteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
+  addSiteMarker(scene, new THREE.Vector3(-9, 5.9, 20.5), "A");
+  addSiteMarker(scene, new THREE.Vector3(-10, 3.15, 11.15), "A");
+  addSiteMarker(scene, new THREE.Vector3(10, 3.35, -16), "B");
+  addSiteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
 
   const plantSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
   const watchSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
@@ -126,8 +207,8 @@ export function buildWorld(scene: THREE.Scene): World {
     waypoints: wharfWays(),
     bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
     sites: [
-      { id: "loft", call: "A", name: "Ice", x: -9, y: 3.35, z: 20.5, r: 3.0 },
-      { id: "well", call: "B", name: "Slip", x: 10, y: 0.12, z: -16, r: 3.2 },
+      { id: "loft", call: "A", name: "Ice", x: -9, y: 3.35, z: 20.5, r: 3.0, w: 6, d: 6 },
+      { id: "well", call: "B", name: "Slip", x: 10, y: 0.12, z: -16, r: 3.2, w: 6.4, d: 6.4 },
     ],
   };
 }
@@ -157,14 +238,6 @@ function buildWharf(box: BoxFn, mat: MatFn, scene: THREE.Scene, tex: TexPack) {
     roughness: 0.28,
     metalness: 0.38,
   });
-  const gold = new THREE.MeshStandardMaterial({
-    color: 0xc4a045,
-    roughness: 0.42,
-    metalness: 0.45,
-    emissive: 0x3a2808,
-    emissiveIntensity: 0.4,
-  });
-
   box(0, -0.06, 4, 89.2, 0.12, 57.2, snow, true, true);
   box(0, 0.01, 4, 4.4, 0.04, 36, mat("asphalt", 3, 16), false);
   const drink = new THREE.Mesh(new THREE.BoxGeometry(92, 0.2, 14), water);
@@ -184,8 +257,8 @@ function buildWharf(box: BoxFn, mat: MatFn, scene: THREE.Scene, tex: TexPack) {
 
   buildEmberDock(box, mat);
   buildStoneDock(box, mat);
-  buildIce(box, mat, gold);
-  buildSlip(box, mat, gold);
+  buildIce(box, mat, scene);
+  buildSlip(box, mat, scene);
   buildBoatShed(box, mat);
   buildNetShed(box, mat);
   buildMidCover(box, mat);
@@ -268,7 +341,7 @@ function buildStoneDock(box: BoxFn, mat: MatFn) {
   box(32.2, 0.5, 0.9, 1.3, 1.0, 1.1, mat("wood", 1.2, 0.9), true, true);
 }
 
-function buildIce(box: BoxFn, mat: MatFn, gold: THREE.Material) {
+function buildIce(box: BoxFn, mat: MatFn, scene: THREE.Scene) {
   const h = 6.2;
   wallZ(box, mat, -18, 12, 25, h, [{ z0: 17.2, z1: 18.9, y0: 0, y1: 2.15 }]);
   wallZ(box, mat, 0, 12, 25, h, [
@@ -289,13 +362,13 @@ function buildIce(box: BoxFn, mat: MatFn, gold: THREE.Material) {
   box(-14.4, 4.15, 19.2, 0.1, 1.6, 6.4, mat("metal", 0.4, 5, 0.45, 0.5), false);
   box(-3.6, 4.15, 19.2, 0.1, 1.6, 6.4, mat("metal", 0.4, 5, 0.45, 0.5), false);
   box(-9, 4.85, 20.5, 11.2, 0.08, 0.1, mat("metal", 8, 0.3, 0.45, 0.5), false);
-  box(-9, 3.38, 20.5, 3.5, 0.06, 3.5, gold, true, true);
+  addSiteOutline(scene, -9, 3.35, 20.5, 6, 6);
   box(-12.2, 3.85, 22.4, 1.2, 1.0, 1.1, mat("wood", 1, 0.9), true, true);
   box(-5.6, 3.85, 18.2, 1.3, 1.0, 1.05, mat("wood", 1, 0.9), true, true);
   stairs(box, mat, -10.6, 13.15, "+z", 8, 0.42, 0.52, 1.7, 0);
 }
 
-function buildSlip(box: BoxFn, mat: MatFn, gold: THREE.Material) {
+function buildSlip(box: BoxFn, mat: MatFn, scene: THREE.Scene) {
   box(10, 4.15, -16, 16.4, 2.6, 9.2, mat("metal", 12, 8, 0.5, 0.4));
   box(2.4, 1.5, -16, 0.35, 3.0, 8.6, mat("wood", 0.5, 3));
   box(17.6, 1.5, -16, 0.35, 3.0, 8.6, mat("wood", 0.5, 3));
@@ -304,7 +377,7 @@ function buildSlip(box: BoxFn, mat: MatFn, gold: THREE.Material) {
   box(16, 0.45, -14.4, 1.5, 0.9, 1.3, mat("wood", 1.2, 0.8), true, true);
   box(4.2, 0.45, -17.8, 1.4, 0.9, 1.2, mat("wood", 1.2, 0.8), true, true);
   box(15.8, 0.45, -17.6, 1.4, 0.9, 1.2, mat("wood", 1.2, 0.8), true, true);
-  box(10, 0.08, -16, 3.6, 0.08, 3.6, gold, true, true);
+  addSiteOutline(scene, 10, 0.12, -16, 6.4, 6.4);
   box(10, 0.02, -12, 8, 0.05, 4.5, mat("wood", 6, 4), true, true);
 }
 
@@ -406,38 +479,6 @@ function lamp(scene: THREE.Scene, x: number, z: number) {
   const light = new THREE.PointLight(0xffd19a, 7, 9, 1.8);
   light.position.set(x, 3.2, z);
   scene.add(light);
-}
-
-function siteMarker(scene: THREE.Scene, pos: THREE.Vector3, letter: string) {
-  if (typeof document === "undefined") {
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.2, 1.2),
-      new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
-    );
-    mesh.position.copy(pos);
-    scene.add(mesh);
-    return;
-  }
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "rgba(20,18,12,0.62)";
-  g.fillRect(16, 16, 96, 96);
-  g.strokeStyle = "#e8d9a8";
-  g.lineWidth = 6;
-  g.strokeRect(22, 22, 84, 84);
-  g.fillStyle = "#e8d9a8";
-  g.font = "bold 72px ui-sans-serif, system-ui";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(letter, 64, 70);
-  const map = new THREE.CanvasTexture(c);
-  map.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-  sprite.position.copy(pos);
-  sprite.scale.set(1.55, 1.55, 1);
-  scene.add(sprite);
 }
 
 function addSky(scene: THREE.Scene) {
@@ -625,7 +666,11 @@ export function groundHeight(colliders: Aabb[], x: number, z: number, radius: nu
 export function inSite(world: World, id: Site["id"], x: number, z: number, y: number) {
   const s = world.sites.find((site) => site.id === id);
   if (!s) return false;
-  return Math.hypot(x - s.x, z - s.z) < s.r && Math.abs(y - s.y) < 1.8;
+  if (Math.abs(y - s.y) >= 1.8) return false;
+  if (s.w != null && s.d != null) {
+    return Math.abs(x - s.x) <= s.w / 2 && Math.abs(z - s.z) <= s.d / 2;
+  }
+  return Math.hypot(x - s.x, z - s.z) < s.r;
 }
 
 /** Face the map middle from a spawn so planters/watchers look inward. */

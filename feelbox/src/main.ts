@@ -97,6 +97,8 @@ import {
   isOpeningTool,
   isRectTool,
   GRID,
+  SITE_MIN,
+  SITE_ZONE,
   STAMP,
   snap,
   snapCell,
@@ -1259,7 +1261,9 @@ function paintStudio() {
   if (hint) {
     hint.textContent = studio.walk
       ? "WASD move · click to place any tool except Building · U cuts one square · Esc orbit"
-      : "Drag the yellow peg to walk there · Middle-drag pans · Shift-click or drag-box to multi-select · Knobs resize · Ctrl+Z undo";
+      : studio.tool === "siteA" || studio.tool === "siteB"
+        ? "Drag the plantable pad · click stamps a 6m square · gold outline in play, not a fill"
+        : "Drag the yellow peg to walk there · Middle-drag pans · Shift-click or drag-box to multi-select · Knobs resize · Ctrl+Z undo";
   }
   const status = document.querySelector("#studio-status");
   const lot = studio.spec.bounds;
@@ -1724,7 +1728,7 @@ function finishStudioDrag() {
     const d = Math.abs(drag.z1 - drag.z0);
     let next = studio.spec;
     const dragged = w >= GRID || d >= GRID;
-    if (studio.tool === "wall" || studio.tool === "floor" || studio.tool === "building" || studio.tool === "area") {
+    if (isRectTool(studio.tool)) {
       if (dragged) next = placeBuildingRect(studio.spec, drag.x0, drag.z0, drag.x1, drag.z1, studio.tool, studio.faceYaw, drag.y, studioCallName());
       else next = place(studio.spec, studio.tool, drag.x0, drag.z0, { yaw: studio.faceYaw, y: drag.y, name: studioCallName() });
     } else {
@@ -5395,7 +5399,7 @@ function frame(now: number) {
     const site = inSite(world, "loft", px, pz, py) ? "ICE" : inSite(world, "well", px, pz, py) ? "SLIP" : "";
     prompt = site
       ? "HOLD F · PLANT"
-      : `${displayName(slotById(match, viewId)?.name ?? mePawn?.name ?? prefs.name)} has the Bomb · gold pad at A or B`;
+      : `${displayName(slotById(match, viewId)?.name ?? mePawn?.name ?? prefs.name)} has the Bomb · plant at A or B`;
   } else if (match.wire.mode === "planted" && youTeam !== planter) {
     if (Math.hypot(px - match.wire.x, pz - match.wire.z) < 1.5) prompt = "HOLD F · CUT THE BOMB";
   } else if (match.phase === "planted") {
@@ -5767,12 +5771,16 @@ function frame(now: number) {
           studioGhost.visible = true;
           studioGhost.scale.set(foot.w, sy, foot.d);
           studioGhost.position.set(foot.x, y + sy / 2, foot.z);
-        } else if (studio.tool === "area") {
-          const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
-          const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
+        } else if (studio.tool === "area" || studio.tool === "siteA" || studio.tool === "siteB") {
+          const min = studio.tool === "area" ? GRID : SITE_MIN;
+          const w = Math.max(min, Math.abs(studio.drag.x1 - studio.drag.x0));
+          const d = Math.max(min, Math.abs(studio.drag.z1 - studio.drag.z0));
+          const y = studio.tool === "area"
+            ? 0.06
+            : rectSurfaceY(studio.spec, studio.drag.x0, studio.drag.z0, studio.drag.x1, studio.drag.z1) + 0.06;
           studioGhost.visible = true;
           studioGhost.scale.set(w, 0.12, d);
-          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, 0.06, (studio.drag.z0 + studio.drag.z1) / 2);
+          studioGhost.position.set((studio.drag.x0 + studio.drag.x1) / 2, y, (studio.drag.z0 + studio.drag.z1) / 2);
         } else {
           const w = Math.max(GRID, Math.abs(studio.drag.x1 - studio.drag.x0));
           const d = Math.max(GRID, Math.abs(studio.drag.z1 - studio.drag.z0));
@@ -5817,6 +5825,11 @@ function frame(now: number) {
           } else if (studio.tool === "area") {
             studioGhost.scale.set(STAMP, 0.12, STAMP);
             studioGhost.position.set(snapCell(hit.x), 0.06, snapCell(hit.z));
+          } else if (studio.tool === "siteA" || studio.tool === "siteB") {
+            const gx = snapCell(hit.x);
+            const gz = snapCell(hit.z);
+            studioGhost.scale.set(SITE_ZONE, 0.12, SITE_ZONE);
+            studioGhost.position.set(gx, surfaceAt(studio.spec, gx, gz) + 0.06, gz);
           } else {
             const [sx, sy, sz] = ghostSize(studio.tool, STAMP, STAMP);
             const gx = studio.tool === "crate" ? snapCell(hit.x) : snap(hit.x);

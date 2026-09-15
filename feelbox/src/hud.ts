@@ -1,4 +1,5 @@
 import type { World } from "./world";
+import { siteExtent } from "./world";
 import { actorTag, displayName, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
@@ -261,17 +262,22 @@ function drawMinimap(
     mapCtx.fillRect(x, y, Math.max(1.2, w), Math.max(1.2, h));
   }
 
-  mapCtx.font = "bold 11px ui-sans-serif, system-ui";
+  mapCtx.font = "bold 14px ui-sans-serif, system-ui";
   mapCtx.textAlign = "center";
   mapCtx.textBaseline = "middle";
   for (const site of world.sites) {
+    const { w, d } = siteExtent(site);
+    const a = to(site.x - w / 2, site.z + d / 2);
+    const c = to(site.x + w / 2, site.z - d / 2);
+    const x = Math.min(a.x, c.x);
+    const y = Math.min(a.y, c.y);
+    const rw = Math.abs(c.x - a.x);
+    const rh = Math.abs(c.y - a.y);
+    mapCtx.strokeStyle = "rgba(212, 180, 90, 0.55)";
+    mapCtx.lineWidth = 1.15;
+    mapCtx.strokeRect(x, y, Math.max(2, rw), Math.max(2, rh));
     const p = to(site.x, site.z);
-    mapCtx.fillStyle = "rgba(20,18,12,0.7)";
-    mapCtx.fillRect(p.x - 8, p.y - 8, 16, 16);
-    mapCtx.strokeStyle = "#e8d9a8";
-    mapCtx.lineWidth = 1.2;
-    mapCtx.strokeRect(p.x - 8, p.y - 8, 16, 16);
-    mapCtx.fillStyle = "#e8d9a8";
+    mapCtx.fillStyle = "#efe2b4";
     mapCtx.fillText(site.call, p.x, p.y + 0.5);
   }
 

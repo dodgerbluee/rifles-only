@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { makeTextures, surf, type TexPack } from "../textures";
-import type { Aabb, Site, World } from "../world";
+import { addSiteMarker, addSiteOutline, type Aabb, type Site, type World } from "../world";
 
 export type MapId = "wharf" | "harbor" | "cove" | "parish" | "cut" | "siding";
 
@@ -31,7 +31,7 @@ export type Kit = {
   siteMarker: (pos: THREE.Vector3, letter: string) => void;
   tree: (x: number, z: number, h?: number) => void;
   lamp: (x: number, z: number, color?: number) => void;
-  pad: (x: number, y: number, z: number, sx?: number, sz?: number) => void;
+  pad: (x: number, y: number, z: number, sx?: number, sz?: number, opacity?: number) => void;
   climb: (
     x: number,
     z: number,
@@ -91,35 +91,7 @@ export function makeKit(scene: THREE.Scene): Kit {
 
   const v = (x: number, z: number, y = 0) => new THREE.Vector3(x, y, z);
 
-  const siteMarker = (pos: THREE.Vector3, letter: string) => {
-    if (typeof document === "undefined") {
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.2, 1.2),
-        new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
-      );
-      mesh.position.copy(pos);
-      root.add(mesh);
-      return;
-    }
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const g = c.getContext("2d")!;
-    g.fillStyle = "rgba(16,17,12,0.55)";
-    g.beginPath();
-    g.arc(64, 64, 58, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = "#e8d9a8";
-    g.font = "bold 72px sans-serif";
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.fillText(letter, 64, 70);
-    const map = new THREE.CanvasTexture(c);
-    map.colorSpace = THREE.SRGBColorSpace;
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-    sprite.position.copy(pos);
-    sprite.scale.set(1.55, 1.55, 1);
-    root.add(sprite);
-  };
+  const siteMarker = (pos: THREE.Vector3, letter: string) => addSiteMarker(root, pos, letter);
 
   const tree = (x: number, z: number, h = 4.2) => {
     box(x, 0.7, z, 0.28, 1.4, 0.28, mat("wood", 0.4, 1.2), true, false, true);
@@ -135,8 +107,8 @@ export function makeKit(scene: THREE.Scene): Kit {
     root.add(light);
   };
 
-  const pad = (x: number, y: number, z: number, sx = 2.4, sz = 2.4) => {
-    box(x, y, z, sx, 0.08, sz, gold, true, true, false);
+  const pad = (x: number, y: number, z: number, sx = 6, sz = 6, opacity?: number) => {
+    addSiteOutline(root, x, y, z, sx, sz, opacity);
   };
 
   const climb: Kit["climb"] = (x, z, dir, height, width = 2.2, startY = 0, tread = "wood") => {

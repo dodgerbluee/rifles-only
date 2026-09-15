@@ -33,6 +33,8 @@ import {
   itemsInRect,
   defaultOrbit,
   GRID,
+  SITE_MIN,
+  SITE_ZONE,
   panDrag,
   toolFromCode,
   walkKeepsTool,
@@ -44,7 +46,7 @@ import { addVersion, emptyLibrary, revertVersion, seedCatalog, writeActive } fro
 import { SIDING_SPEC } from "../src/maps/siding.ts";
 import { HARBOR_SPEC } from "../src/maps/harbor.ts";
 import { LAYOUT_SPECS } from "../src/maps/index.ts";
-import { groundHeight } from "../src/world.ts";
+import { groundHeight, inSite } from "../src/world.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -97,6 +99,7 @@ check("jump crate stamped", spec.cover?.some((c) => c.kind === "jumpCrate" && c.
 check("full crate stamped", spec.cover?.some((c) => c.kind === "fullCrate" && c.x === 8 && c.z === 4) === true);
 check("climb faces -z when looking north", spec.climbs?.[0]?.dir === "-z");
 check("site A snapped to a cell", spec.sites.find((s) => s.id === "loft")?.x === -10.25);
+check("click A stamps a 6m plant pad", spec.sites.find((s) => s.id === "loft")?.w === SITE_ZONE && spec.sites.find((s) => s.id === "loft")?.d === SITE_ZONE);
 
 spec = place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 });
 spec = place(spec, "crate", 4.1, 4.1);
@@ -229,6 +232,17 @@ check("building beats the area under the cursor", pickItem(nest, 0, 0)?.kind ===
 check("rename area", setAreaName(calls, 1, "Connector").areas?.[1]?.name === "Connector");
 const draggedCall = placeBuildingRect(blankSpec(), -4, -4, 4, 4, "area", 0, 0, "Banana");
 check("dragged call keeps its name", draggedCall.areas?.[0]?.name === "Banana" && (draggedCall.areas?.[0]?.w ?? 0) >= 8);
+check("A site is a drag rect", isRectTool("siteA") && isRectTool("siteB"));
+const draggedSite = placeBuildingRect(blankSpec(), -4, -3, 4, 3, "siteA", 0);
+const loft = draggedSite.sites.find((s) => s.id === "loft");
+check("dragged A keeps the painted pad", (loft?.w ?? 0) >= 8 && (loft?.d ?? 0) >= 6, `w=${loft?.w} d=${loft?.d}`);
+const siteItem = { kind: "site" as const, i: draggedSite.sites.findIndex((s) => s.id === "loft") };
+const grownSite = resizeItem(draggedSite, siteItem, "e", (loft?.x ?? 0) + (loft?.w ?? 0) / 2 + 2, loft?.z ?? 0);
+check("knobs grow the A pad", (grownSite.sites.find((s) => s.id === "loft")?.w ?? 0) > (loft?.w ?? 0));
+const siteWorld = compileLayout(new THREE.Scene(), draggedSite);
+check("painted pad is plantable inside", inSite(siteWorld, "loft", 3.5, 2, 0));
+check("outside the pad is not plantable", !inSite(siteWorld, "loft", 8, 0, 0));
+check("click A is at least SITE_MIN", (place(blankSpec(), "siteA", 0, 0).sites.find((s) => s.id === "loft")?.w ?? 0) >= SITE_MIN);
 check("harbor theme is dust", HARBOR_SPEC.theme === "dust");
 
 let floored = blankSpec();

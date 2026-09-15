@@ -32,8 +32,8 @@ export const SIDING_SPEC: LayoutSpec = {
     { x: 1, z: 10, dir: "-x", height: 2.8, width: 2.2 },
   ],
   sites: [
-    { id: "loft", call: "A", name: "Gable", x: -12, z: 16 },
-    { id: "well", call: "B", name: "Lean", x: -30, z: -18 },
+    { id: "loft", call: "A", name: "Gable", x: -12, z: 16, w: 6, d: 6 },
+    { id: "well", call: "B", name: "Lean", x: -30, z: -18, w: 6, d: 6 },
   ],
   plantSpawns: [
     [-30, 0],

@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import { finish, makeKit, sky, T, type Kit } from "./kit";
 import type { Site, World } from "../world";
+import { siteExtent } from "../world";
 
 export type ThemeId = "winter" | "harbor" | "stone" | "dust";
 export type DoorWall = "n" | "s" | "e" | "w";
@@ -110,6 +111,19 @@ export type AreaSpec = {
   name: string;
 };
 
+export type SiteSpec = {
+  id: Site["id"];
+  call: string;
+  name: string;
+  x: number;
+  z: number;
+  y?: number;
+  r?: number;
+  /** Painted plantable pad. Defaults to a 6m square (r = 3). */
+  w?: number;
+  d?: number;
+};
+
 export type LayoutSpec = {
   id: string;
   title: string;
@@ -123,7 +137,7 @@ export type LayoutSpec = {
   cover?: CoverSpec[];
   climbs?: ClimbSpec[];
   areas?: AreaSpec[];
-  sites: { id: Site["id"]; call: string; name: string; x: number; z: number; y?: number; r?: number }[];
+  sites: SiteSpec[];
   plantSpawns: [number, number][];
   watchSpawns: [number, number][];
   routes: [number, number, number?][][];
@@ -612,8 +626,10 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
   }
 
   for (const s of spec.sites) {
-    kit.pad(s.x, s.y ?? 0, s.z);
-    kit.siteMarker(kit.v(s.x, s.z, 1.4), s.call);
+    const { w, d } = siteExtent(s);
+    const y = s.y ?? 0;
+    kit.pad(s.x, y, s.z, w, d, clay ? 0.58 : 0.4);
+    kit.siteMarker(kit.v(s.x, s.z, y + 1.85), s.call);
   }
   if (clay) {
     const plantMat = new THREE.MeshLambertMaterial({ color: 0xb88a78 });
@@ -641,15 +657,20 @@ export function compileLayout(scene: THREE.Scene, spec: LayoutSpec, opts?: { cla
     watchSpawns,
     waypoints,
     bounds: spec.bounds,
-    sites: spec.sites.map((s) => ({
-      id: s.id,
-      call: s.call,
-      name: s.name,
-      x: s.x,
-      y: s.y ?? 0,
-      z: s.z,
-      r: s.r ?? 3,
-    })),
+    sites: spec.sites.map((s) => {
+      const { w, d } = siteExtent(s);
+      return {
+        id: s.id,
+        call: s.call,
+        name: s.name,
+        x: s.x,
+        y: s.y ?? 0,
+        z: s.z,
+        r: s.r ?? Math.max(w, d) / 2,
+        w,
+        d,
+      };
+    }),
     placeName: (x, z, y) => layoutPlaceName(spec, x, z, y),
   });
 }
@@ -674,8 +695,8 @@ export const YARD_SPEC: LayoutSpec = {
     { x: 0, z: -10, kind: "truck" },
   ],
   sites: [
-    { id: "loft", call: "A", name: "Shed", x: -14, z: 8 },
-    { id: "well", call: "B", name: "Lot", x: 14, z: -6 },
+    { id: "loft", call: "A", name: "Shed", x: -14, z: 8, w: 6, d: 6 },
+    { id: "well", call: "B", name: "Lot", x: 14, z: -6, w: 6, d: 6 },
   ],
   plantSpawns: [
     [-30, 0],

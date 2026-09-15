@@ -67,8 +67,8 @@ export function buildCut(scene: THREE.Scene): World {
     ],
     bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
     sites: [
-      { id: "loft", call: "A", name: "Rim", x: -8, y: 6.4, z: 16, r: 3 },
-      { id: "well", call: "B", name: "Kiln", x: 12, y: 0, z: -6, r: 3.2 },
+      { id: "loft", call: "A", name: "Rim", x: -8, y: 6.4, z: 16, r: 3, w: 6, d: 6 },
+      { id: "well", call: "B", name: "Kiln", x: 12, y: 0, z: -6, r: 3.2, w: 6.4, d: 6.4 },
     ],
     placeName: (x, z, y = 0) => {
       if (x < -28 && y > 5) return "West rim";
@@ -154,7 +154,7 @@ function rimSite(
   box(-2.8, 6.78, 12.2, 2.0, 0.72, 0.55, mat("dirt", 1.8, 0.6));
   box(-16.2, 8.6, 16, 0.5, 4.4, 0.5, mat("metal", 0.4, 4, 0.45, 0.55));
   box(-4, 10.5, 16, 24, 0.28, 0.38, mat("metal", 16, 0.3, 0.45, 0.55));
-  pad(-8, 6.44, 16);
+  pad(-8, 6.44, 16, 6, 6);
   siteMarker(v(-8, 16, 8.8), "A");
   siteMarker(v(-18, 16, 8.2), "A");
 }
@@ -177,7 +177,7 @@ function kilnSite(
 
   box(8.6, 0.7, -8.8, 1.2, 1.4, 1.1, mat("metal", 1.1, 1.3, 0.45, 0.4));
   box(15.4, 0.7, -3.2, 1.2, 1.4, 1.1, mat("metal", 1.1, 1.3, 0.45, 0.4));
-  pad(12, 0.04, -6);
+  pad(12, 0.04, -6, 6.4, 6.4);
   siteMarker(v(12, -6, 2.8), "B");
   siteMarker(v(16, -2, 2.4), "B");
   const glow = new THREE.PointLight(0xff7a30, 14, 10, 1.5);
@@ -364,8 +364,8 @@ export const CUT_SPEC: LayoutSpec = {
     { x: -21, z: 4, w: 10, d: 24, name: "Mid terrace" },
   ],
   sites: [
-    { id: "loft", call: "A", name: "Rim", x: -8, y: 6.4, z: 16 },
-    { id: "well", call: "B", name: "Kiln", x: 12, z: -6 },
+    { id: "loft", call: "A", name: "Rim", x: -8, y: 6.4, z: 16, w: 6, d: 6 },
+    { id: "well", call: "B", name: "Kiln", x: 12, z: -6, w: 6.4, d: 6.4 },
   ],
   plantSpawns: [
     [34, 6],

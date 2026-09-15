@@ -32,6 +32,8 @@ import {
 export const STUDIO_STORE = "rifles-studio-spec";
 /** Quarter of the old 2m cell. Stamps sit in a cell; building edges sit on the lines. */
 export const GRID = 0.5;
+export const SITE_ZONE = 6;
+export const SITE_MIN = 2;
 export const HANDLE_KNOB = 0.18;
 export const HANDLE_BAND = 0.22;
 
@@ -87,8 +89,8 @@ export const KIT_TOOLS: ToolDef[] = [
   { id: "low", key: "4", label: "Low" },
   { id: "high", key: "5", label: "High" },
   { id: "truck", key: "6", label: "Truck" },
-  { id: "siteA", key: "7", label: "A" },
-  { id: "siteB", key: "8", label: "B" },
+  { id: "siteA", key: "7", label: "A site" },
+  { id: "siteB", key: "8", label: "B site" },
   { id: "plant", key: "9", label: "Plant" },
   { id: "watch", key: "0", label: "Watch" },
   { id: "climb", key: "C", label: "Climb" },
@@ -104,7 +106,7 @@ export const HAND_IDS: ToolId[] = HAND_TOOLS.map((t) => t.id);
 export const BUILD_IDS: ToolId[] = BUILD_TOOLS.map((t) => t.id);
 export const KIT_IDS: ToolId[] = KIT_TOOLS.map((t) => t.id);
 export const OPENING_TOOLS: OpeningKind[] = ["door", "window"];
-export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall", "area"];
+export const RECT_TOOLS: ToolId[] = ["building", "floor", "wall", "area", "siteA", "siteB"];
 
 export function paletteOf(tool: ToolId): PaletteId {
   if (tool === "select" || tool === "erase") return "hand";
@@ -181,8 +183,8 @@ export function blankSpec(): LayoutSpec {
     cover: [],
     climbs: [],
     sites: [
-      { id: "loft", call: "A", name: "A", x: -14, z: 8 },
-      { id: "well", call: "B", name: "B", x: 14, z: -6 },
+      { id: "loft", call: "A", name: "A", x: -14, z: 8, w: SITE_ZONE, d: SITE_ZONE },
+      { id: "well", call: "B", name: "B", x: 14, z: -6, w: SITE_ZONE, d: SITE_ZONE },
     ],
     plantSpawns: [
       [-30, 0],
@@ -393,8 +395,13 @@ export function place(
     const id = tool === "siteA" ? "loft" : "well";
     const call = tool === "siteA" ? "A" : "B";
     const name = call;
+    const cx = opts.bw != null ? x : px;
+    const cz = opts.bd != null ? z : pz;
+    const ww = Math.max(SITE_MIN, opts.bw ?? SITE_ZONE);
+    const dd = Math.max(SITE_MIN, opts.bd ?? SITE_ZONE);
+    const y = opts.y ?? surfaceAt(spec, cx, cz);
     next.sites = next.sites.filter((s) => s.id !== id);
-    next.sites.push({ id, call, name, x: px, z: pz });
+    next.sites.push({ id, call, name, x: cx, z: cz, y, w: ww, d: dd });
     return next;
   }
   if (tool === "plant") {
@@ -783,7 +790,11 @@ export function pickItem(spec: LayoutSpec, x: number, z: number, r = 1.1): Studi
   }
   for (let i = 0; i < spec.sites.length; i++) {
     const s = spec.sites[i]!;
-    stamp({ kind: "site", i }, s.x, s.z, s.y ?? 0, 9, 1.6);
+    const w = s.w ?? SITE_ZONE;
+    const d = s.d ?? SITE_ZONE;
+    if (inside(s.x, s.z, w, d, 0)) {
+      hits.push({ item: { kind: "site", i }, y: s.y ?? 0, area: w * d, dist: 0 });
+    }
   }
   for (let i = 0; i < spec.plantSpawns.length; i++) {
     const [sx, sz] = spec.plantSpawns[i]!;
@@ -903,6 +914,7 @@ export function moveItem(spec: LayoutSpec, item: StudioItem, x: number, z: numbe
     if (!s) return spec;
     s.x = x;
     s.z = z;
+    s.y = surfaceAt(next, x, z);
     return next;
   }
   if (item.kind === "plant") {
@@ -971,7 +983,9 @@ export function itemBox(spec: LayoutSpec, item: StudioItem): { x: number; y: num
   if (item.kind === "site") {
     const s = spec.sites[item.i];
     if (!s) return null;
-    return { x: s.x, y: 0.06, z: s.z, sx: 3, sy: 0.12, sz: 3 };
+    const w = s.w ?? SITE_ZONE;
+    const d = s.d ?? SITE_ZONE;
+    return { x: s.x, y: (s.y ?? 0) + 0.06, z: s.z, sx: w, sy: 0.12, sz: d };
   }
   if (item.kind === "area") {
     const a = spec.areas?.[item.i];
@@ -1172,6 +1186,12 @@ export function resizableBox(spec: LayoutSpec, item: StudioItem) {
     const a = spec.areas?.[item.i];
     return a ? { x: a.x, z: a.z, w: a.w, d: a.d, minW: GRID, minD: GRID } : null;
   }
+  if (item.kind === "site") {
+    const s = spec.sites[item.i];
+    return s
+      ? { x: s.x, z: s.z, w: s.w ?? SITE_ZONE, d: s.d ?? SITE_ZONE, minW: SITE_MIN, minD: SITE_MIN }
+      : null;
+  }
   return null;
 }
 
@@ -1227,6 +1247,16 @@ export function resizeItem(spec: LayoutSpec, item: StudioItem, handle: Handle, x
     a.z = nextBox.z;
     a.w = nextBox.w;
     a.d = nextBox.d;
+    return next;
+  }
+  if (item.kind === "site") {
+    const s = next.sites[item.i];
+    if (!s) return spec;
+    s.x = nextBox.x;
+    s.z = nextBox.z;
+    s.w = nextBox.w;
+    s.d = nextBox.d;
+    s.y = surfaceAt(next, nextBox.x, nextBox.z);
     return next;
   }
   return spec;
@@ -1464,7 +1494,7 @@ export function ghostSize(tool: ToolId, bw: number, bd: number): [number, number
   if (tool in COVER_SIZE) return COVER_SIZE[tool as CoverKind];
   if (tool === "climb") return [2.2, 0.4, 1.75];
   if (tool === "ladder") return [1.2, STOREY, 0.4];
-  if (tool === "siteA" || tool === "siteB") return [3, 0.12, 3];
+  if (tool === "siteA" || tool === "siteB") return [bw > STAMP ? bw : SITE_ZONE, 0.12, bd > STAMP ? bd : SITE_ZONE];
   if (tool === "area") return [bw, 0.12, bd];
   if (tool === "plant" || tool === "watch") return [1.2, 0.2, 1.2];
   if (tool === "lamp") return [0.2, 3.2, 0.2];
@@ -1707,6 +1737,10 @@ export function placeBuildingRect(
   const rect = snapRect(x0, z0, x1, z1);
   if (tool === "area") {
     return place(spec, "area", rect.x, rect.z, { yaw, bw: rect.w, bd: rect.d, name });
+  }
+  if (tool === "siteA" || tool === "siteB") {
+    const pad = snapRect(x0, z0, x1, z1, SITE_MIN);
+    return place(spec, tool, pad.x, pad.z, { yaw, bw: pad.w, bd: pad.d, y: surfaceAt(spec, pad.x, pad.z) });
   }
   if (tool === "floor") {
     const placeY = Math.max(SLAB_Y, y || SLAB_Y);
