@@ -56,6 +56,7 @@ check("scoped has no iron aiming bar", !findFlag(scoped.root, "karPoiBar"));
   const barW = bar.geometry.boundingBox!.max.x - bar.geometry.boundingBox!.min.x;
   const barH = bar.geometry.boundingBox!.max.y - bar.geometry.boundingBox!.min.y;
   check("iron U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
+  check("iron U top is wider than the bottom cutout", Number(mesh.userData.karIronTopW) > notchW + 1e-6, `topW=${mesh.userData.karIronTopW} botW=${notchW}`);
   check("iron aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
 }
 

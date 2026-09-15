@@ -42,6 +42,7 @@ if (bar && bar instanceof THREE.Mesh && rear) {
   const barH = barBox.max.y - barBox.min.y;
   const notchW = Number(rear.userData.karIronNotchW);
   check("U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
+  check("U top is wider than the bottom cutout", Number(rear.userData.karIronTopW) > notchW + 1e-6, `topW=${rear.userData.karIronTopW} botW=${notchW}`);
   check("aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
 }
 
