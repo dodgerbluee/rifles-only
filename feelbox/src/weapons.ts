@@ -46,6 +46,8 @@ export type RifleView = {
   clip: THREE.Group;
   /** Local points where iron ADS hands wrap the barrel. */
   adsGrip?: { left: THREE.Vector3; right: THREE.Vector3 };
+  /** Extra pitch so iron ADS looks down onto the barrel, not down a tube. */
+  adsPitch?: number;
 };
 
 export type RightArm = {
@@ -227,8 +229,8 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   const boreR = 0.014;
   const hole = 0.0042;
   const faceZ = 0.02;
-  const eye = 0.1;
-  const lookLift = 0.015;
+  const eye = 0.082;
+  const lookLift = 0.012;
   const blued = new THREE.MeshStandardMaterial({
     color: 0x2a2c26,
     roughness: 0.55,
@@ -261,70 +263,69 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
   });
   const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
 
-  place(g, pipeZ(nearR, 0.048, blued, segs), 0, axisY, faceZ - 0.02);
-  place(g, cylZ(0.032, 0.042, worn, segs), 0, axisY, faceZ - 0.058);
-  place(g, cylZ(0.026, 0.04, blued, segs), 0, axisY, faceZ - 0.096);
-  place(g, cylZ(0.02, 0.048, worn, segs), 0, axisY, faceZ - 0.138);
+  const nearLen = 0.055;
+  const near = cylZ(nearR, nearLen, blued, segs);
+  near.userData.karBarrelFace = true;
+  place(g, near, 0, axisY, faceZ - nearLen * 0.5);
+  place(g, cylZ(0.032, 0.04, worn, segs), 0, axisY, faceZ - nearLen - 0.018);
+  place(g, cylZ(0.026, 0.036, blued, segs), 0, axisY, faceZ - nearLen - 0.054);
+  place(g, cylZ(0.02, 0.04, worn, segs), 0, axisY, faceZ - nearLen - 0.09);
 
-  const lip = ringZ(boreR, nearR, blued, segs);
-  lip.userData.karBarrelFace = true;
-  place(g, lip, 0, axisY, faceZ);
   place(g, ringZ(hole, boreR, dark, segs), 0, axisY, faceZ - 0.001);
-  place(g, ringZ(hole * 0.3, boreR * 0.95, dark, segs), 0, axisY, faceZ - 0.01);
+  place(g, ringZ(hole * 0.25, boreR * 0.98, dark, segs), 0, axisY, faceZ - 0.008);
 
-  const earH = 0.024;
-  const earY = axisY + nearR;
-  const earZ = faceZ - 0.006;
-  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.016), blued);
-  leftEar.position.set(-0.011, earY + earH * 0.38, earZ);
+  const earH = 0.022;
+  const earZ = faceZ - 0.012;
+  const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.018), blued);
+  leftEar.position.set(-0.01, axisY + nearR + earH * 0.5, earZ);
   g.add(leftEar);
-  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.016), blued);
-  rightEar.position.set(0.011, earY + earH * 0.38, earZ);
+  const rightEar = new THREE.Mesh(new THREE.BoxGeometry(0.008, earH, 0.018), blued);
+  rightEar.position.set(0.01, axisY + nearR + earH * 0.5, earZ);
   g.add(rightEar);
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.0055, 0.016), blued);
-  bar.position.set(0, earY + earH * 0.8, earZ);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.005, 0.018), blued);
+  bar.position.set(0, axisY + nearR + earH - 0.002, earZ);
   g.add(bar);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.011, 0.01), worn);
-  blade.position.set(0, earY + 0.007, earZ + 0.002);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.01, 0.012), worn);
+  blade.position.set(0, axisY + nearR + 0.006, earZ + 0.002);
   g.add(blade);
 
-  const lug = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.02, 0.03), worn);
-  lug.position.set(-nearR * 0.72, axisY - nearR * 0.55, faceZ - 0.018);
+  const lug = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.018, 0.028), worn);
+  lug.position.set(-nearR * 0.65, axisY - nearR * 0.45, faceZ - 0.02);
   g.add(lug);
 
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.05, 0.26), stockMat);
-  stock.position.set(-0.086, axisY - 0.072, faceZ - 0.03);
-  stock.rotation.z = 0.34;
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.055, 0.28), stockMat);
+  stock.position.set(-0.075, axisY - 0.055, faceZ + 0.01);
+  stock.rotation.z = 0.32;
   g.add(stock);
 
   function wrapHand(side: 1 | -1) {
-    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 5), skin);
-    palm.scale.set(0.82, 1.2, 1.4);
-    palm.position.set(side * (nearR + 0.006), axisY - 0.002, faceZ - 0.034);
+    const palm = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 5), skin);
+    palm.scale.set(0.9, 1.15, 1.45);
+    palm.position.set(side * (nearR + 0.004), axisY + 0.008, faceZ - 0.038);
     g.add(palm);
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 0.02, 2, 5), skin);
-    thumb.position.set(side * nearR * 0.28, axisY + nearR * 0.58, faceZ - 0.016);
-    thumb.rotation.z = -side * 1.05;
-    thumb.rotation.x = 0.45;
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0065, 0.018, 2, 5), skin);
+    thumb.position.set(side * nearR * 0.2, axisY + nearR * 0.72, faceZ - 0.014);
+    thumb.rotation.z = -side * 1.15;
+    thumb.rotation.x = 0.35;
     g.add(thumb);
     for (let i = 0; i < 4; i++) {
       const t = i / 3;
-      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0054, 0.022, 2, 5), skin);
+      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0052, 0.02, 2, 5), skin);
       f.position.set(
-        side * (nearR * 0.12 + t * 0.01),
-        axisY + nearR * 0.22 - t * 0.014,
-        faceZ - 0.024 - t * 0.008,
+        side * (nearR * 0.55 - t * 0.012),
+        axisY + nearR * 0.55 - t * 0.006,
+        faceZ - 0.02 - t * 0.01,
       );
-      f.rotation.z = -side * (0.75 + t * 0.45);
-      f.rotation.x = 0.85;
+      f.rotation.z = -side * (1.1 - t * 0.25);
+      f.rotation.x = 0.55 + t * 0.2;
       g.add(f);
     }
   }
   wrapHand(-1);
   wrapHand(1);
 
-  const mask = ringZ(nearR * 1.08, 1.6, maskMat, 32);
-  mask.position.set(0, axisY, faceZ - 0.17);
+  const mask = ringZ(nearR * 1.15, 1.6, maskMat, 32);
+  mask.position.set(0, axisY, faceZ - 0.18);
   mask.frustumCulled = false;
   g.add(mask);
 
@@ -333,6 +334,7 @@ function karIronBarrel(root: THREE.Group, axisY: number, _steel: THREE.Material)
     faceZ,
     eye,
     lookY: axisY + lookLift,
+    pitch: -0.28,
     grip: {
       left: new THREE.Vector3(-nearR - 0.01, axisY, faceZ - 0.04),
       right: new THREE.Vector3(nearR + 0.01, axisY, faceZ - 0.04),
@@ -402,6 +404,7 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const hipPos = new THREE.Vector3(0.17, -0.16, -0.2);
   let adsPos = new THREE.Vector3(0, -(recTop + postH), -0.15);
   let adsGrip: RifleView["adsGrip"];
+  let adsPitch: number | undefined;
   if (scoped) {
     const scope = karScope(root, recTop, steel);
     adsPos = new THREE.Vector3(0, -scope.axisY, -0.13);
@@ -409,6 +412,7 @@ function buildKar98(scoped: boolean, world = false): RifleView {
     const barrel = karIronBarrel(root, axisY, steel);
     adsPos = new THREE.Vector3(0, -barrel.lookY, -(barrel.faceZ + barrel.eye));
     adsGrip = barrel.grip;
+    adsPitch = barrel.pitch;
   }
 
   const flash = flashMesh(0, axisY, -0.52);
@@ -416,7 +420,7 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const id: RifleId = scoped ? "karscope" : "kar";
   const { rounds, clip } = makeAmmoKit(root, axisY, id, steel);
   root.position.copy(hipPos);
-  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip, adsGrip };
+  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip, adsGrip, adsPitch };
 }
 
 /** Karabiner 98k: iron U + post, CoD1 rifle picture. */

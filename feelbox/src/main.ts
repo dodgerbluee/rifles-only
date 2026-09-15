@@ -4628,7 +4628,7 @@ function applyReelHands(cam: Pose) {
   const wrap = aiming && !!hold.adsGrip;
   g.position.copy(rest);
   g.position.z += cam.kick;
-  g.rotation.x = (cam.ads ? 0 : 0.1) - cam.punchP * (wrap ? 0 : 0.04);
+  g.rotation.x = wrap && hold.adsPitch != null ? hold.adsPitch : (cam.ads ? 0 : 0.1) - cam.punchP * (wrap ? 0 : 0.04);
   g.rotation.y = cam.ads ? 0 : 0.22;
   g.rotation.z = (cam.ads ? 0 : 0.06) + cam.punchY * (wrap ? 0 : 0.05);
   poseBolt(hold, 0);
@@ -5747,7 +5747,7 @@ function frame(now: number) {
         const g = hold.root;
         g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
-        g.rotation.x = (ads ? 0 : 0.1) - punchP * (wrap ? 0 : 0.04);
+        g.rotation.x = wrap && hold.adsPitch != null ? hold.adsPitch : (ads ? 0 : 0.1) - punchP * (wrap ? 0 : 0.04);
         g.rotation.y = ads ? 0 : 0.22;
         g.rotation.z = (ads ? 0 : 0.06) + punchY * (wrap ? 0 : 0.05);
         poseAdsMask(hold, wrap);

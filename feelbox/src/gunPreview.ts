@@ -154,7 +154,7 @@ function pose(id: SecondaryId, kind: PreviewKind) {
     }
     hold.root.visible = true;
     hold.root.position.copy(hold.adsPos);
-    hold.root.rotation.set(0, 0, 0);
+    hold.root.rotation.set(hold.adsPitch ?? 0, 0, 0);
     poseAdsMask(hold, !!hold.adsGrip);
     camera.fov = hold.adsGrip ? 80 : RIFLES[id].adsFov;
     camera.near = 0.02;
