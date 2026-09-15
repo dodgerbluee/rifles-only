@@ -223,13 +223,13 @@ function karIronBarrel(root: THREE.Group, axisY: number, steel: THREE.Material) 
   root.add(g);
 
   const segs = 8;
-  const bore = 0.01;
-  const nearR = 0.04;
+  const bore = 0.024;
+  const nearR = 0.042;
   const faceZ = 0.022;
-  const eye = 0.125;
-  const blued = new THREE.MeshStandardMaterial({ color: 0x141612, roughness: 0.38, metalness: 0.7 });
-  const worn = new THREE.MeshStandardMaterial({ color: 0x262820, roughness: 0.5, metalness: 0.5 });
-  const boreMat = new THREE.MeshBasicMaterial({ color: 0x050604, side: THREE.BackSide });
+  const eye = 0.13;
+  const blued = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.42, metalness: 0.58 });
+  const worn = new THREE.MeshStandardMaterial({ color: 0x3a3c34, roughness: 0.5, metalness: 0.42 });
+  const boreMat = new THREE.MeshBasicMaterial({ color: 0x141612, side: THREE.BackSide });
   const maskMat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
   const stockMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.84, metalness: 0.02 });
 
@@ -287,8 +287,8 @@ function karIronBarrel(root: THREE.Group, axisY: number, steel: THREE.Material) 
     faceZ,
     eye,
     grip: {
-      left: new THREE.Vector3(-0.078, axisY + 0.002, faceZ - 0.055),
-      right: new THREE.Vector3(0.078, axisY + 0.002, faceZ - 0.055),
+      left: new THREE.Vector3(-0.068, axisY + 0.004, faceZ - 0.05),
+      right: new THREE.Vector3(0.068, axisY + 0.004, faceZ - 0.05),
     },
   };
 }
