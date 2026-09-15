@@ -591,21 +591,23 @@ const roofY = surfaceAt(roofed, 0, 0);
 roofed = place(roofed, "crate", 0, 0, { y: roofY });
 roofed = place(roofed, "plant", 1, 0, { y: roofY });
 roofed = place(roofed, "siteA", 0, 0, { y: roofY, bw: GRID, bd: GRID });
-check("crate on a roof stores y", roofed.cover?.[0]?.y === roofY && roofY === STOREY);
+const roofCrate = roofed.cover?.[0];
+check("crate on a roof stores y", roofCrate?.y === roofY && roofY === STOREY);
 check("plant spawn on a roof stores y", roofed.plantSpawns.at(-1)?.[2] === roofY);
 check("site on a roof stores y", (roofed.sites.find((s) => s.id === "loft")?.y ?? 0) === roofY);
 const roofedWorld = compileLayout(new THREE.Scene(), roofed);
 check(
   "crate collider sits on the roof",
-  roofedWorld.colliders.some(
-    (c) =>
-      c.min.y >= roofY - 0.05 &&
-      c.max.y <= roofY + COVER_SIZE.crate[1] + 0.05 &&
-      c.min.x < 0 &&
-      c.max.x > 0 &&
-      c.min.z < 0 &&
-      c.max.z > 0,
-  ),
+  !!roofCrate &&
+    roofedWorld.colliders.some(
+      (c) =>
+        c.min.y >= roofY - 0.05 &&
+        c.max.y <= roofY + COVER_SIZE.crate[1] + 0.05 &&
+        c.min.x < roofCrate.x &&
+        c.max.x > roofCrate.x &&
+        c.min.z < roofCrate.z &&
+        c.max.z > roofCrate.z,
+    ),
 );
 
 let twoF = setBuildingInterior(setBuildingStoreys(place(blankSpec(), "building", 0, 0, { bw: 12, bd: 10 }), 0, 2), 0, "floors");
