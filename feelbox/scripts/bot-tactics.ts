@@ -16,6 +16,10 @@ const match = createMatch({ claimLocal: false, freezeTime: 0 });
 match.phase = "live";
 const bots = createBots(scene, world, match);
 const tick = () => updateBots(bots, 1 / 60, 1, world.colliders, world, match, [], false, () => {}, () => false);
+const sitePoint = (id: "loft" | "well") => {
+  const site = world.sites.find((s) => s.id === id)!;
+  return new THREE.Vector3(site.x, site.y, site.z);
+};
 
 tick();
 const carrier = bots.find((b) => b.id === match.wire.carrierId);
@@ -24,6 +28,11 @@ check("the Wire carrier is the planter", carrier?.role === "plant");
 check("planter has escorts", bots.filter((b) => b.role === "escort").length > 0);
 const escorts = bots.filter((b) => b.role === "escort");
 check("escorts route to their assigned support anchors", escorts.every((b) => b.routeGoal.distanceTo(b.anchor) < 0.01));
+for (const team of ["ember", "stone"] as const) {
+  const teamBots = bots.filter((b) => b.team === team);
+  check(`${team} remains split between Ice and Slip`, new Set(teamBots.map((b) => b.site)).size === 2);
+  check(`${team} routes to both sites`, new Set(teamBots.map((b) => b.routeGoal.distanceTo(sitePoint("loft")) < b.routeGoal.distanceTo(sitePoint("well")) ? "loft" : "well")).size === 2);
+}
 
 const site = world.sites.find((s) => s.id === carrier?.site)!;
 match.wire.mode = "planted";
