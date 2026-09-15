@@ -177,7 +177,7 @@ import {
   type StudioLibrary,
 } from "./maps/studio-lib";
 import { buildPawn, pawnStyle, poseStance, setPawnCloth, setPawnHeldVisible, stepWalkFromPos, teamCloth, packLook } from "./pawn";
-import { clearPodium, mountPodium, podiumLookAt } from "./podium";
+import { clearPodium, mountPodium, podiumCam, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
   advancePlayT,
@@ -2886,6 +2886,17 @@ function applyMatchOverviewCam(dt: number) {
   camera.updateProjectionMatrix();
 }
 
+function applyPodiumCam(dt: number) {
+  const cam = podiumCam(world, time);
+  camera.position.set(cam.x, cam.y, cam.z);
+  camera.lookAt(cam.lookX, cam.lookY, cam.lookZ);
+  camera.near = 0.2;
+  camera.far = 400;
+  fov += (46 - fov) * Math.min(1, dt * 4);
+  camera.fov = fov;
+  camera.updateProjectionMatrix();
+}
+
 let mouseDown = false;
 const fireQ = emptyQueue();
 let jumpHeld = false;
@@ -4032,6 +4043,13 @@ function hideLiveSpecSubject(id: number | null) {
     r.root.visible = r.alive && !hide;
     setPawnHeldVisible(r.root, !hide);
   }
+}
+
+function hideMatchPawns() {
+  for (const g of clientPawns.values()) g.visible = false;
+  for (const b of bots) b.root.visible = false;
+  for (const r of remotes.values()) r.root.visible = false;
+  ghost.visible = false;
 }
 
 function tryTakeover() {
@@ -5875,7 +5893,7 @@ function frame(now: number) {
     setSpec("Spectating · WASD fly · Esc menu");
   } else if (!watching) {
     if (match.phase === "matchover") {
-      applyMatchOverviewCam(dt);
+      applyPodiumCam(dt);
       showRifle(rifleKind, false);
       setKarGlass(rifleKind, false, 0);
       knife.visible = false;
@@ -5883,10 +5901,7 @@ function frame(now: number) {
       hideArms();
       setSpec(null);
       ghost.visible = false;
-      if (!isClient) {
-        for (const b of bots) b.root.visible = b.id !== possessId;
-        for (const r of remotes.values()) r.root.visible = true;
-      }
+      hideMatchPawns();
     } else {
       const spec = !alive && !studio.on && !freeLook ? specTarget() : undefined;
       if (!alive && !studio.on && freeLook) {
@@ -6136,6 +6151,8 @@ function frame(now: number) {
           id: p.id,
           name: p.name,
           team: p.team,
+          occupant: "occupant" in p ? p.occupant : slotById(match, p.id)?.occupant,
+          you: p.id === viewId,
           kills: p.kills ?? line(p.id).kills,
           assists: p.assists ?? line(p.id).assists,
           deaths: p.deaths ?? line(p.id).deaths,
@@ -6144,7 +6161,7 @@ function frame(now: number) {
         }))
         .sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)
         .slice(0, 3);
-      showPodium(match, ranked);
+      showPodium(match, ranked, viewId);
       mountPodium(scene, world, ranked);
     }
   } else if (podiumOn) {
@@ -6270,6 +6287,8 @@ function frame(now: number) {
       }),
     );
   }
+
+  if (podiumOn || match.phase === "matchover") hideMatchPawns();
 
   if (locker.on) {
     for (const g of clientPawns.values()) g.visible = false;

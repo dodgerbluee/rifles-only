@@ -256,6 +256,15 @@ export function actorTag(name: string | undefined | null, occupant?: string | nu
   return n;
 }
 
+export function podiumWho(name?: string | null, occupant?: string | null) {
+  if (!(name ?? "").trim() && !(occupant ?? "").trim()) return "—";
+  return actorTag(name, occupant);
+}
+
+export function podiumSide(team?: Team | null) {
+  return team === "ember" ? "Ember" : team === "stone" ? "Stone" : "";
+}
+
 export function slotTag(slot: Slot | undefined, occupant?: string | null) {
   if (!slot) return actorTag("Rifle", occupant);
   return actorTag(slot.name, occupant ?? slot.occupant);

@@ -1,9 +1,9 @@
 import type { World } from "./world";
 import { siteCentroid, siteOutlineEdges, sitePads } from "./world";
-import { actorTag, displayName, formatTime, plantedTag, plantingTeam, waitingForPlayers, type Match } from "./match";
+import { actorTag, displayName, formatTime, plantedTag, plantingTeam, podiumSide, podiumWho, waitingForPlayers, type Match, type Team } from "./match";
 import { radarHeading, worldToRadar } from "./radar";
 import { tuning } from "./tuning";
-import { holdScoreboard, kd, line, topThree } from "./stats";
+import { holdScoreboard, kd, line, podiumStat, topThree } from "./stats";
 import { currentCrosshair, paintCrosshair } from "./crosshair";
 import { prefs } from "./prefs";
 
@@ -471,7 +471,7 @@ export function renderScoreboard(
     const you = s.id === youId;
     el.className = `board-row${you ? " you" : ""}${s.alive ? "" : " down"}`;
     const ping = pingOf(s.id);
-    const tags = s.alive ? "" : '<em class="board-dead">Down</em>';
+    const tags = `${you ? '<em class="board-you">You</em>' : ""}${s.alive ? "" : '<em class="board-dead">Down</em>'}`;
     const pingCls = ping == null ? "" : ping > 110 ? " ping-bad" : ping > 70 ? " ping-ok" : " ping-good";
     const career = s.playerKey ? extra.board?.get(s.playerKey) : null;
     const careerBit = career ? `<em class="board-career">${career.kd.toFixed(2)}</em>` : "";
@@ -485,40 +485,47 @@ export function renderScoreboard(
   for (const s of stoneSlots.sort(rank)) stone.append(row(s));
 }
 
-export function showPodium(
-  m: Match,
-  ranked?: { id: number; name: string; kills: number; assists: number; deaths: number }[],
-) {
+export type PodiumEntry = {
+  id: number;
+  name: string;
+  kills: number;
+  assists: number;
+  deaths: number;
+  team?: Team;
+  occupant?: string | null;
+};
+
+export function showPodium(m: Match, ranked?: PodiumEntry[], youId?: number) {
   const root = document.querySelector<HTMLElement>("#podium")!;
   document.body.classList.add("podium");
-  const first = document.querySelector<HTMLElement>("#podium-first")!;
-  first.classList.remove("on");
+  const kicker = document.querySelector("#podium-kicker");
+  if (kicker) kicker.textContent = `${m.mapTitle || "Wharf"} is decided`;
   const list =
     ranked && ranked.length
       ? ranked
-      : topThree(m.slots.map((s) => ({ id: s.id, name: s.name })));
+      : topThree(m.slots.map((s) => ({ id: s.id, name: s.name, team: s.team, occupant: s.occupant })));
   const fill = (el: HTMLElement | null, p?: (typeof list)[0], place = "") => {
     if (!el) return;
-    el.querySelector(".who")!.textContent = p?.name ?? "—";
-    el.querySelector(".stat")!.textContent = p ? `${p.kills} / ${p.assists} / ${p.deaths}` : "";
+    const you = p != null && youId != null && p.id === youId;
+    el.classList.toggle("you", you);
+    el.classList.toggle("ember", p?.team === "ember");
+    el.classList.toggle("stone", p?.team === "stone");
+    el.classList.toggle("empty", !p);
+    el.querySelector(".who")!.textContent = podiumWho(p?.name, p?.occupant);
+    const side = el.querySelector(".side");
+    if (side) side.textContent = podiumSide(p?.team);
+    el.querySelector(".stat")!.textContent = podiumStat(p);
     const tag = el.querySelector(".place");
     if (tag && place) tag.textContent = place;
   };
   fill(document.querySelector("#pod-1"), list[0], "1");
   fill(document.querySelector("#pod-2"), list[1], "2");
   fill(document.querySelector("#pod-3"), list[2], "3");
-  const gold = list[0];
-  document.querySelector("#podium-name")!.textContent = gold?.name ?? "—";
-  document.querySelector("#podium-line")!.textContent = gold
-    ? `${gold.kills} kills · ${gold.assists} assists · ${gold.deaths} deaths · ${kd(gold)} K/D`
-    : "";
-  window.setTimeout(() => first.classList.add("on"), 1600);
   return root;
 }
 
 export function hidePodium() {
   document.body.classList.remove("podium");
-  document.querySelector("#podium-first")?.classList.remove("on");
 }
 
 export function paintNetMeter(opts: { ping: number; hz: number; kbps: number } | null) {
