@@ -162,6 +162,7 @@ export type KillFeedItem = {
 /** Occasional client → host actions (join seat, throw smoke, plant/cut). */
 export type ClientEvent =
   | { kind: "joinTeam"; team: Team; name: string; skin?: "rifle" | "field" | "unit" | "frame"; look?: string; playerKey?: string }
+  | { kind: "spectate" }
   | {
       kind: "throwSmoke";
       ox: number;

@@ -677,6 +677,10 @@ export function createSim(opts?: {
         reseat(peerId, event.name, event.team, parseSkin(event.skin), event.look);
         return;
       }
+      if (event.kind === "spectate") {
+        dropPeer(scene, world, match, bots, remotes, peerId);
+        return;
+      }
       if (event.kind === "throwSmoke") {
         if (!r?.alive || isCowed(r.slotId)) return;
         if (time - r.lastThrow < 0.45) return;
