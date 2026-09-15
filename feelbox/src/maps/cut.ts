@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { makeKit, sky, finish, T } from "./kit";
 import type { BoxFn, MatFn, Kit } from "./kit";
 import type { World } from "../world";
+import type { LayoutSpec } from "./layout";
 
 /** Quarry: open rim Ember, open pit Stone, ramps pit ↔ terrace ↔ rim. */
 export function buildCut(scene: THREE.Scene): World {
@@ -314,3 +315,84 @@ function cover(box: BoxFn, mat: MatFn, x: number, y: number, z: number) {
   box(x, y + 0.5, z, 1.15, 1.0, 1.05, mat("wood", 1.1, 0.9), true, true);
   box(x + 1.05, y + 0.46, z + 0.15, 1.0, 0.92, 0.95, mat("wood", 1, 0.8), true, true);
 }
+
+/** Studio copy of The Cut so the quarry can be edited and finalized. */
+export const CUT_SPEC: LayoutSpec = {
+  id: "cut",
+  title: "The Cut",
+  blurb: "Limestone quarry at last light. Plant the Wire at A or B.",
+  theme: "dust",
+  bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
+  buildings: [
+    { x: 12, z: -6, w: 10, d: 8.4, floors: 1, doors: [{ wall: "n" }, { wall: "w" }], mat: "brick" },
+  ],
+  slabs: [
+    { x: -21, z: 4, w: 10, d: 24, y: 3.2 },
+    { x: -12.5, z: 17, w: 7, d: 6, y: 3.2 },
+    { x: 10.5, z: 17.6, w: 11, d: 7.2, y: 3.2 },
+    { x: -2, z: 19.5, w: 14, d: 2.2, y: 3.2 },
+    { x: 6, z: -14, w: 20, d: 8, y: 3.2 },
+    { x: 26, z: 5, w: 8, d: 22, y: 3.2 },
+    { x: 19, z: 17, w: 6, d: 6, y: 3.2 },
+    { x: -34, z: 4, w: 20, d: 44, y: 6.4 },
+    { x: -5, z: 27, w: 42, d: 10, y: 6.4 },
+    { x: -8, z: 16, w: 12, d: 12, y: 6.4 },
+    { x: -20, z: 16, w: 12, d: 4, y: 6.4 },
+    { x: -9, z: -20, w: 34, d: 8, y: 6.4 },
+  ],
+  cover: [
+    { x: -8, z: 8, kind: "crate" },
+    { x: 18, z: 4, kind: "crate" },
+    { x: 8, z: -14, kind: "crate" },
+    { x: -20, z: 0, kind: "crate" },
+    { x: 6, z: 24, kind: "crate" },
+  ],
+  climbs: [
+    { x: -15.4, z: 4, dir: "-x", height: 3.2, width: 2.6, startY: 0 },
+    { x: -25.4, z: 8, dir: "-x", height: 3.2, width: 2.6, startY: 3.2 },
+    { x: 8, z: 12.6, dir: "+z", height: 3.2, width: 2.6, startY: 0 },
+    { x: -12.5, z: 19.6, dir: "+z", height: 3.2, width: 2.6, startY: 3.2 },
+    { x: 17.6, z: -3, dir: "+x", height: 3.2, width: 2.4, startY: 0 },
+    { x: 19.2, z: 8, dir: "+x", height: 3.2, width: 2.6, startY: 0 },
+    { x: 4, z: -8.6, dir: "-z", height: 3.2, width: 2.6, startY: 0 },
+    { x: -2, z: -15.4, dir: "-z", height: 3.2, width: 2.6, startY: 3.2 },
+  ],
+  areas: [
+    { x: -8, z: 16, w: 12, d: 8, name: "Rim" },
+    { x: 12, z: -6, w: 12, d: 10, name: "Kiln" },
+    { x: 0, z: 2, w: 36, d: 24, name: "Pit" },
+    { x: -21, z: 4, w: 10, d: 24, name: "Mid terrace" },
+  ],
+  sites: [
+    { id: "loft", call: "A", name: "Rim", x: -8, y: 6.4, z: 16 },
+    { id: "well", call: "B", name: "Kiln", x: 12, z: -6 },
+  ],
+  plantSpawns: [
+    [34, 6],
+    [36, 8],
+    [36, 10],
+    [34, 8],
+    [32, 11],
+  ],
+  watchSpawns: [
+    [-38, 8],
+    [-38, 10],
+    [-38, 12],
+    [-36, 9],
+    [-36, 11],
+  ],
+  routes: [
+    [[-30, 10, 6.4], [-20, 16, 6.4], [-8, 16, 6.4]],
+    [[-30, 10, 6.4], [-32, 8, 6.4], [-22, 4, 3.2], [-12, 4, 0], [4, -2, 0], [12, -6, 0]],
+    [[34, 8], [20, -3], [12, -6]],
+    [[34, 8], [8, 12], [8, 18, 3.2], [-8, 16, 6.4]],
+    [[-12, 16, 6.4], [-8, 16, 6.4], [-4, 16, 6.4]],
+  ],
+  lamps: [
+    [-28, 8],
+    [8, 8],
+    [12, -12],
+    [26, 8],
+  ],
+};
+
