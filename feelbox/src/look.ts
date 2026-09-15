@@ -140,6 +140,28 @@ export const LOOK_SLOTS: { key: LookSlot; label: string; view: LookView; options
   { key: "melee", label: "Melee", view: "melee", options: MELEES },
 ];
 
+/** Preferences UI groups — Head / Kit / Melee. */
+export const LOOK_GROUPS: { title: string; keys: LookSlot[] }[] = [
+  { title: "Head", keys: ["face", "beard", "hair", "hat", "accessory"] },
+  { title: "Kit", keys: ["shirt", "pants", "shoes"] },
+  { title: "Melee", keys: ["melee"] },
+];
+
+/** Detail-cam aim for the part being edited (full-body PIP is separate). */
+export function lookDetailCam(slot: LookSlot): { dist: number; aimY: number; fov: number } {
+  const view = lookView(slot);
+  if (view === "melee") return { dist: 2.05, aimY: 1.08, fov: 38 };
+  if (view === "portrait") return { dist: 1.62, aimY: 1.52, fov: 34 };
+  if (slot === "shirt") return { dist: 2.35, aimY: 1.22, fov: 36 };
+  if (slot === "pants") return { dist: 2.55, aimY: 0.72, fov: 38 };
+  if (slot === "shoes") return { dist: 2.15, aimY: 0.22, fov: 36 };
+  return { dist: 3.55, aimY: 0.92, fov: 42 };
+}
+
+export function lookBodyCam(): { dist: number; aimY: number; fov: number } {
+  return { dist: 3.55, aimY: 0.92, fov: 42 };
+}
+
 const CATS: { [K in LookSlot]: LookOption<Appearance[K]>[] } = {
   face: FACES,
   beard: BEARDS,
