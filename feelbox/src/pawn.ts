@@ -523,13 +523,14 @@ function makeArms(look: Appearance, k: Kit, cloth: THREE.Mesh[]) {
     if (shirt === "parka" || shirt === "plate") cloth.push(fore);
 
     if (shirt === "tee") {
+      const t = 0.44;
       const cap = bone(
         sx,
         1.352,
         -0.008,
-        sx + (ex - sx) * 0.44,
-        1.352 - 0.073,
-        -0.008 + (ez + 0.008) * 0.44,
+        sx + (ex - sx) * t,
+        1.352 + (1.186 - 1.352) * t,
+        -0.008 + (ez + 0.008) * t,
         r * 1.34,
         k.tunic,
       );
