@@ -38,9 +38,12 @@ export type Bot = {
   y: number;
   z: number;
   lastShot: number;
+  lastSeen: THREE.Vector3;
+  lastSeenUntil: number;
   flash: number;
   aim: boolean;
   lookPitch: number;
+  homeSite: "loft" | "well";
   site: "loft" | "well";
   style: number;
   strafe: number;
@@ -59,7 +62,7 @@ export type Bot = {
   routeGoal: THREE.Vector3;
 };
 
-export type BotRole = "route" | "escort" | "hold" | "recover" | "plant" | "cut";
+export type BotRole = "route" | "escort" | "hold" | "investigate" | "recover" | "plant" | "cut";
 
 export type BotSkill = "easy" | "normal" | "hard";
 
@@ -148,9 +151,12 @@ function makeBot(scene: THREE.Scene, world: World, match: Match, slot: Slot): Bo
     y: spawn.y,
     z: spawn.z,
     lastShot: -10,
+    lastSeen: spawn.clone(),
+    lastSeenUntil: -1,
     flash: 0,
     aim: false,
     lookPitch: 0.04,
+    homeSite: site,
     site,
     style,
     strafe: (slot.id % 2 === 0 ? 1 : -1) * (0.7 + (slot.id % 3) * 0.15),
@@ -268,7 +274,7 @@ export function updateBots(
   const aim = BOT_AIM[skill] ?? BOT_AIM.normal;
   let cutting = false;
 
-  assignTactics(bots, world, match);
+  assignTactics(bots, world, match, time);
 
   for (const b of bots) {
     if (b.hp <= 0) {
@@ -305,6 +311,10 @@ export function updateBots(
     }
 
     const enemy = nearestVisible(b, fighters, colliders, smokeBlocks);
+    if (enemy) {
+      b.lastSeen.set(enemy.x, enemy.y, enemy.z);
+      b.lastSeenUntil = time + 3.5;
+    }
     const enemyDist = enemy ? Math.hypot(enemy.x - b.x, enemy.z - b.z) : 99;
     const wirePos = wireAim(match, world, b);
     const onCutDuty = b.role === "cut";
@@ -362,7 +372,7 @@ export function updateBots(
       }
     } else if (b.role === "recover") {
       followRouteThenMove(b, wirePoint(match), dt, colliders, time, world);
-    } else if (b.role === "escort" || b.role === "hold") {
+    } else if (b.role === "escort" || b.role === "hold" || b.role === "investigate") {
       followRouteThenMove(b, b.anchor, dt, colliders, time, world);
     } else {
       b.lookPitch = 0.04;
@@ -389,13 +399,14 @@ export function updateBots(
   return { cutting };
 }
 
-function assignTactics(bots: Bot[], world: World, match: Match) {
+function assignTactics(bots: Bot[], world: World, match: Match, time: number) {
   const living = bots.filter((b) => b.hp > 0 && slotById(match, b.id)?.alive);
   const plant = plantingTeam(match);
   const watch = watchingTeam(match);
   for (const b of living) {
     b.role = "route";
-    b.anchor.copy(siteAnchor(world, b.site, b.id));
+    b.site = b.homeSite;
+    b.anchor.copy(approachAnchor(world, b.team, b.homeSite, b.id));
   }
 
   const setHomeSupport = (team: Team) => {
@@ -403,7 +414,7 @@ function assignTactics(bots: Bot[], world: World, match: Match) {
     const index = { loft: 0, well: 0 };
     teamBots.forEach((b) => {
       b.role = "hold";
-      b.anchor.copy(siteAnchor(world, b.site, index[b.site]++));
+      b.anchor.copy(approachAnchor(world, team, b.homeSite, index[b.homeSite]++));
     });
   };
 
@@ -427,27 +438,52 @@ function assignTactics(bots: Bot[], world: World, match: Match) {
       .sort((a, b) => distanceToWire(a, match) - distanceToWire(b, match) || a.id - b.id);
     const index = { loft: 0, well: 0 };
     recoverers.forEach((b, i) => {
-      b.role = i === 0 ? "recover" : b.site === recoverers[0]?.site ? "escort" : "hold";
-      b.anchor.copy(i === 0 ? wirePoint(match) : siteAnchor(world, b.site, index[b.site]++));
+      b.role = i === 0 ? "recover" : b.homeSite === recoverers[0]?.homeSite ? "escort" : "hold";
+      b.anchor.copy(i === 0 ? wirePoint(match) : approachAnchor(world, b.team, b.homeSite, index[b.homeSite]++));
     });
     setHomeSupport(watch);
+    assignResponder(living, plant, time);
+    assignResponder(living, watch, time);
     syncTacticalRoutes(living, world, match);
     return;
   }
 
   const carrier = living.find((b) => b.id === match.wire.carrierId);
   if (carrier) {
+    carrier.site = plannedSite(match);
     carrier.role = "plant";
     carrier.anchor.copy(sitePoint(world, carrier.site));
     const index = { loft: 0, well: 0 };
     const planters = living.filter((b) => b.team === plant && b.id !== carrier.id).sort((a, b) => a.id - b.id);
     planters.forEach((b) => {
-      b.role = b.site === carrier.site ? "escort" : "hold";
-      b.anchor.copy(siteAnchor(world, b.site, index[b.site]++));
+      b.role = b.homeSite === carrier.site ? "escort" : "hold";
+      const target = b.role === "escort" ? carrier.site : b.homeSite;
+      b.anchor.copy(approachAnchor(world, b.team, target, index[target]++));
     });
     setHomeSupport(watch);
+    assignResponder(living, plant, time);
+    assignResponder(living, watch, time);
   }
   syncTacticalRoutes(living, world, match);
+}
+
+/** One teammate may investigate a witnessed position; everyone else keeps their job. */
+function assignResponder(bots: Bot[], team: Team, time: number) {
+  const sighting = bots
+    .filter((b) => b.team === team && b.lastSeenUntil > time)
+    .sort((a, b) => b.lastSeenUntil - a.lastSeenUntil)[0];
+  if (!sighting) return;
+  const responder = bots
+    .filter((b) => b.team === team && b.role === "hold")
+    .sort((a, b) => Math.hypot(a.x - sighting.lastSeen.x, a.z - sighting.lastSeen.z) - Math.hypot(b.x - sighting.lastSeen.x, b.z - sighting.lastSeen.z) || a.id - b.id)[0];
+  if (!responder) return;
+  responder.role = "investigate";
+  responder.anchor.copy(sighting.lastSeen);
+}
+
+/** Alternate the committed plant site so the opening is not identical every round. */
+function plannedSite(match: Match): "loft" | "well" {
+  return (match.round + (match.swapped ? 1 : 0)) % 2 === 0 ? "well" : "loft";
 }
 
 function syncTacticalRoutes(bots: Bot[], world: World, match: Match) {
@@ -481,6 +517,33 @@ function siteAnchor(world: World, site: "loft" | "well", index: number) {
   const a = index * 2.399963229728653;
   const candidate = new THREE.Vector3(s.x + Math.cos(a) * radius, s.y, s.z + Math.sin(a) * radius);
   return openPoint(world.colliders, candidate) ?? sitePoint(world, site);
+}
+
+/**
+ * Routes carry the only map-wide tactical metadata we have. Holding at their
+ * last external point keeps bots on separate approaches instead of in a pad.
+ */
+function approachAnchor(world: World, team: Team, site: "loft" | "well", index: number) {
+  const goal = sitePoint(world, site);
+  const spawns = team === "ember" ? world.plantSpawns : world.watchSpawns;
+  const candidates: THREE.Vector3[] = [];
+  for (const route of world.waypoints) {
+    if (route.length < 2) continue;
+    const start = route[0]!;
+    const spawnD = Math.min(...spawns.map((spawn) => Math.hypot(start.x - spawn.x, start.z - spawn.z)));
+    const end = route[route.length - 1]!;
+    if (spawnD > 18 || Math.hypot(end.x - goal.x, end.z - goal.z) > 18) continue;
+    for (let i = route.length - 1; i >= 0; i--) {
+      const point = route[i]!;
+      if (Math.hypot(point.x - goal.x, point.z - goal.z) > Math.max(2.2, world.sites.find((s) => s.id === site)!.r + 0.8)) {
+        candidates.push(point);
+        break;
+      }
+    }
+  }
+  candidates.sort((a, b) => Math.hypot(a.x - goal.x, a.z - goal.z) - Math.hypot(b.x - goal.x, b.z - goal.z));
+  const point = candidates[index % candidates.length];
+  return point ? openPoint(world.colliders, point) ?? snapWalk(world.colliders, point, world.bounds) ?? siteAnchor(world, site, index) : siteAnchor(world, site, index);
 }
 
 function wireAim(match: Match, world: World, b: Bot) {
@@ -716,6 +779,8 @@ export function resetBots(bots: Bot[], world: World, match: Match) {
     b.taskWp = 0;
     b.taskGoal = null;
     b.routeGoal.copy(b.path[b.path.length - 1] ?? spawn);
+    b.lastSeen.copy(spawn);
+    b.lastSeenUntil = -1;
     setPawnCloth(b.cloth, teamCloth(b.team));
     b.nades = fullNades();
   }

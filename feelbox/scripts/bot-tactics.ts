@@ -28,11 +28,21 @@ check("the Wire carrier is the planter", carrier?.role === "plant");
 check("planter has escorts", bots.filter((b) => b.role === "escort").length > 0);
 const escorts = bots.filter((b) => b.role === "escort");
 check("escorts route to their assigned support anchors", escorts.every((b) => b.routeGoal.distanceTo(b.anchor) < 0.01));
+check("support anchors stay outside the plant pad", [...escorts, ...bots.filter((b) => b.role === "hold")].every((b) => {
+  const site = world.sites.find((s) => s.id === (b.role === "escort" ? carrier?.site : b.homeSite))!;
+  return Math.hypot(b.anchor.x - site.x, b.anchor.z - site.z) > site.r;
+}));
 for (const team of ["ember", "stone"] as const) {
   const teamBots = bots.filter((b) => b.team === team);
   check(`${team} remains split between Ice and Slip`, new Set(teamBots.map((b) => b.site)).size === 2);
   check(`${team} routes to both sites`, new Set(teamBots.map((b) => b.routeGoal.distanceTo(sitePoint("loft")) < b.routeGoal.distanceTo(sitePoint("well")) ? "loft" : "well")).size === 2);
 }
+
+const witness = bots.find((b) => b.team === "ember" && b.role === "hold")!;
+witness.lastSeen.set(witness.x + 4, witness.y, witness.z);
+witness.lastSeenUntil = 10;
+tick();
+check("one teammate investigates a fresh sighting", bots.filter((b) => b.team === "ember" && b.role === "investigate").length === 1);
 
 const site = world.sites.find((s) => s.id === carrier?.site)!;
 match.wire.mode = "planted";
