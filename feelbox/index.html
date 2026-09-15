@@ -112,7 +112,16 @@
           <h1 class="title" id="start-title">Servers</h1>
           <p id="start-blurb" class="servers-lead">Pick a match. Ember plants the Wire. First to six.</p>
         </header>
-        <div id="server-list"></div>
+        <div class="server-table" aria-label="Server list">
+          <div class="server-cols" role="row">
+            <span class="s-name">Server Name</span>
+            <span class="s-map">Map</span>
+            <span class="s-pop">Players</span>
+            <span class="s-phase">Status</span>
+            <span class="s-join">Join</span>
+          </div>
+          <div id="server-list" role="list"></div>
+        </div>
       </section>
     </div>
 

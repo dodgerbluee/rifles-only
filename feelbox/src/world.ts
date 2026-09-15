@@ -6,6 +6,8 @@ import { type Aabb, hasLos, rayShot, rayWorld } from "./trace";
 export type { Aabb };
 export { hasLos, rayShot, rayWorld };
 
+export type SitePad = { x: number; z: number; w: number; d: number };
+
 export type Site = {
   id: "loft" | "well";
   call: string;
@@ -14,7 +16,252 @@ export type Site = {
   y: number;
   z: number;
   r: number;
+  w?: number;
+  d?: number;
+  /** Union of painted rects. Omitted = one pad from x/z/w/d (or r). */
+  pads?: SitePad[];
 };
+
+const SITE_CELL = 0.5;
+const SITE_STROKE = 0.055;
+const SITE_MARK = 2.6;
+
+/** Painted plant pad. Missing w/d fall back to a square around r. */
+export function siteExtent(s: { r?: number; w?: number; d?: number }) {
+  const w = s.w ?? (s.r ?? 3) * 2;
+  const d = s.d ?? (s.r ?? 3) * 2;
+  return { w, d };
+}
+
+export function sitePads(s: { x: number; z: number; r?: number; w?: number; d?: number; pads?: SitePad[] }): SitePad[] {
+  if (s.pads && s.pads.length) return s.pads;
+  const { w, d } = siteExtent(s);
+  return [{ x: s.x, z: s.z, w, d }];
+}
+
+export function inSitePad(p: SitePad, x: number, z: number) {
+  return Math.abs(x - p.x) <= p.w / 2 && Math.abs(z - p.z) <= p.d / 2;
+}
+
+function cellKey(ix: number, iz: number) {
+  return `${ix},${iz}`;
+}
+
+/** 0.5m cells covered by the union of pads. */
+export function siteCellSet(pads: SitePad[]): Set<string> {
+  const cells = new Set<string>();
+  for (const p of pads) {
+    const x0 = p.x - p.w / 2;
+    const x1 = p.x + p.w / 2;
+    const z0 = p.z - p.d / 2;
+    const z1 = p.z + p.d / 2;
+    const ix0 = Math.floor(x0 / SITE_CELL + 1e-6);
+    const ix1 = Math.ceil(x1 / SITE_CELL - 1e-6);
+    const iz0 = Math.floor(z0 / SITE_CELL + 1e-6);
+    const iz1 = Math.ceil(z1 / SITE_CELL - 1e-6);
+    for (let ix = ix0; ix < ix1; ix++) {
+      for (let iz = iz0; iz < iz1; iz++) {
+        const cx = (ix + 0.5) * SITE_CELL;
+        const cz = (iz + 0.5) * SITE_CELL;
+        if (Math.abs(cx - p.x) <= p.w / 2 + 1e-6 && Math.abs(cz - p.z) <= p.d / 2 + 1e-6) cells.add(cellKey(ix, iz));
+      }
+    }
+  }
+  return cells;
+}
+
+/** Greedy rects covering the same cells, so an L is two pads not a bounding square. */
+export function mergeSitePads(pads: SitePad[]): SitePad[] {
+  const set = siteCellSet(pads);
+  const out: SitePad[] = [];
+  const has = (ix: number, iz: number) => set.has(cellKey(ix, iz));
+  while (set.size) {
+    let ix = 0;
+    let iz = 0;
+    let first = true;
+    for (const k of set) {
+      const [cx, cz] = k.split(",").map(Number) as [number, number];
+      if (first || cz < iz || (cz === iz && cx < ix)) {
+        ix = cx;
+        iz = cz;
+        first = false;
+      }
+    }
+    let w = 1;
+    while (has(ix + w, iz)) w++;
+    let d = 1;
+    grow: while (true) {
+      for (let dx = 0; dx < w; dx++) if (!has(ix + dx, iz + d)) break grow;
+      d++;
+    }
+    for (let dz = 0; dz < d; dz++) {
+      for (let dx = 0; dx < w; dx++) set.delete(cellKey(ix + dx, iz + dz));
+    }
+    out.push({
+      x: (ix + w / 2) * SITE_CELL,
+      z: (iz + d / 2) * SITE_CELL,
+      w: w * SITE_CELL,
+      d: d * SITE_CELL,
+    });
+  }
+  return out;
+}
+
+export function siteCentroid(pads: SitePad[]) {
+  let area = 0;
+  let x = 0;
+  let z = 0;
+  for (const p of pads) {
+    const a = p.w * p.d;
+    area += a;
+    x += p.x * a;
+    z += p.z * a;
+  }
+  return area > 0 ? { x: x / area, z: z / area } : { x: pads[0]?.x ?? 0, z: pads[0]?.z ?? 0 };
+}
+
+export function siteBounds(pads: SitePad[]): SitePad {
+  if (!pads.length) return { x: 0, z: 0, w: 0, d: 0 };
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let z0 = Infinity;
+  let z1 = -Infinity;
+  for (const p of pads) {
+    x0 = Math.min(x0, p.x - p.w / 2);
+    x1 = Math.max(x1, p.x + p.w / 2);
+    z0 = Math.min(z0, p.z - p.d / 2);
+    z1 = Math.max(z1, p.z + p.d / 2);
+  }
+  return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0 };
+}
+
+export function writeSitePads<T extends { x: number; z: number; w?: number; d?: number; pads?: SitePad[] }>(s: T, pads: SitePad[]): T {
+  const merged = mergeSitePads(pads);
+  const c = siteCentroid(merged);
+  const b = siteBounds(merged);
+  s.x = c.x;
+  s.z = c.z;
+  s.w = b.w;
+  s.d = b.d;
+  if (merged.length <= 1) delete s.pads;
+  else s.pads = merged;
+  return s;
+}
+
+/** Outer gold edges of a union of axis-aligned pads (0.5m cells). */
+export function siteOutlineEdges(pads: SitePad[]): { x: number; z: number; sx: number; sz: number }[] {
+  const cells = siteCellSet(pads);
+  const hAt = new Map<string, number[]>();
+  const vAt = new Map<string, number[]>();
+  const add = (map: Map<string, number[]>, k: string, n: number) => {
+    const a = map.get(k);
+    if (a) a.push(n);
+    else map.set(k, [n]);
+  };
+  for (const k of cells) {
+    const [ix, iz] = k.split(",").map(Number) as [number, number];
+    if (!cells.has(cellKey(ix, iz + 1))) add(hAt, `${iz + 1}`, ix);
+    if (!cells.has(cellKey(ix, iz - 1))) add(hAt, `${iz}`, ix);
+    if (!cells.has(cellKey(ix + 1, iz))) add(vAt, `${ix + 1}`, iz);
+    if (!cells.has(cellKey(ix - 1, iz))) add(vAt, `${ix}`, iz);
+  }
+  const merge = (idxs: number[]) => {
+    idxs.sort((a, b) => a - b);
+    const runs: [number, number][] = [];
+    for (const i of idxs) {
+      const last = runs[runs.length - 1];
+      if (last && i === last[1]) last[1] = i + 1;
+      else runs.push([i, i + 1]);
+    }
+    return runs;
+  };
+  const edges: { x: number; z: number; sx: number; sz: number }[] = [];
+  for (const [k, idxs] of hAt) {
+    const z = Number(k) * SITE_CELL;
+    for (const [a, b] of merge(idxs)) {
+      const x0 = a * SITE_CELL;
+      const x1 = b * SITE_CELL;
+      edges.push({ x: (x0 + x1) / 2, z, sx: x1 - x0, sz: SITE_STROKE });
+    }
+  }
+  for (const [k, idxs] of vAt) {
+    const x = Number(k) * SITE_CELL;
+    for (const [a, b] of merge(idxs)) {
+      const z0 = a * SITE_CELL;
+      const z1 = b * SITE_CELL;
+      edges.push({ x, z: (z0 + z1) / 2, sx: SITE_STROKE, sz: z1 - z0 });
+    }
+  }
+  return edges;
+}
+
+/** Thin gold frame on the plantable pad. Not a filled slab. Follows the union of pads. */
+export function addSiteOutlinePads(parent: THREE.Object3D, pads: SitePad[], y: number, opacity = 0.4) {
+  if (!pads.length) return;
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xd4b45a,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const h = 0.02;
+  const lift = y + 0.028;
+  for (const e of siteOutlineEdges(pads)) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(e.sx, h, e.sz), mat);
+    m.position.set(e.x, lift, e.z);
+    m.renderOrder = 2;
+    parent.add(m);
+  }
+}
+
+export function addSiteOutline(
+  parent: THREE.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  d: number,
+  opacity = 0.4,
+) {
+  addSiteOutlinePads(parent, [{ x, z, w, d }], y, opacity);
+}
+
+export function addSiteMarker(parent: THREE.Object3D, pos: THREE.Vector3, letter: string) {
+  if (typeof document === "undefined") {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(SITE_MARK, SITE_MARK),
+      new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
+    );
+    mesh.position.copy(pos);
+    parent.add(mesh);
+    return;
+  }
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d")!;
+  g.strokeStyle = "rgba(216, 180, 90, 0.78)";
+  g.lineWidth = 7;
+  g.beginPath();
+  g.arc(128, 128, 114, 0, Math.PI * 2);
+  g.stroke();
+  g.font = "bold 148px sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.lineWidth = 10;
+  g.strokeStyle = "rgba(16, 17, 12, 0.42)";
+  g.strokeText(letter, 128, 140);
+  g.fillStyle = "#efe2b4";
+  g.fillText(letter, 128, 140);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
+  sprite.position.copy(pos);
+  sprite.scale.set(SITE_MARK, SITE_MARK, 1);
+  parent.add(sprite);
+}
 
 export type World = {
   id?: string;
@@ -105,10 +352,10 @@ export function buildWorld(scene: THREE.Scene): World {
 
   buildWharf(box, mat, scene, tex);
 
-  siteMarker(scene, new THREE.Vector3(-9, 5.9, 20.5), "A");
-  siteMarker(scene, new THREE.Vector3(-10, 3.15, 11.15), "A");
-  siteMarker(scene, new THREE.Vector3(10, 3.35, -16), "B");
-  siteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
+  addSiteMarker(scene, new THREE.Vector3(-9, 5.9, 20.5), "A");
+  addSiteMarker(scene, new THREE.Vector3(-10, 3.15, 11.15), "A");
+  addSiteMarker(scene, new THREE.Vector3(10, 3.35, -16), "B");
+  addSiteMarker(scene, new THREE.Vector3(10, 3.1, -9.6), "B");
 
   const plantSpawns = [v(-38, 6), v(-38, 8), v(-38, 10), v(-36, 7), v(-36, 9)];
   const watchSpawns = [v(38, 2), v(38, 4), v(38, 5.5), v(36, 3), v(36, 5)];
@@ -126,8 +373,8 @@ export function buildWorld(scene: THREE.Scene): World {
     waypoints: wharfWays(),
     bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
     sites: [
-      { id: "loft", call: "A", name: "Ice", x: -9, y: 3.35, z: 20.5, r: 3.0 },
-      { id: "well", call: "B", name: "Slip", x: 10, y: 0.12, z: -16, r: 3.2 },
+      { id: "loft", call: "A", name: "Ice", x: -9, y: 3.35, z: 20.5, r: 3.0, w: 6, d: 6 },
+      { id: "well", call: "B", name: "Slip", x: 10, y: 0.12, z: -16, r: 3.2, w: 6.4, d: 6.4 },
     ],
   };
 }
@@ -157,14 +404,6 @@ function buildWharf(box: BoxFn, mat: MatFn, scene: THREE.Scene, tex: TexPack) {
     roughness: 0.28,
     metalness: 0.38,
   });
-  const gold = new THREE.MeshStandardMaterial({
-    color: 0xc4a045,
-    roughness: 0.42,
-    metalness: 0.45,
-    emissive: 0x3a2808,
-    emissiveIntensity: 0.4,
-  });
-
   box(0, -0.06, 4, 89.2, 0.12, 57.2, snow, true, true);
   box(0, 0.01, 4, 4.4, 0.04, 36, mat("asphalt", 3, 16), false);
   const drink = new THREE.Mesh(new THREE.BoxGeometry(92, 0.2, 14), water);
@@ -184,8 +423,8 @@ function buildWharf(box: BoxFn, mat: MatFn, scene: THREE.Scene, tex: TexPack) {
 
   buildEmberDock(box, mat);
   buildStoneDock(box, mat);
-  buildIce(box, mat, gold);
-  buildSlip(box, mat, gold);
+  buildIce(box, mat, scene);
+  buildSlip(box, mat, scene);
   buildBoatShed(box, mat);
   buildNetShed(box, mat);
   buildMidCover(box, mat);
@@ -268,7 +507,7 @@ function buildStoneDock(box: BoxFn, mat: MatFn) {
   box(32.2, 0.5, 0.9, 1.3, 1.0, 1.1, mat("wood", 1.2, 0.9), true, true);
 }
 
-function buildIce(box: BoxFn, mat: MatFn, gold: THREE.Material) {
+function buildIce(box: BoxFn, mat: MatFn, scene: THREE.Scene) {
   const h = 6.2;
   wallZ(box, mat, -18, 12, 25, h, [{ z0: 17.2, z1: 18.9, y0: 0, y1: 2.15 }]);
   wallZ(box, mat, 0, 12, 25, h, [
@@ -289,13 +528,13 @@ function buildIce(box: BoxFn, mat: MatFn, gold: THREE.Material) {
   box(-14.4, 4.15, 19.2, 0.1, 1.6, 6.4, mat("metal", 0.4, 5, 0.45, 0.5), false);
   box(-3.6, 4.15, 19.2, 0.1, 1.6, 6.4, mat("metal", 0.4, 5, 0.45, 0.5), false);
   box(-9, 4.85, 20.5, 11.2, 0.08, 0.1, mat("metal", 8, 0.3, 0.45, 0.5), false);
-  box(-9, 3.38, 20.5, 3.5, 0.06, 3.5, gold, true, true);
+  addSiteOutline(scene, -9, 3.35, 20.5, 6, 6);
   box(-12.2, 3.85, 22.4, 1.2, 1.0, 1.1, mat("wood", 1, 0.9), true, true);
   box(-5.6, 3.85, 18.2, 1.3, 1.0, 1.05, mat("wood", 1, 0.9), true, true);
   stairs(box, mat, -10.6, 13.15, "+z", 8, 0.42, 0.52, 1.7, 0);
 }
 
-function buildSlip(box: BoxFn, mat: MatFn, gold: THREE.Material) {
+function buildSlip(box: BoxFn, mat: MatFn, scene: THREE.Scene) {
   box(10, 4.15, -16, 16.4, 2.6, 9.2, mat("metal", 12, 8, 0.5, 0.4));
   box(2.4, 1.5, -16, 0.35, 3.0, 8.6, mat("wood", 0.5, 3));
   box(17.6, 1.5, -16, 0.35, 3.0, 8.6, mat("wood", 0.5, 3));
@@ -304,7 +543,7 @@ function buildSlip(box: BoxFn, mat: MatFn, gold: THREE.Material) {
   box(16, 0.45, -14.4, 1.5, 0.9, 1.3, mat("wood", 1.2, 0.8), true, true);
   box(4.2, 0.45, -17.8, 1.4, 0.9, 1.2, mat("wood", 1.2, 0.8), true, true);
   box(15.8, 0.45, -17.6, 1.4, 0.9, 1.2, mat("wood", 1.2, 0.8), true, true);
-  box(10, 0.08, -16, 3.6, 0.08, 3.6, gold, true, true);
+  addSiteOutline(scene, 10, 0.12, -16, 6.4, 6.4);
   box(10, 0.02, -12, 8, 0.05, 4.5, mat("wood", 6, 4), true, true);
 }
 
@@ -406,38 +645,6 @@ function lamp(scene: THREE.Scene, x: number, z: number) {
   const light = new THREE.PointLight(0xffd19a, 7, 9, 1.8);
   light.position.set(x, 3.2, z);
   scene.add(light);
-}
-
-function siteMarker(scene: THREE.Scene, pos: THREE.Vector3, letter: string) {
-  if (typeof document === "undefined") {
-    const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.2, 1.2),
-      new THREE.MeshBasicMaterial({ color: 0xe8d9a8, side: THREE.DoubleSide }),
-    );
-    mesh.position.copy(pos);
-    scene.add(mesh);
-    return;
-  }
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "rgba(20,18,12,0.62)";
-  g.fillRect(16, 16, 96, 96);
-  g.strokeStyle = "#e8d9a8";
-  g.lineWidth = 6;
-  g.strokeRect(22, 22, 84, 84);
-  g.fillStyle = "#e8d9a8";
-  g.font = "bold 72px ui-sans-serif, system-ui";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(letter, 64, 70);
-  const map = new THREE.CanvasTexture(c);
-  map.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }));
-  sprite.position.copy(pos);
-  sprite.scale.set(1.55, 1.55, 1);
-  scene.add(sprite);
 }
 
 function addSky(scene: THREE.Scene) {
@@ -625,7 +832,8 @@ export function groundHeight(colliders: Aabb[], x: number, z: number, radius: nu
 export function inSite(world: World, id: Site["id"], x: number, z: number, y: number) {
   const s = world.sites.find((site) => site.id === id);
   if (!s) return false;
-  return Math.hypot(x - s.x, z - s.z) < s.r && Math.abs(y - s.y) < 1.8;
+  if (Math.abs(y - s.y) >= 1.8) return false;
+  return sitePads(s).some((pad) => inSitePad(pad, x, z));
 }
 
 /** Face the map middle from a spawn so planters/watchers look inward. */

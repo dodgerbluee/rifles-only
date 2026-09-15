@@ -78,8 +78,8 @@ export function buildCove(scene: THREE.Scene): World {
     ],
     bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
     sites: [
-      { id: "loft", call: "A", name: "Yard", x: -23, y: 0, z: 8, r: 3 },
-      { id: "well", call: "B", name: "Crates", x: 4, y: 0, z: 22, r: 3.2 },
+      { id: "loft", call: "A", name: "Yard", x: -23, y: 0, z: 8, r: 3, w: 6, d: 6 },
+      { id: "well", call: "B", name: "Crates", x: 4, y: 0, z: 22, r: 3.2, w: 6.4, d: 6.4 },
     ],
     placeName: (x, z, y = 0) => {
       if (y > 2.2 && x > -17 && x < 1 && z > -17 && z < 1.2) return "Police 2F";
@@ -315,7 +315,7 @@ function yardA(
 ) {
   cover(box, mat, -28.2, 4.6);
   cover(box, mat, -18.2, 11.4);
-  pad(-23, 0.04, 8);
+  pad(-23, 0.04, 8, 6, 6);
   siteMarker(v(-23, 8, 2.8), "A");
   siteMarker(v(-23, 0.6, 2.4), "A");
 }
@@ -337,7 +337,7 @@ function cratesB(
   peek(box, mat, 2.2, 25.6);
   cover(box, mat, 11.2, 20.4);
 
-  pad(4, 0.04, 22);
+  pad(4, 0.04, 22, 6.4, 6.4);
   siteMarker(v(4, 22, 2.8), "B");
   siteMarker(v(4, 14.2, 2.4), "B");
 }
@@ -510,8 +510,8 @@ export const COVE_SPEC: LayoutSpec = {
     { x: 32, z: -8, w: 16, d: 22, name: "Warehouse" },
   ],
   sites: [
-    { id: "loft", call: "A", name: "Yard", x: -23, z: 8 },
-    { id: "well", call: "B", name: "Crates", x: 4, z: 22 },
+    { id: "loft", call: "A", name: "Yard", x: -23, z: 8, w: 6, d: 6 },
+    { id: "well", call: "B", name: "Crates", x: 4, z: 22, w: 6.4, d: 6.4 },
   ],
   plantSpawns: [
     [-36, -12],

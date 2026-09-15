@@ -68,8 +68,8 @@ export function buildParish(scene: THREE.Scene): World {
     ],
     bounds: { minX: -44.5, maxX: 44.5, minZ: -24.5, maxZ: 32.5 },
     sites: [
-      { id: "loft", call: "A", name: "Chapel", x: 8, y: 0, z: 22, r: 3 },
-      { id: "well", call: "B", name: "Gardens", x: -16, y: 0, z: -8, r: 3.2 },
+      { id: "loft", call: "A", name: "Chapel", x: 8, y: 0, z: 22, r: 3, w: 6, d: 6 },
+      { id: "well", call: "B", name: "Gardens", x: -16, y: 0, z: -8, r: 3.2, w: 6.4, d: 6.4 },
     ],
     placeName: (x, z, y = 0) => {
       if (z < -16 && x > -12 && x < 8) return "South yard";
@@ -111,7 +111,7 @@ function chapel(
   box(11.0, 0.42, 19.4, 1.7, 0.84, 0.55, mat("wood", 1.6, 0.5), true, true);
   box(5.2, 0.65, 21.6, 2.2, 1.3, 0.6, mat("plaster", 2, 1.2));
 
-  pad(8, 0.04, 22);
+  pad(8, 0.04, 22, 6, 6);
   siteMarker(v(8, 22, 3.1), "A");
   siteMarker(v(8, 16.2, 2.5), "A");
 }
@@ -135,7 +135,7 @@ function gardens(
   box(-12.4, 0.5, -4.6, 1.2, 1.0, 1.0, mat("leaf", 1.1, 1));
   cover(box, mat, -12.8, -12.0);
 
-  pad(-16, 0.04, -8);
+  pad(-16, 0.04, -8, 6.4, 6.4);
   siteMarker(v(-16, -8, 2.6), "B");
   siteMarker(v(-11, -4, 2.3), "B");
 }
@@ -344,8 +344,8 @@ export const PARISH_SPEC: LayoutSpec = {
     { x: 2, z: 4, w: 8, d: 8, name: "Square" },
   ],
   sites: [
-    { id: "loft", call: "A", name: "Chapel", x: 8, z: 22 },
-    { id: "well", call: "B", name: "Gardens", x: -16, z: -8 },
+    { id: "loft", call: "A", name: "Chapel", x: 8, z: 22, w: 6, d: 6 },
+    { id: "well", call: "B", name: "Gardens", x: -16, z: -8, w: 6.4, d: 6.4 },
   ],
   plantSpawns: [
     [8, 29],
