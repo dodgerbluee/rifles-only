@@ -1,13 +1,20 @@
 /**
- * Join-screen inspect of the selected rifle / knife, including an ADS / glass view.
+ * Join-screen loadout: each rifle is shown twice — sights/scope and the gun body.
+ * One WebGL renderer blits into the 2D canvases on the cards (context budget).
  */
 import * as THREE from "three";
 import { makeMelee } from "./knife-variants";
-import { gunName, type SecondaryId } from "./loadout";
+import { type SecondaryId } from "./loadout";
 import { prefs } from "./prefs";
 import { RIFLES, makeKar98, makeKar98Scoped, makeMosin, isRifleId } from "./weapons";
 
-export type PreviewMode = "inspect" | "sight";
+type PreviewKind = "sight" | "inspect";
+
+type Pane = {
+  id: SecondaryId;
+  kind: PreviewKind;
+  canvas: HTMLCanvasElement;
+};
 
 const rifles = {
   kar: makeKar98(),
@@ -36,16 +43,9 @@ knife.visible = false;
 stage.add(knife);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.02, 8);
-camera.position.set(0.38, 0.14, 0.52);
-camera.lookAt(0, 0.02, -0.08);
 
 let renderer: THREE.WebGLRenderer | null = null;
-let canvas: HTMLCanvasElement | null = null;
-let glassEl: HTMLElement | null = null;
-let nameEl: HTMLElement | null = null;
-let modeBtn: HTMLButtonElement | null = null;
-let gun: SecondaryId = "kar";
-let mode: PreviewMode = "inspect";
+let panes: Pane[] = [];
 let spin = 0.6;
 let visible = false;
 
@@ -57,124 +57,107 @@ function refreshKnife() {
   stage.add(knife);
 }
 
-export function previewGun() {
-  return gun;
-}
-
-export function previewMode() {
-  return mode;
-}
-
 export function setGunPreviewVisible(on: boolean) {
   visible = on;
-  if (canvas) canvas.style.visibility = on ? "visible" : "hidden";
 }
 
-export function setPreviewGun(id: SecondaryId, nextMode?: PreviewMode) {
-  gun = id;
-  if (nextMode) mode = nextMode;
-  else if (id === "knife") mode = "inspect";
-  else if (isRifleId(id) && RIFLES[id].glass) mode = "sight";
-  else mode = "inspect";
-  paint();
-}
-
-export function togglePreviewMode() {
-  if (gun === "knife") {
-    mode = "inspect";
-  } else {
-    mode = mode === "inspect" ? "sight" : "inspect";
-  }
-  paint();
-}
-
-function paint() {
-  if (nameEl) nameEl.textContent = gunName(gun);
-  if (modeBtn) {
-    modeBtn.hidden = gun === "knife";
-    modeBtn.textContent = mode === "inspect" ? "View sights" : "View rifle";
-  }
-  const glassOn = visible && mode === "sight" && gun !== "knife" && isRifleId(gun) && RIFLES[gun].glass;
-  if (glassEl) glassEl.classList.toggle("on", glassOn);
-}
-
-export function bindGunPreview(opts: {
-  canvas: HTMLCanvasElement | null;
-  glass?: HTMLElement | null;
-  name?: HTMLElement | null;
-  modeBtn?: HTMLButtonElement | null;
-}) {
-  canvas = opts.canvas;
-  glassEl = opts.glass ?? null;
-  nameEl = opts.name ?? null;
-  modeBtn = opts.modeBtn ?? null;
-  if (!canvas) return;
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "low-power" });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+export function bindGunPreview() {
+  if (renderer) return;
+  const canvas = document.createElement("canvas");
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+    powerPreference: "low-power",
+  });
+  renderer.setPixelRatio(1);
+  renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  canvas.addEventListener("click", (e) => {
-    e.stopPropagation();
-    togglePreviewMode();
-  });
-  modeBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    togglePreviewMode();
-  });
-  setPreviewGun(gun);
-  sizeRenderer();
+}
+
+export function syncGunPreviews(root: HTMLElement | null) {
+  panes = [];
+  if (!root) return;
+  for (const canvas of root.querySelectorAll<HTMLCanvasElement>("canvas[data-preview]")) {
+    const id = canvas.closest("[data-gun]")?.getAttribute("data-gun");
+    const kind = canvas.dataset.preview;
+    if (!id || (kind !== "sight" && kind !== "inspect")) continue;
+    if (id !== "knife" && !isRifleId(id)) continue;
+    panes.push({ id: id as SecondaryId, kind, canvas });
+  }
 }
 
 export function tickGunPreview(dt: number) {
-  if (!visible || mode !== "inspect") return;
+  if (!visible) return;
   spin += dt * 0.55;
 }
 
-function sizeRenderer() {
-  if (!renderer || !canvas) return;
-  const w = Math.max(2, canvas.clientWidth);
-  const h = Math.max(2, canvas.clientHeight);
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-}
-
-export function renderGunPreview() {
-  if (!renderer || !canvas || !visible) return;
-  if (knife.userData.melee !== prefs.look.melee) refreshKnife();
-  sizeRenderer();
-  for (const id of ["kar", "karscope", "mosin"] as const) rifles[id].root.visible = false;
+function pose(id: SecondaryId, kind: PreviewKind) {
+  for (const rifleId of ["kar", "karscope", "mosin"] as const) rifles[rifleId].root.visible = false;
   knife.visible = false;
-  if (gun === "knife") {
+  if (id === "knife") {
     knife.visible = true;
     knife.position.set(0, 0.02, 0);
     knife.rotation.set(0.18, spin, -0.08);
     camera.fov = 36;
-    camera.position.set(0.22, 0.1, 0.28);
     camera.near = 0.02;
+    camera.position.set(0.22, 0.1, 0.28);
     camera.lookAt(0, 0.02, 0);
-  } else if (isRifleId(gun)) {
-    const hold = rifles[gun];
-    hold.root.visible = true;
-    if (mode === "sight") {
-      hold.root.position.copy(hold.adsPos);
-      hold.root.rotation.set(0, 0, 0);
-      camera.fov = RIFLES[gun].adsFov;
-      camera.near = 0.02;
-      camera.position.set(0, 0, 0);
-      camera.rotation.set(0, 0, 0);
-      camera.rotation.order = "YXZ";
-    } else {
-      hold.root.position.set(0, 0, 0);
-      hold.root.rotation.set(0.12, spin, 0.04);
-      camera.fov = 38;
-      camera.near = 0.05;
-      camera.position.set(0.42, 0.16, 0.58);
-      camera.lookAt(0, 0.02, -0.12);
-    }
+    return;
   }
+  if (!isRifleId(id)) return;
+  const hold = rifles[id];
+  hold.root.visible = true;
+  if (kind === "sight") {
+    hold.root.position.copy(hold.adsPos);
+    hold.root.rotation.set(0, 0, 0);
+    camera.fov = RIFLES[id].adsFov;
+    camera.near = 0.02;
+    camera.position.set(0, 0, 0);
+    camera.rotation.set(0, 0, 0);
+    camera.rotation.order = "YXZ";
+    return;
+  }
+  hold.root.position.set(0, 0, 0);
+  hold.root.rotation.set(0.12, spin, 0.04);
+  camera.fov = 38;
+  camera.near = 0.05;
+  camera.position.set(0.42, 0.16, 0.58);
+  camera.lookAt(0, 0.02, -0.12);
+}
+
+function blit(dest: HTMLCanvasElement) {
+  if (!renderer) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const cssW = dest.clientWidth;
+  const cssH = dest.clientHeight;
+  if (cssW < 2 || cssH < 2) return;
+  const w = Math.max(2, Math.floor(cssW * dpr));
+  const h = Math.max(2, Math.floor(cssH * dpr));
+  if (dest.width !== w || dest.height !== h) {
+    dest.width = w;
+    dest.height = h;
+  }
+  const gl = renderer.domElement;
+  if (gl.width !== w || gl.height !== h) renderer.setSize(w, h, false);
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
-  paint();
+  const ctx = dest.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(gl, 0, 0, w, h);
+}
+
+export function renderGunPreview() {
+  if (!renderer || !visible) return;
+  if (knife.userData.melee !== prefs.look.melee) refreshKnife();
+  for (const pane of panes) {
+    pose(pane.id, pane.kind);
+    blit(pane.canvas);
+  }
 }

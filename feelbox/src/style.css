@@ -1609,14 +1609,16 @@ body.settings #locker-pip[hidden] {
 #join-loadout {
   position: absolute;
   left: 50%;
-  bottom: 72px;
+  bottom: 20px;
   transform: translateX(-50%);
   z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  width: min(640px, calc(100% - 340px));
+  width: min(980px, calc(100% - 36px));
+  max-height: min(72vh, 620px);
+  overflow: auto;
   padding: 12px 14px 14px;
   background: rgba(12, 12, 10, 0.42);
   border: 1px solid rgba(232, 217, 168, 0.22);
@@ -1641,11 +1643,11 @@ body.settings #locker-pip[hidden] {
   width: 100%;
 }
 
-.loadout-row button {
-  min-width: 120px;
-  flex: 1 1 110px;
-  max-width: 180px;
-  padding: 10px 12px;
+.loadout-row button.gun-card {
+  min-width: 220px;
+  flex: 1 1 220px;
+  max-width: 320px;
+  padding: 10px 10px 12px;
   text-align: left;
   background: rgba(28, 30, 24, 0.72);
   color: #e6dfd0;
@@ -1676,47 +1678,55 @@ body.settings #locker-pip[hidden] {
   border-color: rgba(232, 217, 168, 0.7);
 }
 
-#loadout-go {
-  display: none;
+.gun-views {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
 }
 
-#gun-preview {
+.gun-views.solo {
+  grid-template-columns: 1fr;
+}
+
+.gun-pane {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: min(420px, 100%);
+  gap: 4px;
+  min-width: 0;
 }
 
-#gun-preview-stage {
+.gun-pane-label {
+  color: #c4bba8;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.gun-pane-stage {
   position: relative;
-  width: 100%;
-  height: 168px;
-  border: 1px solid rgba(232, 217, 168, 0.28);
-  border-radius: 6px;
+  height: 92px;
+  border: 1px solid rgba(232, 217, 168, 0.22);
+  border-radius: 4px;
   overflow: hidden;
-  background: rgba(8, 8, 6, 0.35);
-  cursor: pointer;
+  background: rgba(8, 8, 6, 0.45);
 }
 
-#gun-preview-view {
+.gun-pane-stage canvas {
   display: block;
   width: 100%;
   height: 100%;
+  pointer-events: none;
 }
 
-#gun-preview-glass {
+.gun-pane-stage .gp-glass {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0;
 }
 
-#gun-preview-glass.on {
-  opacity: 1;
-}
-
-#gun-preview-glass .gp-shade {
+.gp-glass .gp-shade {
   position: absolute;
   inset: 0;
   background: radial-gradient(
@@ -1727,7 +1737,7 @@ body.settings #locker-pip[hidden] {
   );
 }
 
-#gun-preview-glass .gp-ring {
+.gp-glass .gp-ring {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -1739,7 +1749,7 @@ body.settings #locker-pip[hidden] {
   box-shadow: inset 0 0 12px 6px rgba(8, 9, 7, 0.5);
 }
 
-#gun-preview-glass .gp-reticle {
+.gp-glass .gp-reticle {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -1747,54 +1757,54 @@ body.settings #locker-pip[hidden] {
   height: 0;
 }
 
-#gun-preview-glass .gp-bar {
+.gp-glass .gp-bar {
   position: absolute;
   background: #11140e;
   box-shadow: 0 0 0 1px rgba(239, 230, 210, 0.35);
 }
 
-#gun-preview-glass .gp-bar-s {
+.gp-glass .gp-bar-s {
   left: -1px;
   top: 6px;
   width: 2px;
   height: 38%;
 }
 
-#gun-preview-glass .gp-bar-l {
+.gp-glass .gp-bar-l {
   top: -1px;
   right: 6px;
   height: 2px;
   width: 28%;
 }
 
-#gun-preview-glass .gp-bar-r {
+.gp-glass .gp-bar-r {
   top: -1px;
   left: 6px;
   height: 2px;
   width: 28%;
 }
 
-#gun-preview-name {
-  margin: 0;
+#loadout-go {
+  margin-top: 6px;
+  padding: 10px 28px;
+  background: rgba(232, 217, 168, 0.16);
   color: #f4eee2;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
-}
-
-#gun-preview-mode {
-  background: transparent;
-  color: #e8d9a8;
-  border: 1px solid rgba(232, 217, 168, 0.35);
-  padding: 6px 12px;
+  border: 1px solid rgba(232, 217, 168, 0.55);
+  border-radius: 4px;
   cursor: pointer;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-weight: 650;
 }
 
-#gun-preview-mode:hover {
+#loadout-go:hover {
   border-color: #e8d9a8;
+  background: rgba(232, 217, 168, 0.24);
+}
+
+#loadout-go:disabled {
+  opacity: 0.45;
+  cursor: wait;
 }
 
 #join-spec {
