@@ -242,7 +242,8 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 /**
  * Square hood whose arms sit outside the rounded U. Same black as the
  * rifle, with clipped corners and a slightly drier sheen so the two
- * pieces read as separate if you look. adsPos is unchanged.
+ * pieces read as separate if you look. The U floor covers about 1/5 of
+ * the aiming rectangle. adsPos is unchanged.
  */
 function karIronForeU(
   root: THREE.Group,
@@ -263,7 +264,10 @@ function karIronForeU(
   const bw = (roundBw + 0.013) * 1.1;
   const nw = (topW + 0.0012) * 1.22;
   const sink = 0.011;
-  const notchFloor = 0.001;
+  const barH = roundEarH * 0.7;
+  const aimLocal = 0.005;
+  const barMin = aimLocal - barH * 0.5;
+  const notchFloor = barMin + barH * 0.2;
   const ch = 0.0022;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
@@ -297,11 +301,11 @@ function karIronForeU(
   hood.userData.karIronOuterW = bw * 2;
   hood.userData.karIronHoleW = nw * 2;
   hood.userData.karIronChamfer = ch;
+  hood.userData.karIronNotchFloor = notchFloor;
   place(root, hood, 0, floorY, z);
 
-  const barH = roundEarH * 0.7;
   const barD = 0.01;
-  const aimY = floorY + 0.005;
+  const aimY = floorY + aimLocal;
   const barY = Math.min(aimY, floorY + earH - barH * 0.5);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
   bar.position.set(0, barY, z - depth / 2 - barD * 0.1);

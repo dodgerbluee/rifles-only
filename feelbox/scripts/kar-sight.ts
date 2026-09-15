@@ -89,6 +89,15 @@ if (ironFore && ironFore instanceof THREE.Mesh && ironRear) {
   const ch = Number(ironFore.userData.karIronChamfer);
   check("boxy U has a small corner chamfer", ch > 0.0015 && ch < 0.0035, `ch=${ch}`);
   check("boxy U cutout is a bit bigger", Number(ironFore.userData.karIronHoleW) > 0.025, `holeW=${ironFore.userData.karIronHoleW}`);
+  const poi = findFlag(iron.root, "karPoiBar") as THREE.Mesh;
+  if (poi) {
+    poi.geometry.computeBoundingBox();
+    const bH = poi.geometry.boundingBox!.max.y - poi.geometry.boundingBox!.min.y;
+    const bMin = poi.position.y - ironFore.position.y - bH * 0.5;
+    const floor = Number(ironFore.userData.karIronNotchFloor);
+    const frac = (floor - bMin) / bH;
+    check("square U covers ~1/5 of the aiming bar", frac > 0.15 && frac < 0.25, `frac=${frac}`);
+  }
 }
 
 let ironFacets = 0;

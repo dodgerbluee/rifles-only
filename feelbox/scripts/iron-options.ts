@@ -73,6 +73,14 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   const ch = Number(fore.userData.karIronChamfer);
   check("boxy U has a small corner chamfer", ch > 0.0015 && ch < 0.0035, `ch=${ch}`);
   check("boxy U cutout is a bit bigger", Number(fore.userData.karIronHoleW) > 0.025, `holeW=${fore.userData.karIronHoleW}`);
+  if (bar && bar instanceof THREE.Mesh) {
+    bar.geometry.computeBoundingBox();
+    const bH = bar.geometry.boundingBox!.max.y - bar.geometry.boundingBox!.min.y;
+    const bMin = bar.position.y - fore.position.y - bH * 0.5;
+    const floor = Number(fore.userData.karIronNotchFloor);
+    const frac = (floor - bMin) / bH;
+    check("square U covers ~1/5 of the aiming bar", frac > 0.15 && frac < 0.25, `frac=${frac}`);
+  }
 }
 
 if (failed) {
