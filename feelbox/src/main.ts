@@ -144,7 +144,6 @@ import {
   walkKeepsTool,
   zoomOrbit,
   type Handle,
-  type OrbitCam,
   type PaletteId,
   type StudioItem,
   type ToolId,
@@ -266,7 +265,7 @@ import {
   bindGunPreview,
   renderGunPreview,
   setGunPreviewVisible,
-  setPreviewGun,
+  syncGunPreviews,
   tickGunPreview,
 } from "./gunPreview";
 
@@ -303,22 +302,9 @@ let customSpec: LayoutSpec | null = null;
 let lobbyStudioMaps: { id: string; title: string }[] = [];
 let world = buildMap(scene, mapId as MapId);
 
-function skyOrbit(bounds: { minX: number; maxX: number; minZ: number; maxZ: number }): OrbitCam {
-  const cam = defaultOrbit(bounds);
-  cam.theta = 0.36;
-  cam.dist = Math.max(52, cam.dist * 1.05);
-  return cam;
-}
-
-let joinCam = skyOrbit(world.bounds);
-let joinOrbiting = false;
 let joinReturn: "lobby" | "play" | "spec" = "lobby";
+let joinStep: "team" | "guns" = "team";
 let pauseOpenedAt = 0;
-
-function resetJoinCam() {
-  joinCam = skyOrbit(world.bounds);
-  joinOrbiting = false;
-}
 
 function calloutAt(x: number, z: number, y = 0) {
   return world.placeName?.(x, z, y) ?? placeName(x, z, y);
@@ -557,11 +543,11 @@ function joinGame(name?: string) {
   if (name) joiningName = name;
   lastBeat = performance.now();
   joinReturn = "lobby";
+  joinStep = "team";
   net.destroy();
   net = connectNet(playWsUrl());
   bindNet(net);
   document.body.classList.add("joined", "choosing");
-  resetJoinCam();
   paintLoadout();
   paintJoin();
 }
@@ -620,10 +606,10 @@ function openPause() {
 
 function openChooseTeam(from: "lobby" | "play" | "spec" = "lobby") {
   joinReturn = from;
+  joinStep = "team";
   document.body.classList.add("joined", "choosing");
   document.body.classList.remove("paused", "started", "spectating", "playing");
   closePause();
-  resetJoinCam();
   paintLoadout();
   paintJoin();
   document.exitPointerLock();
@@ -663,7 +649,7 @@ function leaveToLobby() {
   if (killCam) stopKillCam();
   freeLook = false;
   joinReturn = "lobby";
-  joinOrbiting = false;
+  joinStep = "team";
   closePause();
   setGunPreviewVisible(false);
   document.body.classList.remove(
@@ -720,15 +706,19 @@ function paintJoin() {
     !menuUp && (document.body.classList.contains("choosing") || awaitingTeamPick());
   if (picking) document.body.classList.add("choosing", "joined");
   const ready = net.role === "client" && !connecting;
+  const teamStep = picking && joinStep === "team";
+  const gunStep = picking && joinStep === "guns";
   const hideList = connecting || picking || rejected || document.body.classList.contains("joined");
   if (list) list.hidden = hideList;
   const table = document.querySelector<HTMLElement>(".server-table");
   if (table) table.hidden = hideList;
-  if (pick) pick.hidden = !picking;
+  if (pick) pick.hidden = !teamStep;
   const guns = document.querySelector<HTMLElement>("#join-loadout");
-  if (guns) guns.hidden = !picking;
+  if (guns) guns.hidden = !gunStep;
+  const go = document.querySelector<HTMLButtonElement>("#loadout-go");
+  if (go) go.disabled = !ready;
   if (specBtn) {
-    specBtn.hidden = !picking;
+    specBtn.hidden = !teamStep;
     specBtn.disabled = !ready;
   }
   if (pick) {
@@ -738,12 +728,14 @@ function paintJoin() {
   }
   if (panel) {
     panel.hidden = menuUp || (!picking && !connecting && !rejected);
-    panel.classList.toggle("pick", picking);
-    panel.classList.toggle("loadout", picking);
+    panel.classList.toggle("pick", teamStep || (picking && connecting));
+    panel.classList.toggle("loadout", gunStep);
   }
-  setGunPreviewVisible(!!(picking && panel && !panel.hidden));
+  setGunPreviewVisible(!!gunStep);
   const ask = document.querySelector<HTMLElement>("#join-team .join-ask");
-  if (ask) ask.textContent = ready ? "Pick a side · choose a rifle" : "Connecting";
+  if (ask) {
+    ask.textContent = !ready ? "Connecting" : gunStep ? "Choose rifles" : "Pick a side";
+  }
   if (!list) return;
   for (const row of list.querySelectorAll<HTMLButtonElement>(".server-row")) {
     row.classList.toggle("busy", connecting);
@@ -996,9 +988,34 @@ function paintTeamPick() {
 
 function pickTeam(team: Team) {
   sendJoinTeam(team);
-  if (document.body.classList.contains("joined") && !document.body.classList.contains("started")) {
-    enterPlay();
+  if (onJoinScreen() || (document.body.classList.contains("joined") && !document.body.classList.contains("started") && !document.body.classList.contains("spectating"))) {
+    joinStep = "guns";
+    paintLoadout();
+    paintJoin();
   }
+}
+
+function gunPane(kind: "sight" | "inspect", id: SecondaryId) {
+  const pane = document.createElement("span");
+  pane.className = "gun-pane";
+  const label = document.createElement("span");
+  label.className = "gun-pane-label";
+  label.textContent = kind === "inspect" ? "Gun" : id !== "knife" && isRifleId(id) && RIFLES[id].glass ? "Scope" : "Sights";
+  const stage = document.createElement("span");
+  stage.className = "gun-pane-stage";
+  const canvas = document.createElement("canvas");
+  canvas.dataset.preview = kind;
+  stage.append(canvas);
+  if (kind === "sight" && id !== "knife" && isRifleId(id) && RIFLES[id].glass) {
+    const glass = document.createElement("div");
+    glass.className = "gp-glass";
+    glass.setAttribute("aria-hidden", "true");
+    glass.innerHTML =
+      '<div class="gp-shade"></div><div class="gp-ring"></div><div class="gp-reticle"><span class="gp-bar gp-bar-s"></span><span class="gp-bar gp-bar-l"></span><span class="gp-bar gp-bar-r"></span></div>';
+    stage.append(glass);
+  }
+  pane.append(label, stage);
+  return pane;
 }
 
 function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id: SecondaryId) => void) {
@@ -1008,6 +1025,8 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
   for (const id of ids) {
     const b = document.createElement("button");
     b.type = "button";
+    b.className = "gun-card";
+    b.dataset.gun = id;
     b.classList.toggle("on", id === on);
     const name = document.createElement("span");
     name.className = "gun-name";
@@ -1015,11 +1034,14 @@ function fillGunRow(sel: string, ids: SecondaryId[], on: SecondaryId, pick: (id:
     const blurb = document.createElement("span");
     blurb.className = "gun-blurb";
     blurb.textContent = GUN_BLURB[id];
-    b.append(name, blurb);
+    const views = document.createElement("span");
+    views.className = id === "knife" ? "gun-views solo" : "gun-views";
+    if (id !== "knife") views.append(gunPane("sight", id));
+    views.append(gunPane("inspect", id));
+    b.append(name, blurb, views);
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       pick(id);
-      setPreviewGun(id);
     });
     root.append(b);
   }
@@ -1040,7 +1062,7 @@ function paintLoadout() {
     savePrefs();
     paintLoadout();
   });
-  setPreviewGun(loadout.primary);
+  syncGunPreviews(document.querySelector("#join-loadout"));
 }
 
 function switchLocalTeam(team: Team) {
@@ -1165,7 +1187,6 @@ function afterMapLoad() {
     g.visible = true;
   }
   lightViewmodels();
-  resetJoinCam();
 }
 
 function specForStudioId(id: string): LayoutSpec | null {
@@ -2632,6 +2653,24 @@ let gunKickZ = 0;
 let flashUntil = 0;
 let lastHit = "—";
 let time = 0;
+
+function applyMatchOverviewCam(dt: number) {
+  const { minX, maxX, minZ, maxZ } = world.bounds;
+  const cx = (minX + maxX) * 0.5;
+  const cz = (minZ + maxZ) * 0.5;
+  const span = Math.max(maxX - minX, maxZ - minZ);
+  const radius = span * 0.3;
+  const ang = time * 0.12;
+  camera.position.set(cx + Math.sin(ang) * radius, 40, cz + Math.cos(ang) * radius);
+  const look = podiumLookAt(world);
+  camera.lookAt(look.x, look.y, look.z);
+  camera.near = 0.2;
+  camera.far = 400;
+  fov += (62 - fov) * Math.min(1, dt * 4);
+  camera.fov = fov;
+  camera.updateProjectionMatrix();
+}
+
 let mouseDown = false;
 const fireQ = emptyQueue();
 let jumpHeld = false;
@@ -2727,11 +2766,20 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
     prefs.loadout = parseLoadout(prefs.loadout);
     savePrefs();
     sendJoinTeam(team);
-    enterPlay();
+    joinStep = "guns";
+    paintLoadout();
+    paintJoin();
   });
   const setTeam = document.querySelector("#set-team");
   if (setTeam) fillTeams(setTeam);
   document.querySelector("#join-loadout")?.addEventListener("click", (e) => e.stopPropagation());
+  document.querySelector("#loadout-go")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (net.role !== "client") return;
+    prefs.loadout = parseLoadout(prefs.loadout);
+    savePrefs();
+    enterPlay();
+  });
   document.querySelector("#join-spec")?.addEventListener("click", (e) => {
     e.stopPropagation();
     if (net.role !== "client") return;
@@ -2739,6 +2787,11 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
   });
   document.querySelector("#join-cancel")?.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (joinStep === "guns") {
+      joinStep = "team";
+      paintJoin();
+      return;
+    }
     if (joinReturn === "play" || joinReturn === "spec") {
       leavePauseToGame();
       return;
@@ -2758,12 +2811,7 @@ document.querySelector("#join-status")?.addEventListener("click", (e) => {
     e.stopPropagation();
     enterSettings();
   });
-  bindGunPreview({
-    canvas: document.querySelector<HTMLCanvasElement>("#gun-preview-view"),
-    glass: document.querySelector<HTMLElement>("#gun-preview-glass"),
-    name: document.querySelector<HTMLElement>("#gun-preview-name"),
-    modeBtn: document.querySelector<HTMLButtonElement>("#gun-preview-mode"),
-  });
+  bindGunPreview();
   const adminMap = document.querySelector<HTMLSelectElement>("#admin-map")!;
   adminMap.addEventListener("change", () => {
     void sendAdminMap(adminMap.value);
@@ -3000,15 +3048,6 @@ addEventListener("mousedown", (e) => {
     document.body.classList.add("locker-drag");
     return;
   }
-  if (onJoinScreen() && e.button === 0) {
-    const t = e.target as HTMLElement | null;
-    if (t === canvas || t?.id === "view" || t?.id === "join-team") {
-      joinOrbiting = true;
-      document.body.classList.add("orbiting");
-      e.preventDefault();
-      return;
-    }
-  }
   if (studio.on) {
     if ((e.target as HTMLElement | null)?.closest("#studio")) return;
     e.preventDefault();
@@ -3129,10 +3168,6 @@ addEventListener("mousedown", (e) => {
   }
 });
 addEventListener("mouseup", (e) => {
-  if (joinOrbiting) {
-    joinOrbiting = false;
-    document.body.classList.remove("orbiting");
-  }
   if (locker.on && e.button === 0) {
     locker.dragging = false;
     document.body.classList.remove("locker-drag");
@@ -3169,12 +3204,6 @@ addEventListener("wheel", (e) => {
     e.preventDefault();
     const { minX, maxX, minZ, maxZ } = studio.spec.bounds;
     zoomOrbit(studio.cam, e.deltaY, Math.max(180, Math.hypot(maxX - minX, maxZ - minZ) * 1.6));
-    return;
-  }
-  if (onJoinScreen()) {
-    e.preventDefault();
-    const { minX, maxX, minZ, maxZ } = world.bounds;
-    zoomOrbit(joinCam, e.deltaY, Math.max(180, Math.hypot(maxX - minX, maxZ - minZ) * 1.6));
     return;
   }
   if (!locked || alive) return;
@@ -3236,10 +3265,6 @@ addEventListener("mousemove", (e) => {
         }
       }
     } else if (studio.painting) stampStudio();
-    return;
-  }
-  if (joinOrbiting) {
-    orbitDrag(joinCam, e.movementX, e.movementY);
     return;
   }
   if (!locked) return;
@@ -5593,8 +5618,7 @@ function frame(now: number) {
   }
 
   if (onJoinScreen()) {
-    if (!joinOrbiting && !document.body.classList.contains("paused")) joinCam.phi += dt * 0.08;
-    applyOrbit(camera, joinCam);
+    applyMatchOverviewCam(dt);
     showRifle(rifleKind, false);
     setKarGlass(rifleKind, false, 0);
     knife.visible = false;
@@ -5623,18 +5647,7 @@ function frame(now: number) {
     setSpec("Spectating · WASD fly · Esc menu");
   } else if (!watching) {
     if (match.phase === "matchover") {
-      const { minX, maxX, minZ, maxZ } = world.bounds;
-      const cx = (minX + maxX) * 0.5;
-      const cz = (minZ + maxZ) * 0.5;
-      const span = Math.max(maxX - minX, maxZ - minZ);
-      const radius = span * 0.3;
-      const ang = time * 0.12;
-      camera.position.set(cx + Math.sin(ang) * radius, 40, cz + Math.cos(ang) * radius);
-      const look = podiumLookAt(world);
-      camera.lookAt(look.x, look.y, look.z);
-      fov += (62 - fov) * Math.min(1, dt * 4);
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
+      applyMatchOverviewCam(dt);
       showRifle(rifleKind, false);
       setKarGlass(rifleKind, false, 0);
       knife.visible = false;
