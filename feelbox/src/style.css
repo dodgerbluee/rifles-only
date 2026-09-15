@@ -1652,16 +1652,36 @@ body.settings #locker-pip[hidden] {
   flex-direction: column;
   padding: 10px 10px 12px;
   text-align: left;
-  background: rgba(28, 30, 24, 0.38);
+  background: rgba(28, 30, 24, 0.28);
   color: #e6dfd0;
-  border: 1px solid rgba(232, 217, 168, 0.28);
+  border: 1px solid rgba(232, 217, 168, 0.18);
   cursor: pointer;
+  opacity: 0.62;
+}
+
+.loadout-row button .gun-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .loadout-row button .gun-name {
   display: block;
   font-weight: 650;
   letter-spacing: 0.04em;
+}
+
+.loadout-row button .gun-selected {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  color: #12140e;
+  background: #e8d9a8;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-radius: 2px;
 }
 
 .loadout-row button .gun-blurb {
@@ -1673,11 +1693,15 @@ body.settings #locker-pip[hidden] {
 }
 
 .loadout-row button.on {
+  opacity: 1;
   border-color: #e8d9a8;
-  background: rgba(38, 40, 31, 0.52);
+  border-width: 2px;
+  background: rgba(232, 217, 168, 0.16);
+  box-shadow: 0 0 0 1px rgba(232, 217, 168, 0.35), 0 10px 22px rgba(0, 0, 0, 0.28);
 }
 
 .loadout-row button:hover {
+  opacity: 1;
   border-color: rgba(232, 217, 168, 0.7);
 }
 
@@ -1796,27 +1820,16 @@ body.settings #locker-pip[hidden] {
 }
 
 #loadout-go {
-  align-self: center;
-  margin-top: auto;
-  padding: 10px 28px;
-  background: rgba(232, 217, 168, 0.16);
+  display: none;
+}
+
+.loadout-hint {
+  margin: auto 0 2px;
   color: #f4eee2;
-  border: 1px solid rgba(232, 217, 168, 0.55);
-  border-radius: 4px;
-  cursor: pointer;
-  letter-spacing: 0.14em;
+  font-size: 12px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-weight: 650;
-}
-
-#loadout-go:hover {
-  border-color: #e8d9a8;
-  background: rgba(232, 217, 168, 0.24);
-}
-
-#loadout-go:disabled {
-  opacity: 0.45;
-  cursor: wait;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
 #join-spec {
@@ -3947,6 +3960,10 @@ body.settings #pause {
 .pause-panel button:hover {
   border-color: #e8d9a8;
   color: #e8d9a8;
+}
+
+.pause-panel button[hidden] {
+  display: none !important;
 }
 
 body.choosing #hud-left,

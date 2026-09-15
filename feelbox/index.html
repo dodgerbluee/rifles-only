@@ -197,11 +197,11 @@
       <p class="join-ask">Pick a side</p>
       <div id="join-team-pick" hidden></div>
       <div id="join-loadout" hidden>
-        <p class="loadout-label">Primary</p>
+        <p class="loadout-label" id="loadout-primary-label">Primary</p>
         <div id="loadout-primary" class="loadout-row"></div>
-        <p class="loadout-label">Secondary</p>
+        <p class="loadout-label" id="loadout-secondary-label">Secondary</p>
         <div id="loadout-secondary" class="loadout-row"></div>
-        <button type="button" id="loadout-go">Enter match</button>
+        <p class="loadout-hint" id="loadout-hint">Click a primary and a secondary to deploy</p>
       </div>
       <button type="button" id="join-spec">Spectate</button>
       <button type="button" id="join-cancel">Back</button>
@@ -212,6 +212,7 @@
         <p class="pause-kicker">Menu</p>
         <button type="button" id="pause-disconnect">Disconnect</button>
         <button type="button" id="pause-team">Choose Team</button>
+        <button type="button" id="pause-guns">Switch Weapon</button>
         <button type="button" id="pause-settings">Settings</button>
       </div>
     </div>
