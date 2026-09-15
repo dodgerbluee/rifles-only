@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { makeTextures, surf, type TexPack } from "../textures";
 import { addSiteMarker, addSiteOutline, type Aabb, type Site, type World } from "../world";
 
-export type MapId = "wharf" | "harbor" | "cove" | "parish" | "cut" | "siding";
+export type MapId = "wharf" | "harbor" | "cove" | "parish" | "cut" | "siding" | "dust2";
 
 export type BoxFn = (
   x: number,

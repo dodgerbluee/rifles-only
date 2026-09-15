@@ -683,7 +683,7 @@ check(
 );
 
 const catalog = seedCatalog(emptyLibrary(blankSpec()), LAYOUT_SPECS);
-for (const id of ["wharf", "harbor", "cove", "parish", "cut", "siding"] as const) {
+for (const id of ["wharf", "harbor", "cove", "parish", "cut", "siding", "dust2"] as const) {
   check(`${id} is in the studio catalog`, catalog.docs.some((d) => d.id === id));
 }
 for (const spec of LAYOUT_SPECS) {
