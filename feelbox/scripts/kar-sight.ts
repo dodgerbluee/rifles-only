@@ -39,6 +39,7 @@ check("Kar98k-2 keeps the same ADS pose", two.adsPos.equals(iron.adsPos), `y=${t
 check("iron Kar is not glass", RIFLES.kar.glass === false);
 check("Kar98k-2 is not glass", RIFLES.kar2.glass === false);
 check("Kar98k Scoped is glass", RIFLES.karscope.glass === true);
+check("scoped zoom is unchanged", RIFLES.karscope.adsFov === 26);
 check("iron zooms less than scoped", RIFLES.kar.adsFov > RIFLES.karscope.adsFov);
 check("Kar98k-2 matches iron zoom", RIFLES.kar2.adsFov === RIFLES.kar.adsFov);
 check("names split", RIFLES.kar.name === "Kar98k" && RIFLES.kar2.name === "Kar98k-2" && RIFLES.karscope.name === "Kar98k Scoped");
