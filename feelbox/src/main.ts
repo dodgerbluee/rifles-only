@@ -203,6 +203,7 @@ import {
 } from "./replay";
 import {
   makeKar98,
+  makeKar98Two,
   makeKar98Scoped,
   makeMosin,
   makeRightArm,
@@ -2712,15 +2713,16 @@ lightViewmodels();
 
 const rifles = {
   kar: makeKar98(),
+  kar2: makeKar98Two(),
   karscope: makeKar98Scoped(),
   mosin: makeMosin(),
 } as const;
-camera.add(rifles.kar.root, rifles.karscope.root, rifles.mosin.root);
-rifles.karscope.root.visible = false;
-rifles.mosin.root.visible = false;
-markViewmodel(rifles.kar.root);
-markViewmodel(rifles.karscope.root);
-markViewmodel(rifles.mosin.root);
+for (const id of PRIMARY_IDS) {
+  camera.add(rifles[id].root);
+  rifles[id].root.visible = false;
+  markViewmodel(rifles[id].root);
+}
+rifles.kar.root.visible = true;
 
 function liveRifle() {
   return rifles[rifleKind];

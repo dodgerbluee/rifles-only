@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { makeMelee } from "./knife-variants";
 import type { MeleeId } from "./look";
 
-export type RifleId = "kar" | "karscope" | "mosin";
+export type RifleId = "kar" | "kar2" | "karscope" | "mosin";
 
 export function isRifleId(id: string): id is RifleId {
-  return id === "kar" || id === "karscope" || id === "mosin";
+  return id === "kar" || id === "kar2" || id === "karscope" || id === "mosin";
 }
 
 export function isMauser(id: RifleId) {
@@ -15,6 +15,7 @@ export function isMauser(id: RifleId) {
 export function rifleFromWeapon(w: string): RifleId {
   if (w === "mosin") return "mosin";
   if (w === "karscope") return "karscope";
+  if (w === "kar2") return "kar2";
   return "kar";
 }
 
@@ -31,6 +32,7 @@ export type RifleSpec = {
 
 export const RIFLES: Record<RifleId, RifleSpec> = {
   kar: { name: "Kar98k", mag: 5, cycle: 0.74, adsFov: 52, adsSens: 0.38, glass: false },
+  kar2: { name: "Kar98k-2", mag: 5, cycle: 0.74, adsFov: 52, adsSens: 0.38, glass: false },
   karscope: { name: "Kar98k Scoped", mag: 5, cycle: 0.8, adsFov: 26, adsSens: 0.26, glass: true },
   mosin: { name: "Mosin", mag: 5, cycle: 0.9, adsFov: 40, adsSens: 0.42, glass: false },
 };
@@ -193,11 +195,10 @@ function karLeafRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
 }
 
 /**
- * Iron rear: option-3 U as a sight block that hugs the receiver.
- * Rounded inner notch, ears and aiming bar 35% shorter. adsPos is unchanged.
- * Bottom cutout is 2× the aiming rectangle; the top of the U flares wider.
+ * Stock Kar iron: option-3 rounded U, 35% shorter, flared cutout, aiming bar.
+ * adsPos is unchanged.
  */
-function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
+function karIronRearStock(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
   const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
   const recW = 0.026;
   const sink = 0.011;
@@ -241,6 +242,125 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   const barY = Math.min(aimY, floorY + earH - barH * 0.5);
   const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
   bar.position.set(0, barY, z + 0.001);
+  bar.userData.karPoiBar = true;
+  root.add(bar);
+}
+
+/**
+ * Kar98k-2 rounded leaf: thick arms, flared cutout. The square hood sits behind it.
+ */
+function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
+  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
+  const recW = 0.026;
+  const sink = 0.011;
+  const barW = 0.003;
+  const depth = 0.009 * 1.5;
+  const cutW = barW + 2 * (2 * barW);
+  const botW = cutW * 0.5;
+  const topW = botW * 1.32;
+  const earThick = recW * 0.5 + 0.0012 - topW;
+  const bw = topW + earThick * 1.5;
+  const notchFloor = 0.001;
+  const roundH = (earH - notchFloor) * 0.38;
+  const leaf = new THREE.Shape();
+  leaf.moveTo(-bw, -sink);
+  leaf.lineTo(-bw, earH);
+  leaf.lineTo(-topW, earH);
+  leaf.lineTo(-botW, notchFloor + roundH);
+  leaf.quadraticCurveTo(-botW, notchFloor, 0, notchFloor);
+  leaf.quadraticCurveTo(botW, notchFloor, botW, notchFloor + roundH);
+  leaf.lineTo(topW, earH);
+  leaf.lineTo(bw, earH);
+  leaf.lineTo(bw, -sink);
+  leaf.closePath();
+  const geo = new THREE.ExtrudeGeometry(leaf, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.0005,
+    bevelSize: 0.0004,
+    bevelSegments: 1,
+    curveSegments: 8,
+  });
+  geo.translate(0, 0, -depth / 2);
+  const rear = new THREE.Mesh(geo, steel);
+  rear.userData.karIronRear = true;
+  rear.userData.karIronNotchW = cutW;
+  rear.userData.karIronTopW = topW * 2;
+  rear.userData.karIronOuterW = bw * 2;
+  rear.userData.karIronDepth = depth;
+  place(root, rear, 0, floorY, z);
+}
+
+/**
+ * Square hood whose arms sit outside the rounded U. Same black as the
+ * rifle, with clipped corners and a slightly drier sheen so the two
+ * pieces read as separate if you look. The U floor covers about 1/5 of
+ * the aiming rectangle. adsPos is unchanged.
+ */
+function karIronForeU(
+  root: THREE.Group,
+  z: number,
+  floorY: number,
+  steel: THREE.Material,
+  depth: number,
+) {
+  const roundEarH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
+  const earH = roundEarH * 1.55 * 0.95;
+  const recW = 0.026;
+  const barW = 0.003;
+  const cutW = barW + 2 * (2 * barW);
+  const botW = cutW * 0.5;
+  const topW = botW * 1.32;
+  const earThick = recW * 0.5 + 0.0012 - topW;
+  const roundBw = topW + earThick * 1.5;
+  const bw = (roundBw + 0.013) * 1.1;
+  const nw = (topW + 0.0012) * 1.22;
+  const sink = 0.011;
+  const barH = roundEarH * 0.7;
+  const aimLocal = 0.005;
+  const barMin = aimLocal - barH * 0.5;
+  const notchFloor = barMin + barH * 0.2;
+  const ch = 0.0022;
+  const leaf = new THREE.Shape();
+  leaf.moveTo(-bw, -sink);
+  leaf.lineTo(-bw, earH - ch);
+  leaf.lineTo(-bw + ch, earH);
+  leaf.lineTo(-nw, earH);
+  leaf.lineTo(-nw, notchFloor);
+  leaf.lineTo(nw, notchFloor);
+  leaf.lineTo(nw, earH);
+  leaf.lineTo(bw - ch, earH);
+  leaf.lineTo(bw, earH - ch);
+  leaf.lineTo(bw, -sink);
+  leaf.closePath();
+  const geo = new THREE.ExtrudeGeometry(leaf, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.0004,
+    bevelSize: 0.0003,
+    bevelSegments: 1,
+    curveSegments: 1,
+  });
+  geo.translate(0, 0, -depth / 2);
+  const hoodMat = steel.clone();
+  if (hoodMat instanceof THREE.MeshStandardMaterial) {
+    hoodMat.roughness = 0.5;
+    hoodMat.metalness = 0.52;
+  }
+  const hood = new THREE.Mesh(geo, hoodMat);
+  hood.userData.karIronForeU = true;
+  hood.userData.karIronDepth = depth;
+  hood.userData.karIronOuterW = bw * 2;
+  hood.userData.karIronHoleW = nw * 2;
+  hood.userData.karIronChamfer = ch;
+  hood.userData.karIronNotchFloor = notchFloor;
+  place(root, hood, 0, floorY, z);
+
+  const barD = 0.01;
+  const aimY = floorY + aimLocal;
+  const barY = Math.min(aimY, floorY + earH - barH * 0.5);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(barW, barH, barD), steel);
+  bar.position.set(0, barY, z - depth / 2 - barD * 0.1);
   bar.userData.karPoiBar = true;
   root.add(bar);
 }
@@ -392,10 +512,12 @@ function makeBolt(root: THREE.Group, home: THREE.Vector3, knob: THREE.Vector3) {
   return bolt;
 }
 
-function buildKar98(scoped: boolean, world = false): RifleView {
+function buildKar98(kind: "kar" | "kar2" | "karscope", world = false): RifleView {
   const root = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x1c1e1a, roughness: 0.3, metalness: 0.7 });
   const wood = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.84, metalness: 0.02 });
+  const scoped = kind === "karscope";
+  const twoU = kind === "kar2";
 
   const axisY = 0.034;
   const recR = 0.013;
@@ -415,7 +537,18 @@ function buildKar98(scoped: boolean, world = false): RifleView {
   const barTop = axisY + barR;
   const uH = scoped ? 0.007 : 0.01;
   if (scoped) karLeafRear(root, -0.08, recTop, steel, uH, 0.0046);
-  else karIronRear(root, -0.08, recTop, steel);
+  else if (twoU) {
+    const roundZ = -0.08;
+    const roundDepth = 0.009 * 1.5;
+    const nest = roundDepth * 0.55;
+    const outside = 0.022;
+    const boxyDepth = roundDepth + outside - nest;
+    const boxyZ = roundZ - (nest + outside) / 2;
+    karIronRear(root, roundZ, recTop, steel);
+    karIronForeU(root, boxyZ, recTop, steel, boxyDepth);
+  } else {
+    karIronRearStock(root, -0.08, recTop, steel);
+  }
   const postH = uH * 0.5;
   const postZ = -0.5;
   const rampH = recTop - barTop;
@@ -441,20 +574,24 @@ function buildKar98(scoped: boolean, world = false): RifleView {
 
   const flash = flashMesh(0, axisY, -0.52);
   root.add(flash);
-  const id: RifleId = scoped ? "karscope" : "kar";
-  const { rounds, clip } = makeAmmoKit(root, axisY, id, steel);
+  const { rounds, clip } = makeAmmoKit(root, axisY, kind, steel);
   root.position.copy(hipPos);
-  return { id, root, flash, hipPos, adsPos, bolt, rounds, clip };
+  return { id: kind, root, flash, hipPos, adsPos, bolt, rounds, clip };
 }
 
-/** Karabiner 98k: iron U + post, CoD1 rifle picture. */
+/** Karabiner 98k: stock iron U + post, CoD1 rifle picture. */
 export function makeKar98(): RifleView {
-  return buildKar98(false);
+  return buildKar98("kar");
+}
+
+/** Same rifle with the two-piece U iron. Same ADS pose as stock Kar. */
+export function makeKar98Two(): RifleView {
+  return buildKar98("kar2");
 }
 
 /** Third-person held Kar — same mesh as the iron viewmodel, not a stub or scoped glass. */
 export function makeWorldKar() {
-  const view = buildKar98(false, true);
+  const view = buildKar98("kar", true);
   view.flash.visible = false;
   view.clip.visible = false;
   for (const round of view.rounds) round.visible = false;
@@ -470,7 +607,7 @@ export function makeWorldKar() {
 
 /** Same rifle with ZF glass. ADS uses the screen overlay. */
 export function makeKar98Scoped(): RifleView {
-  return buildKar98(true);
+  return buildKar98("karscope");
 }
 
 /** Mosin-Nagant 91/30: barrel meets receiver, small peep you look through. */

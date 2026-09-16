@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RIFLES, makeKar98 } from "./weapons";
+import { RIFLES, makeKar98Two } from "./weapons";
 
 const IRON_FOV = RIFLES.kar.adsFov;
 
@@ -51,7 +51,7 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
   scene.add(key);
   scene.add(new THREE.AmbientLight(0x5a5850, 0.4));
 
-  const view = makeKar98();
+  const view = makeKar98Two();
   view.flash.visible = false;
   const root = view.root;
   const camera = new THREE.PerspectiveCamera(IRON_FOV, width / height, 0.02, 24);
@@ -72,11 +72,14 @@ function renderView(dest: HTMLCanvasElement, kind: "ads" | "side", width: number
     root.position.set(0, 0, 0);
     root.rotation.set(0, 0, 0);
     scene.add(root);
-    camera.fov = 26;
+    camera.fov = 22;
     camera.near = 0.02;
     camera.far = 8;
-    camera.position.set(0.1, 0.062, 0.05);
-    camera.lookAt(0, 0.044, -0.08);
+    const rim = new THREE.DirectionalLight(0xf2eee4, 0.85);
+    rim.position.set(0.4, 0.35, -0.55);
+    scene.add(rim);
+    camera.position.set(0.16, 0.05, -0.082);
+    camera.lookAt(0, 0.046, -0.09);
   }
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
@@ -110,9 +113,9 @@ if (only === "ads" || only === "side" || only === "current") {
 } else {
   const grid = document.querySelector("#grid")!;
   grid.appendChild(
-    card("ads", "ADS", "Same zoom and eye pose as main. Rounded U flared wider at the top than the bottom cutout."),
+    card("ads", "ADS", "Same zoom and eye pose. Both Us black; two pieces if you look. Rounded U in front."),
   );
   grid.appendChild(
-    card("side", "On the rifle", "The U is a sight block in the receiver, not a plate sitting on top."),
+    card("side", "On the rifle", "Rounded leaf in front of the square hood. Same black, clipped corners mark the second piece."),
   );
 }

@@ -7,9 +7,9 @@ export type Loadout = {
   secondary: SecondaryId;
 };
 
-export const PRIMARY_IDS: RifleId[] = ["kar", "karscope", "mosin"];
+export const PRIMARY_IDS: RifleId[] = ["kar", "kar2", "karscope", "mosin"];
 
-/** Join picker: all four guns in one grid. First two clicks deploy. */
+/** Join picker: rifles plus knife in one grid. First two clicks deploy. */
 export const LOADOUT_IDS: SecondaryId[] = [...PRIMARY_IDS, "knife"];
 
 /** Bots shoot the iron Kar. Killcam/recap must not fake a scope or Mosin. */
@@ -19,6 +19,7 @@ export function botRifle(_id?: number): RifleId {
 
 export const GUN_BLURB: Record<SecondaryId, string> = {
   kar: "Iron sights · the CoD1 rifle",
+  kar2: "Two-piece U · same hold as Kar",
   karscope: "Glass zoom · hold the line",
   mosin: "Peep sight · planted shot",
   knife: "Close work when the bolt is open",
@@ -26,6 +27,7 @@ export const GUN_BLURB: Record<SecondaryId, string> = {
 
 export const GUN_SHORT: Record<SecondaryId, string> = {
   kar: "KAR",
+  kar2: "KAR 2",
   karscope: "KAR 4X",
   mosin: "MOSIN",
   knife: "KNIFE",

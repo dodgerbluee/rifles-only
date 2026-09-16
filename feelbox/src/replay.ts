@@ -10,7 +10,7 @@ export type Pose = {
   pitch: number;
   eye: number;
   alive: boolean;
-  weapon: "kar" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
+  weapon: "kar" | "kar2" | "karscope" | "mosin" | "knife" | "smoke" | "frag" | "stun" | "flash";
   ads: boolean;
   bash: number;
   /** 0 idle, 0–1 toss. Killcam/recap replay the throw instead of a rest hold. */
