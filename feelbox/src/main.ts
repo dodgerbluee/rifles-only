@@ -177,7 +177,7 @@ import {
   type StudioLibrary,
 } from "./maps/studio-lib";
 import { buildPawn, pawnStyle, meshStyle, poseStance, setPawnCloth, setPawnHeldVisible, stepWalkFromPos, teamCloth, packLook, MESH_STYLES, parseMeshId } from "./pawn";
-import { clearPodium, mountPodium, podiumCam, podiumLookAt } from "./podium";
+import { clearPodium, framePodiumView, mountPodium, podiumCam, podiumLookAt, unframePodiumView } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
   advancePlayT,
@@ -2917,6 +2917,7 @@ let lastHit = "—";
 let time = 0;
 
 function applyMatchOverviewCam(dt: number) {
+  unframePodiumView(camera);
   const { minX, maxX, minZ, maxZ } = world.bounds;
   const cx = (minX + maxX) * 0.5;
   const cz = (minZ + maxZ) * 0.5;
@@ -2941,6 +2942,7 @@ function applyPodiumCam(dt: number) {
   camera.far = 400;
   fov += (46 - fov) * Math.min(1, dt * 4);
   camera.fov = fov;
+  framePodiumView(camera, innerWidth, innerHeight);
   camera.updateProjectionMatrix();
 }
 
@@ -2979,6 +2981,7 @@ let audio: AudioContext | null = null;
 
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
+  if (document.body.classList.contains("podium")) framePodiumView(camera, innerWidth, innerHeight);
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
@@ -5920,6 +5923,7 @@ function frame(now: number) {
     setSpec(null);
     ghost.visible = false;
   } else if (document.body.classList.contains("spectating") && !document.body.classList.contains("choosing")) {
+    unframePodiumView(camera);
     if (!document.body.classList.contains("paused")) tickSpecFly(dt);
     camera.position.set(specFly.x, specFly.y, specFly.z);
     camera.rotation.order = "YXZ";
@@ -5950,6 +5954,7 @@ function frame(now: number) {
       ghost.visible = false;
       hideMatchPawns();
     } else {
+      unframePodiumView(camera);
       const spec = !alive && !studio.on && !freeLook ? specTarget() : undefined;
       if (!alive && !studio.on && freeLook) {
         tickSpecFly(dt);
@@ -6215,6 +6220,7 @@ function frame(now: number) {
     podiumOn = false;
     hidePodium();
     clearPodium(scene);
+    unframePodiumView(camera);
     ghost.visible = false;
   }
   updateHud({

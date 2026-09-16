@@ -20,6 +20,9 @@ export type PodiumPlace = {
 /** Pawns face -Z. The match-end camera sits on -Z looking +Z, so yaw 0 shows faces. */
 export const PODIUM_FACE_YAW = 0;
 
+/** Shift the podium frustum down so figures sit this fraction of the screen above the board. */
+export const PODIUM_VIEW_LIFT = 0.3;
+
 let group: THREE.Group | null = null;
 
 export function mountPodium(scene: THREE.Scene, world: World, places: PodiumPlace[]) {
@@ -82,6 +85,14 @@ export function podiumCam(world: World, t: number) {
     lookY: 17.5,
     lookZ: at.z,
   };
+}
+
+export function framePodiumView(camera: THREE.PerspectiveCamera, width: number, height: number) {
+  camera.setViewOffset(width, height, 0, height * PODIUM_VIEW_LIFT, width, height);
+}
+
+export function unframePodiumView(camera: THREE.PerspectiveCamera) {
+  camera.clearViewOffset();
 }
 
 export function clearPodium(scene: THREE.Scene) {

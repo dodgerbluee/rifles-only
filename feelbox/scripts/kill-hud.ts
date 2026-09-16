@@ -11,7 +11,7 @@ import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
 import { reseatPeer, seatPeer } from "../src/peers.ts";
 import { holdScoreboard, line, noteKill, podiumStat, swapLines } from "../src/stats.ts";
-import { PODIUM_FACE_YAW, podiumCam, podiumLookAt } from "../src/podium.ts";
+import { PODIUM_FACE_YAW, PODIUM_VIEW_LIFT, framePodiumView, podiumCam, podiumLookAt } from "../src/podium.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -121,6 +121,10 @@ check("podium stats spell out K/A/D", podiumStat({ kills: 12, assists: 3, deaths
   const toCam = new THREE.Vector3(cam.x - at.x, 0, cam.z - at.z).normalize();
   check("podium camera sits in front of the stands", cam.z < at.z);
   check("podium figures face the camera", forward.dot(toCam) > 0.85, `dot=${forward.dot(toCam).toFixed(3)}`);
+  check("podium view lifts 30 percent", PODIUM_VIEW_LIFT === 0.3);
+  const lens = new THREE.PerspectiveCamera(46, 16 / 9, 0.2, 400);
+  framePodiumView(lens, 1600, 900);
+  check("podium frustum shifts down a third", lens.view?.offsetY === 270, `offsetY=${lens.view?.offsetY}`);
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -130,7 +134,7 @@ const main = readFileSync(join(root, "src/main.ts"), "utf8");
 const podiumHtml = html.slice(html.indexOf('id="end-stack"'), html.indexOf('id="letterbox"'));
 check("end stack wraps podium then scoreboard", /id="end-stack"[\s\S]*id="podium"[\s\S]*id="scoreboard"/.test(podiumHtml));
 check("olympic plates carry the player name", podiumHtml.includes('class="who"') && podiumHtml.includes('class="you-tag"') && podiumHtml.includes('class="side"'));
-check("matchover camera is a close podium view", main.includes("applyPodiumCam") && main.includes("podiumCam("));
+check("matchover camera is a close podium view", main.includes("applyPodiumCam") && main.includes("podiumCam(") && main.includes("framePodiumView"));
 check("join camera stays the high orbit", /camera\.position\.set\([^;]*40/.test(main) && main.includes("applyMatchOverviewCam"));
 check(
   "end-game board sits under the medals",
