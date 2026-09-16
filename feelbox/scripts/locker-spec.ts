@@ -126,8 +126,12 @@ check("bot looks are stable", packLook(a) === packLook(b));
 check("bot looks differ by id", packLook(lookFor(0)) !== packLook(lookFor(1)));
 check("bot looks obey hair/hat", a.hat === "none" || a.hair === HAIR_UNDER_HAT);
 
-check("eleven figure styles", MESH_STYLES.length === 11);
-check("figure ids unique", new Set(MESH_STYLES.map((s) => s.id)).size === 11);
+check("five figure styles", MESH_STYLES.length === 5);
+check("figure ids unique", new Set(MESH_STYLES.map((s) => s.id)).size === 5);
+check(
+  "keeps current plus operator and the three to compare",
+  MESH_STYLES.map((s) => s.id).join() === "current,silhouette,civilian,lathe,cs2",
+);
 const prevMesh = meshStyle.current;
 for (const style of MESH_STYLES) {
   meshStyle.current = style.id;

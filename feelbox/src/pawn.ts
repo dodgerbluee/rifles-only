@@ -36,7 +36,7 @@ export function parseSkin(raw: unknown): PawnSkin | undefined {
 
 export const pawnStyle: { current: PawnStyle } = { current: "limbs" };
 /** Which limbs figure to build. `current` is the pre-bake-off pawn. */
-export const meshStyle: { current: MeshId } = { current: "silhouette" };
+export const meshStyle: { current: MeshId } = { current: "cs2" };
 
 export type PawnParts = {
   body: THREE.Mesh;

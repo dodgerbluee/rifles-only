@@ -3,56 +3,59 @@ import { DEFAULT_LOOK } from "./look";
 import { MESH_STYLES, meshStyle, buildPawn } from "./pawn";
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x14160f);
-scene.add(new THREE.HemisphereLight(0xe8e0d0, 0x2a2820, 1.25));
-const sun = new THREE.DirectionalLight(0xfff2e0, 1.45);
-sun.position.set(6, 12, 8);
-scene.add(sun);
-scene.add(new THREE.DirectionalLight(0x88a0c0, 0.55)).position.set(-8, 4, -6);
+scene.background = new THREE.Color(0x1a1c14);
+scene.add(new THREE.HemisphereLight(0xf0e8d8, 0x3a382c, 1.15));
+const key = new THREE.DirectionalLight(0xfff4e4, 1.7);
+key.position.set(-1.2, 4.5, -5.5);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xa8bdd8, 0.7);
+fill.position.set(4, 2.2, -2);
+scene.add(fill);
+scene.add(new THREE.AmbientLight(0x6a6860, 0.35));
 
 const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(22, 48),
-  new THREE.MeshStandardMaterial({ color: 0x24261c, roughness: 0.94 }),
+  new THREE.CircleGeometry(16, 40),
+  new THREE.MeshStandardMaterial({ color: 0x2c2e24, roughness: 0.92 }),
 );
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-const cols = 6;
-const gapX = 2.2;
-const gapZ = 2.7;
+const gap = 2.45;
+const n = MESH_STYLES.length;
 
 MESH_STYLES.forEach((style, i) => {
-  const col = i % cols;
-  const row = Math.floor(i / cols);
   const root = new THREE.Group();
   meshStyle.current = style.id;
   buildPawn(root, i % 2 === 0 ? "ember" : "stone", i, DEFAULT_LOOK);
-  root.position.set((col - (cols - 1) / 2) * gapX, 0, (row - 0.35) * gapZ);
-  root.rotation.y = Math.PI + 0.35;
+  root.position.x = (i - (n - 1) / 2) * gap;
+  root.rotation.y = 0.42;
   scene.add(root);
 
   const plate = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.6, 0.6, 0.05, 20),
-    new THREE.MeshStandardMaterial({ color: i % 2 === 0 ? 0x6a2c14 : 0x1c4468, roughness: 0.52 }),
+    new THREE.CylinderGeometry(0.62, 0.62, 0.05, 24),
+    new THREE.MeshStandardMaterial({
+      color: i % 2 === 0 ? 0x7a3418 : 0x245078,
+      roughness: 0.5,
+    }),
   );
-  plate.position.set(root.position.x, 0.025, root.position.z);
+  plate.position.set(root.position.x, 0.025, 0);
   scene.add(plate);
 
   const label = sprite(style.label);
-  label.position.set(root.position.x, 2.08, root.position.z + 0.25);
+  label.position.set(root.position.x, 2.12, -0.55);
   scene.add(label);
 });
-meshStyle.current = "silhouette";
+meshStyle.current = "cs2";
 
-const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
-camera.position.set(1.1, 1.68, 9.4);
-camera.lookAt(0, 0.98, 0.35);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.08, 40);
+camera.position.set(0, 1.48, -7.15);
+camera.lookAt(0, 0.92, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.shadowMap.enabled = false;
+renderer.toneMappingExposure = 1.12;
 document.body.append(renderer.domElement);
 
 function resize() {
@@ -73,15 +76,15 @@ function sprite(text: string) {
   c.width = 512;
   c.height = 128;
   const g = c.getContext("2d")!;
-  g.fillStyle = "rgba(12,14,10,0.78)";
-  g.fillRect(16, 28, 480, 76);
-  g.font = "600 44px ui-sans-serif, system-ui, sans-serif";
-  g.fillStyle = "#f0ead8";
+  g.fillStyle = "rgba(10,12,8,0.82)";
+  g.fillRect(12, 24, 488, 80);
+  g.font = "700 46px ui-sans-serif, system-ui, sans-serif";
+  g.fillStyle = "#f4eedc";
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(text, 256, 66);
+  g.fillText(text, 256, 64);
   const tex = new THREE.CanvasTexture(c);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-  s.scale.set(1.85, 0.46, 1);
+  s.scale.set(2.05, 0.51, 1);
   return s;
 }
