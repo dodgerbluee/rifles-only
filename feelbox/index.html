@@ -238,7 +238,9 @@
             <div class="model-layout">
               <div class="model-catalog">
                 <h2 class="settings-pane-title" id="settings-model-h">Model</h2>
-                <p class="home-lead">Pick a part, then an option. Drag the detail view to turn — it stays sharp and still until you drag.</p>
+                <p class="home-lead">Pick a figure, then a part. Drag the detail view to turn — it stays sharp and still until you drag.</p>
+                <label class="admin-select" id="locker-mesh-row"><span>Figure</span><select id="locker-mesh"></select></label>
+                <p id="locker-mesh-blurb" class="locker-hint"></p>
                 <div id="locker-look">
                   <div id="locker-secs" class="locker-secs" aria-label="Look parts"></div>
                   <p id="locker-slot-hint" class="locker-slot-hint"></p>
@@ -487,6 +489,7 @@
       <select id="admin-map"></select>
       <label class="admin-check"><input type="checkbox" id="admin-oneshot" /> One-shot (any tag kills)</label>
       <label class="admin-check"><input type="checkbox" id="admin-classic-pawn" /> Classic cylinder bodies</label>
+      <label class="admin-select"><span>Figure</span><select id="admin-mesh"></select></label>
       <select id="admin-player"></select>
       <div class="admin-row">
         <button type="button" id="admin-restart">Restart match</button>

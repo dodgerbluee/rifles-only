@@ -6,6 +6,8 @@ import {
 } from "./match";
 import { TUNING_FIELDS, tuning } from "./tuning";
 import type { BotSkill } from "./bots";
+import { MESH_STYLES } from "./pawns/ids";
+import { meshStyle } from "./pawn";
 
 export const rules = {
   godmode: false,
@@ -26,6 +28,7 @@ export function bindAdmin(opts: {
   onBan?: (slot: Slot) => void;
   onCow: (slot: Slot) => void;
   onPawnStyle?: (classic: boolean) => void;
+  onMeshStyle?: (id: string) => void;
   onRules?: () => void;
 }) {
   const panel = document.querySelector<HTMLElement>("#admin")!;
@@ -36,6 +39,7 @@ export function bindAdmin(opts: {
   const radar = document.querySelector<HTMLInputElement>("#admin-radar");
   const skill = document.querySelector<HTMLSelectElement>("#admin-bot-skill");
   const classicPawn = document.querySelector<HTMLInputElement>("#admin-classic-pawn");
+  const meshSel = document.querySelector<HTMLSelectElement>("#admin-mesh");
   const emberN = document.querySelector("#admin-ember")!;
   const stoneN = document.querySelector("#admin-stone")!;
   const pick = document.querySelector<HTMLSelectElement>("#admin-player")!;
@@ -76,6 +80,17 @@ export function bindAdmin(opts: {
     if (radar) radar.checked = rules.minimapEnemies;
     if (skill) skill.value = rules.botSkill;
     if (classicPawn) classicPawn.checked = rules.classicPawn;
+    if (meshSel) {
+      if (!meshSel.childElementCount) {
+        for (const s of MESH_STYLES) {
+          const o = document.createElement("option");
+          o.value = s.id;
+          o.textContent = s.label;
+          meshSel.append(o);
+        }
+      }
+      meshSel.value = meshStyle.current;
+    }
     emberN.textContent = String(teamBotCount(opts.match, "ember"));
     stoneN.textContent = String(teamBotCount(opts.match, "stone"));
     const cur = pick.value;
@@ -114,6 +129,9 @@ export function bindAdmin(opts: {
   });
   classicPawn?.addEventListener("change", () => {
     opts.onPawnStyle?.(classicPawn.checked);
+  });
+  meshSel?.addEventListener("change", () => {
+    opts.onMeshStyle?.(meshSel.value);
   });
 
   const add = (team: Team) => {

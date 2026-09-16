@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Team } from "./match";
+import type { Team } from "../match";
 import {
   packLook,
   resolveLook,
@@ -12,12 +12,10 @@ import {
   type PantsId,
   type ShirtId,
   type ShoesId,
-} from "./look";
-import { makeWorldKar } from "./weapons";
-import { MESH_BUILDERS, type MeshId } from "./pawns/index";
+} from "../look";
+import { makeWorldKar } from "../weapons";
 
-export { parseLook, packLook, resolveLook, lookFor, looksEqual, type Appearance } from "./look";
-export { MESH_IDS, MESH_STYLES, parseMeshId, type MeshId } from "./pawns/ids";
+export { parseLook, packLook, resolveLook, lookFor, looksEqual, type Appearance } from "../look";
 
 /** Cylinder body (current). Keep so we can revert from admin. */
 export type PawnStyle = "classic" | "limbs";
@@ -35,8 +33,6 @@ export function parseSkin(raw: unknown): PawnSkin | undefined {
 }
 
 export const pawnStyle: { current: PawnStyle } = { current: "limbs" };
-/** Which limbs figure to build. `current` is the pre-bake-off pawn. */
-export const meshStyle: { current: MeshId } = { current: "silhouette" };
 
 export type PawnParts = {
   body: THREE.Mesh;
@@ -104,13 +100,9 @@ export function setPawnCloth(cloth: THREE.Mesh[], color: number) {
 }
 
 export function buildPawn(root: THREE.Group, team: Team, botId?: number, kit?: PawnSkin | Appearance | string): PawnParts {
-  if (pawnStyle.current !== "classic" && meshStyle.current !== "current") {
-    const build = MESH_BUILDERS[meshStyle.current];
-    if (build) return build(root, team, botId, kit);
-  }
   clearGroup(root);
   const look = resolveLook(kit, botId);
-  const parts = pawnStyle.current === "classic" ? classicPawn(team, look) : limbsPawn(team, look);
+  const parts = limbsPawn(team, look);
   stamp(parts, team, botId);
   root.add(parts.body, parts.head, parts.rifle);
   if (!parts.helm.parent) root.add(parts.helm);
@@ -294,50 +286,100 @@ function shoeMat(id: ShoesId) {
   return mat(BOOT, 0.92);
 }
 
+// STYLE: human volume study
+//
+// Discrete rounded-box masses at correct human proportions (~7.5 heads
+// tall): skull, ribcage, pelvis, upper arm, forearm, thigh, calf are each
+// their own volume. The shoulder mass is wider than the pelvis mass, the
+// neck is a cylinder, the skull is taller than it is wide, and the face
+// reads as planes (forehead slab, cheek volumes, chin block) rather than a
+// sphere with bits glued on. Hair is stacked slabs that follow the skull.
+
+/** Half the shoulder-to-shoulder span for each shirt mass (metres from spine). */
+const SHOULDER_W: Record<ShirtId, number> = {
+  tee: 0.22,
+  henley: 0.23,
+  vest: 0.22,
+  parka: 0.27,
+  plate: 0.25,
+};
+
+/** Skull-box scale per face id. Every variant stays taller than it is wide. */
+const FACE_SKULL_SCALE: Record<Appearance["face"], THREE.Vector3> = {
+  pale: new THREE.Vector3(1, 1, 1),
+  tan: new THREE.Vector3(1.02, 0.98, 1),
+  olive: new THREE.Vector3(0.94, 1.06, 0.96),
+  umber: new THREE.Vector3(1.03, 0.99, 1.04),
+  square: new THREE.Vector3(1.06, 0.94, 1.06),
+};
+
 function limbsPawn(team: Team, look: Appearance): PawnParts {
   const k = kitFor(team, look);
   const cloth: THREE.Mesh[] = [];
   const hits: THREE.Mesh[] = [];
   const extras: THREE.Mesh[] = [];
 
-  const body = makeShirt(look.shirt, k, team, cloth, extras);
+  // Ribcage mass.
+  const body = makeTorso(look.shirt, k, team, cloth, extras);
   body.position.y = 1.18;
 
-  const hips = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), k.pants);
-  hips.position.y = 0.92;
-  hips.scale.copy(hipScale(look.pants));
-  cloth.push(hips);
-  hits.push(hips);
+  const shoulderW = SHOULDER_W[look.shirt];
 
-  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.055, 8), look.shirt === "plate" ? k.plate : mat(0x2a2218, 0.9));
+  // Pelvis mass, kept narrower than the shoulder span below.
+  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.24), k.pants);
+  pelvis.position.y = 0.92;
+  pelvis.scale.copy(pelvisScale(look.pants));
+  cloth.push(pelvis);
+  hits.push(pelvis);
+
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.26), look.shirt === "plate" ? k.plate : mat(0x2a2218, 0.9));
   belt.position.y = 0.98;
 
-  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.46, 0.05), mat(teamTrim(team), 0.45, 0.2));
-  sash.position.set(team === "ember" ? 0.16 : -0.16, 1.22, 0.04);
-  sash.rotation.z = team === "ember" ? -0.28 : 0.28;
+  // Neck cylinder bridging the ribcage top and the skull.
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.16, 8), k.flesh);
+  neck.position.y = 1.46;
+  neck.castShadow = true;
+
+  const sash = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.44, 0.05), mat(teamTrim(team), 0.45, 0.2));
+  sash.position.set(team === "ember" ? 0.15 : -0.15, 1.2, -0.05);
+  sash.rotation.z = team === "ember" ? -0.26 : 0.26;
   cloth.push(sash);
+
+  // Deltoid masses push the shoulder line past the ribcage box itself,
+  // so the silhouette is unmistakably shoulders > hips.
+  const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.11, 0.2), k.tunic);
+  shoulderL.position.set(-shoulderW, 1.34, 0);
+  shoulderL.castShadow = true;
+  const shoulderR = shoulderL.clone();
+  shoulderR.position.x = shoulderW;
+  if (look.shirt !== "tee") cloth.push(shoulderL, shoulderR);
+  hits.push(shoulderL, shoulderR);
 
   const lLeg = makeLeg(-1, k, extras, look);
   const rLeg = makeLeg(1, k, extras, look);
   cloth.push(...lLeg.cloth, ...rLeg.cloth);
   hits.push(...lLeg.hits, ...rLeg.hits);
 
-  const armR = look.shirt === "parka" ? 0.082 : look.shirt === "tee" ? 0.056 : 0.068;
-  const lArm = bone(-0.24, 1.36, 0.02, -0.16, 1.2, -0.16, armR, look.shirt === "tee" ? k.flesh : k.tunic);
-  const lFore = bone(-0.16, 1.2, -0.16, 0.02, 1.14, -0.38, armR * 0.86, look.shirt === "tee" || look.shirt === "vest" ? k.flesh : k.tunic);
-  const rArm = bone(0.24, 1.36, 0.02, 0.22, 1.18, -0.1, armR, look.shirt === "tee" ? k.flesh : k.tunic);
-  const rFore = bone(0.22, 1.18, -0.1, 0.14, 1.12, -0.28, armR * 0.86, look.shirt === "tee" || look.shirt === "vest" ? k.flesh : k.tunic);
+  // Upper-arm and forearm masses. Capsules read as rounded volumes here.
+  const armR = look.shirt === "parka" ? 0.088 : look.shirt === "tee" ? 0.062 : 0.074;
+  const lArm = bone(-shoulderW, 1.33, 0, -0.17, 1.16, -0.13, armR, look.shirt === "tee" ? k.flesh : k.tunic);
+  const lFore = bone(-0.17, 1.16, -0.13, 0.02, 1.14, -0.4, armR * 0.82, look.shirt === "tee" || look.shirt === "vest" ? k.flesh : k.tunic);
+  const rArm = bone(shoulderW, 1.33, 0, 0.21, 1.17, -0.08, armR, look.shirt === "tee" ? k.flesh : k.tunic);
+  const rFore = bone(0.21, 1.17, -0.08, 0.14, 1.12, -0.3, armR * 0.82, look.shirt === "tee" || look.shirt === "vest" ? k.flesh : k.tunic);
   if (look.shirt !== "tee") cloth.push(lArm, rArm);
   if (look.shirt !== "tee" && look.shirt !== "vest") cloth.push(lFore, rFore);
   hits.push(lArm, lFore, rArm, rFore);
 
-  const lHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), k.flesh);
+  // Fist masses, boxy like the rest of the figure rather than stray balls.
+  const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.07, 0.09), k.flesh);
   lHand.position.set(0.02, 1.14, -0.4);
-  const rHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), k.flesh);
+  lHand.castShadow = true;
+  const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.07, 0.09), k.flesh);
   rHand.position.set(0.14, 1.12, -0.3);
+  rHand.castShadow = true;
 
   const head = makeHead(look, k);
-  head.position.y = 1.62;
+  head.position.y = 1.64;
   dressHair(head, look.hair, k);
   dressBeard(head, look.beard, k);
   const helm = dressHat(head, look.hat, k, team, cloth);
@@ -354,212 +396,239 @@ function limbsPawn(team: Team, look: Appearance): PawnParts {
     helm,
     rifle,
     cloth,
-    hits: [...hits, lHand, rHand, belt, ...extras],
+    hits: [...hits, lHand, rHand, belt, neck, ...extras],
     walk: { lHip: lLeg.hip, rHip: rLeg.hip, lKnee: lLeg.knee, rKnee: rLeg.knee },
   };
 }
 
-function hipScale(id: PantsId) {
-  if (id === "slim") return new THREE.Vector3(1.02, 0.62, 0.82);
-  if (id === "shorts") return new THREE.Vector3(1.28, 0.72, 1.02);
-  if (id === "wrap") return new THREE.Vector3(1.16, 0.68, 0.92);
-  if (id === "armor") return new THREE.Vector3(1.2, 0.78, 0.98);
-  return new THREE.Vector3(1.28, 0.7, 1.02);
+function pelvisScale(id: PantsId) {
+  if (id === "slim") return new THREE.Vector3(0.94, 0.85, 0.86);
+  if (id === "shorts") return new THREE.Vector3(1.22, 0.88, 1.0);
+  if (id === "wrap") return new THREE.Vector3(1.08, 0.82, 0.94);
+  if (id === "armor") return new THREE.Vector3(1.12, 0.9, 0.98);
+  return new THREE.Vector3(1.28, 0.78, 1.02);
 }
 
-function makeShirt(id: ShirtId, k: Kit, team: Team, cloth: THREE.Mesh[], extras: THREE.Mesh[]) {
+/** Ribcage mass. A single boxy torso volume; its shape varies with the shirt id. */
+function makeTorso(id: ShirtId, k: Kit, team: Team, cloth: THREE.Mesh[], extras: THREE.Mesh[]) {
   if (id === "parka") {
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.58, 0.36), k.tunic);
-    cloth.push(body);
-    const hood = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.038, 6, 10), k.tunic);
-    hood.position.set(0, 1.44, -0.02);
-    hood.rotation.x = 1.15;
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.46, 0.32), k.tunic);
+    torso.castShadow = true;
+    cloth.push(torso);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.16), k.tunic);
+    hood.position.set(0, 0.32, 0.05);
+    hood.castShadow = true;
     extras.push(hood);
     cloth.push(hood);
-    return body;
+    return torso;
   }
   if (id === "vest") {
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.34, 4, 8), mat(0x2a241c, 0.88));
-    extras.push(body);
-    const flapL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.08), k.tunic);
-    flapL.position.set(-0.12, 1.2, 0.1);
-    const flapR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.08), k.tunic);
-    flapR.position.set(0.12, 1.2, 0.1);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.26), mat(0x2a241c, 0.88));
+    torso.castShadow = true;
+    extras.push(torso);
+    const flapL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.34, 0.07), k.tunic);
+    flapL.position.set(-0.11, 0, -0.11);
+    const flapR = flapL.clone();
+    flapR.position.x = 0.11;
     extras.push(flapL, flapR);
     cloth.push(flapL, flapR);
-    return body;
+    return torso;
   }
   if (id === "plate") {
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.36, 4, 8), k.tunic);
-    cloth.push(body);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.28, 0.12), k.plate);
-    plate.position.set(0, 1.22, 0.1);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.28), k.tunic);
+    torso.castShadow = true;
+    cloth.push(torso);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.1), k.plate);
+    plate.position.set(0, 0.02, -0.15);
+    plate.castShadow = true;
     extras.push(plate);
     const trim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.04), mat(teamTrim(team), 0.4, 0.25));
-    trim.position.set(0, 1.3, 0.16);
+    trim.position.set(0, 0.16, -0.2);
     extras.push(trim);
     cloth.push(trim);
-    return body;
+    return torso;
   }
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(id === "henley" ? 0.23 : 0.21, 0.36, 4, 8), k.tunic);
-  cloth.push(body);
+  const w = id === "henley" ? 0.42 : 0.4;
+  const h = id === "henley" ? 0.44 : 0.42;
+  const d = id === "henley" ? 0.26 : 0.24;
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), k.tunic);
+  torso.castShadow = true;
+  cloth.push(torso);
   if (id === "henley") {
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.028, 6, 10), k.tunic);
-    collar.position.set(0, 1.42, 0);
-    collar.rotation.x = 1.2;
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.05), k.tunic);
+    collar.position.set(0, 0.19, -0.12);
     extras.push(collar);
     cloth.push(collar);
   }
-  return body;
+  return torso;
 }
 
+/** Skull mass with facial planes: forehead slab, cheek volumes, chin block. */
 function makeHead(look: Appearance, k: Kit) {
-  const head =
-    look.face === "square"
-      ? new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.3), k.flesh)
-      : new THREE.Mesh(new THREE.SphereGeometry(look.face === "pale" ? 0.175 : look.face === "umber" ? 0.168 : 0.17, 12, 10), k.flesh);
-  if (look.face === "olive") head.scale.set(0.92, 1.08, 1);
-  const eyeM = mat(0x1a1410, 0.4);
-  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.028, 0.03), eyeM);
-  eyeL.position.set(-0.055, 0.02, -0.14);
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.26), k.flesh);
+  skull.scale.copy(FACE_SKULL_SCALE[look.face]);
+  skull.castShadow = true;
+
+  const forehead = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.09, 0.05), k.flesh);
+  forehead.position.set(0, 0.1, -0.15);
+
+  const chin = new THREE.Mesh(new THREE.BoxGeometry(look.face === "square" ? 0.16 : 0.12, 0.08, 0.09), k.flesh);
+  chin.position.set(0, -0.15, -0.14);
+
+  const cheekL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.11, 0.09), k.flesh);
+  cheekL.position.set(-0.15, -0.01, -0.09);
+  const cheekR = cheekL.clone();
+  cheekR.position.x = 0.15;
+
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.05), k.flesh);
+  nose.position.set(0, -0.02, -0.16);
+
+  skull.add(forehead, chin, cheekL, cheekR, nose);
+
+  // Eyes: dark spheres recessed behind the forehead/cheek planes.
+  const eyeM = mat(0x120e0a, 0.35);
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), eyeM);
+  eyeL.position.set(-0.06, 0.03, -0.09);
   const eyeR = eyeL.clone();
-  eyeR.position.x = 0.055;
-  head.add(eyeL, eyeR);
-  if (look.face === "square") {
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.06), k.flesh);
-    brow.position.set(0, 0.08, -0.14);
-    head.add(brow);
-  } else {
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.05), k.flesh);
-    nose.position.set(0, -0.01, -0.16);
-    head.add(nose);
-  }
-  const earL = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.04), k.flesh);
-  earL.position.set(-0.16, 0, 0);
+  eyeR.position.x = 0.06;
+  skull.add(eyeL, eyeR);
+
+  const earL = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.08, 0.05), k.flesh);
+  earL.position.set(-0.155, 0, 0);
   const earR = earL.clone();
-  earR.position.x = 0.16;
-  head.add(earL, earR);
-  return head;
+  earR.position.x = 0.155;
+  skull.add(earL, earR);
+
+  return skull;
 }
 
+/** Hair is stacked slabs stepping down over the skull, never one floating box. */
 function dressHair(head: THREE.Mesh, id: HairId, k: Kit) {
   const hair = k.hair;
   if (id === "buzz") {
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), hair);
-    cap.position.y = 0.02;
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.05, 0.27), hair);
+    cap.position.y = 0.155;
     head.add(cap);
     return;
   }
   if (id === "crew") {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.2), hair);
-    top.position.set(0, 0.14, 0.02);
-    head.add(top);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.06, 0.27), hair);
+    base.position.y = 0.14;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.2), hair);
+    top.position.y = 0.2;
+    head.add(base, top);
     return;
   }
   if (id === "mop") {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.12, 0.3), hair);
-    top.position.set(0, 0.12, 0.02);
-    const bang = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.08), hair);
-    bang.position.set(0, 0.06, -0.16);
-    head.add(top, bang);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.07, 0.29), hair);
+    base.position.y = 0.14;
+    const mid = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.26), hair);
+    mid.position.y = 0.21;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.2), hair);
+    top.position.y = 0.26;
+    const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.05), hair);
+    fringe.position.set(0, 0.1, -0.15);
+    head.add(base, mid, top, fringe);
     return;
   }
   if (id === "fade") {
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.18), hair);
-    top.position.set(0, 0.14, 0);
-    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 0.16), hair);
-    sideL.position.set(-0.14, 0.04, 0);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.18), hair);
+    top.position.y = 0.17;
+    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, 0.16), hair);
+    sideL.position.set(-0.145, 0.06, 0);
     const sideR = sideL.clone();
-    sideR.position.x = 0.14;
+    sideR.position.x = 0.145;
     head.add(top, sideL, sideR);
     return;
   }
-  const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.18), hair);
-  top.position.set(0, 0.12, 0.04);
-  const bun = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), hair);
-  bun.position.set(0, 0.16, 0.14);
-  head.add(top, bun);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.22), hair);
+  base.position.y = 0.14;
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.16), hair);
+  crown.position.set(0, 0.19, 0.03);
+  const bun = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), hair);
+  bun.position.set(0, 0.2, 0.15);
+  head.add(base, crown, bun);
 }
 
 function dressBeard(head: THREE.Mesh, id: BeardId, k: Kit) {
   if (id === "none") return;
-  const hair = mat(BEARD_HEX, 0.9);
+  const beard = mat(BEARD_HEX, 0.9);
   if (id === "stubble") {
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.12), hair);
-    jaw.position.set(0, -0.12, -0.08);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.12), beard);
+    jaw.position.set(0, -0.12, -0.1);
     head.add(jaw);
     return;
   }
   if (id === "goatee") {
-    const chin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), hair);
-    chin.position.set(0, -0.16, -0.12);
+    const chin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), beard);
+    chin.position.set(0, -0.18, -0.14);
     head.add(chin);
     return;
   }
   if (id === "full") {
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.16), hair);
-    jaw.position.set(0, -0.14, -0.06);
-    const cheekL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.1), hair);
-    cheekL.position.set(-0.12, -0.08, -0.08);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.16), beard);
+    jaw.position.set(0, -0.15, -0.08);
+    const cheekL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.1), beard);
+    cheekL.position.set(-0.13, -0.09, -0.1);
     const cheekR = cheekL.clone();
-    cheekR.position.x = 0.12;
+    cheekR.position.x = 0.13;
     head.add(jaw, cheekL, cheekR);
     return;
   }
   if (id === "braid") {
-    const chin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.07), hair);
-    chin.position.set(0, -0.16, -0.12);
-    const braid = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.18, 0.045), hair);
-    braid.position.set(0, -0.28, -0.12);
+    const chin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.07), beard);
+    chin.position.set(0, -0.18, -0.14);
+    const braid = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.18, 0.045), beard);
+    braid.position.set(0, -0.3, -0.14);
     const tie = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.06), k.helm);
-    tie.position.set(0, -0.22, -0.12);
+    tie.position.set(0, -0.24, -0.14);
     head.add(chin, braid, tie);
     return;
   }
   if (id === "stache") {
-    const stache = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.06), hair);
-    stache.position.set(0, -0.06, -0.15);
-    const tipL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.04), hair);
-    tipL.position.set(-0.09, -0.08, -0.14);
+    const stache = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.06), beard);
+    stache.position.set(0, -0.07, -0.17);
+    const tipL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.04), beard);
+    tipL.position.set(-0.09, -0.09, -0.16);
     const tipR = tipL.clone();
     tipR.position.x = 0.09;
     head.add(stache, tipL, tipR);
     return;
   }
   if (id === "mutton") {
-    const chopL = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.18, 0.1), hair);
-    chopL.position.set(-0.14, -0.08, -0.04);
+    const chopL = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.18, 0.1), beard);
+    chopL.position.set(-0.15, -0.09, -0.04);
     const chopR = chopL.clone();
-    chopR.position.x = 0.14;
-    const burnL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.06), hair);
-    burnL.position.set(-0.15, 0.04, 0);
+    chopR.position.x = 0.15;
+    const burnL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.1, 0.06), beard);
+    burnL.position.set(-0.16, 0.04, 0);
     const burnR = burnL.clone();
-    burnR.position.x = 0.15;
+    burnR.position.x = 0.16;
     head.add(chopL, chopR, burnL, burnR);
     return;
   }
   if (id === "soul") {
-    const patch = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.04), hair);
-    patch.position.set(0, -0.12, -0.155);
+    const patch = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.04), beard);
+    patch.position.set(0, -0.13, -0.175);
     head.add(patch);
     return;
   }
   if (id === "forked") {
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.12), hair);
-    jaw.position.set(0, -0.14, -0.08);
-    const tineL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.06), hair);
-    tineL.position.set(-0.06, -0.26, -0.1);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.12), beard);
+    jaw.position.set(0, -0.15, -0.09);
+    const tineL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.06), beard);
+    tineL.position.set(-0.06, -0.28, -0.1);
     const tineR = tineL.clone();
     tineR.position.x = 0.06;
     head.add(jaw, tineL, tineR);
     return;
   }
-  const brush = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.08), hair);
-  brush.position.set(0, -0.07, -0.15);
-  const hang = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.07), hair);
-  hang.position.set(0, -0.13, -0.16);
-  const chin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.08), hair);
-  chin.position.set(0, -0.18, -0.12);
+  const brush = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.08), beard);
+  brush.position.set(0, -0.08, -0.17);
+  const hang = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.08, 0.07), beard);
+  hang.position.set(0, -0.14, -0.17);
+  const chin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.08), beard);
+  chin.position.set(0, -0.19, -0.13);
   head.add(brush, hang, chin);
 }
 
@@ -569,39 +638,37 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
     const frame = mat(0x1a1814, 0.35, 0.25);
     const lens = mat(0x3a4a58, 0.18, 0.55);
     const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 0.02), frame);
-    bridge.position.set(0, 0.02, -0.16);
+    bridge.position.set(0, 0.03, -0.17);
     const rimL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.02), frame);
-    rimL.position.set(-0.06, 0.02, -0.155);
+    rimL.position.set(-0.06, 0.03, -0.165);
     const rimR = rimL.clone();
     rimR.position.x = 0.06;
     const glassL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, 0.012), lens);
-    glassL.position.set(-0.06, 0.02, -0.162);
+    glassL.position.set(-0.06, 0.03, -0.172);
     const glassR = glassL.clone();
     glassR.position.x = 0.06;
     const armL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.015, 0.12), frame);
-    armL.position.set(-0.1, 0.025, -0.08);
+    armL.position.set(-0.1, 0.032, -0.09);
     const armR = armL.clone();
     armR.position.x = 0.1;
     head.add(bridge, rimL, rimR, glassL, glassR, armL, armR);
     return;
   }
   if (id === "scarf") {
-    const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.042, 6, 12), k.tunic);
-    wrap.position.set(0, -0.26, 0.02);
-    wrap.rotation.x = 1.15;
+    const wrap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.09, 0.24), k.tunic);
+    wrap.position.set(0, -0.24, 0.02);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.04), k.tunic);
-    tail.position.set(0.1, -0.36, 0.04);
+    tail.position.set(0.1, -0.38, -0.06);
     tail.rotation.z = -0.25;
     const knot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.06), mat(teamTrim(team), 0.5, 0.12));
-    knot.position.set(0.02, -0.28, -0.1);
+    knot.position.set(0.02, -0.26, -0.12);
     head.add(wrap, tail, knot);
     cloth.push(wrap, tail);
     return;
   }
   if (id === "earpro") {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.018, 5, 12, Math.PI), k.helm);
-    band.position.y = 0.04;
-    band.rotation.z = Math.PI;
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.03, 0.04), k.helm);
+    band.position.y = 0.16;
     const cupL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), k.helm);
     cupL.position.set(-0.18, 0.02, 0);
     const cupR = cupL.clone();
@@ -616,11 +683,11 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
   }
   if (id === "mask") {
     const cover = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.1), mat(0x2a241c, 0.82));
-    cover.position.set(0, -0.08, -0.12);
+    cover.position.set(0, -0.09, -0.14);
     const vent = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.04), k.plate);
-    vent.position.set(0, -0.1, -0.17);
+    vent.position.set(0, -0.11, -0.19);
     const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.14), mat(0x1a1814, 0.88));
-    strapL.position.set(-0.12, -0.04, -0.02);
+    strapL.position.set(-0.12, -0.05, -0.04);
     const strapR = strapL.clone();
     strapR.position.x = 0.12;
     head.add(cover, vent, strapL, strapR);
@@ -632,7 +699,7 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
   boom.position.set(-0.12, -0.04, -0.08);
   boom.rotation.y = 0.45;
   boom.rotation.x = 0.2;
-  const mic = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 5), k.plate);
+  const mic = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 5), k.plate);
   mic.position.set(-0.04, -0.08, -0.16);
   const cable = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.1, 0.012), mat(0x1a1814, 0.9));
   cable.position.set(-0.16, -0.1, 0.04);
@@ -642,84 +709,89 @@ function dressAccessory(head: THREE.Mesh, id: AccessoryId, k: Kit, team: Team, c
 
 function dressHat(head: THREE.Mesh, id: HatId, k: Kit, _team: Team, cloth: THREE.Mesh[]) {
   if (id === "none") {
-    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.01, 4, 4), k.helm);
+    const helm = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), k.helm);
     helm.visible = false;
     head.add(helm);
     return helm;
   }
   if (id === "watch") {
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.19, 0.14, 10), k.helm);
-    cap.position.y = 0.1;
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.28), k.helm);
+    cap.position.y = 0.06;
     head.add(cap);
     cloth.push(cap);
     return cap;
   }
   if (id === "ushanka") {
-    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.32), k.helm);
-    crown.position.y = 0.12;
-    const flapL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.16), k.helm);
-    flapL.position.set(-0.2, 0.02, 0);
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.18, 0.31), k.helm);
+    crown.position.y = 0.11;
+    const flapL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.17, 0.17), k.helm);
+    flapL.position.set(-0.19, -0.02, 0);
     const flapR = flapL.clone();
-    flapR.position.x = 0.2;
+    flapR.position.x = 0.19;
     crown.add(flapL, flapR);
     head.add(crown);
     cloth.push(crown, flapL, flapR);
     return crown;
   }
   if (id === "boonie") {
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.175, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.52), k.helm);
-    dome.position.y = 0.08;
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.02, 12), k.helm);
-    brim.position.y = -0.02;
-    dome.add(brim);
-    head.add(dome);
-    cloth.push(dome, brim);
-    return dome;
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.28), k.helm);
+    crown.position.y = 0.1;
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.03, 0.4), k.helm);
+    brim.position.y = 0.01;
+    crown.add(brim);
+    head.add(crown);
+    cloth.push(crown, brim);
+    return crown;
   }
-  const helm = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.58), k.helm);
-  helm.position.y = 0.04;
-  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.12), k.helm);
-  brim.position.set(0, -0.04, -0.1);
-  helm.add(brim);
-  head.add(helm);
-  cloth.push(helm, brim);
-  return helm;
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.32), k.helm);
+  shell.position.y = 0.09;
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.13), k.helm);
+  brim.position.set(0, -0.06, -0.18);
+  shell.add(brim);
+  head.add(shell);
+  cloth.push(shell, brim);
+  return shell;
 }
 
 function makeLeg(side: 1 | -1, k: Kit, extras: THREE.Mesh[], look: Appearance) {
   const hip = new THREE.Group();
-  hip.position.set(side * 0.1, 0.88, side > 0 ? -0.02 : 0.02);
-  hip.rotation.z = side * 0.03;
-  const thighR = look.pants === "slim" ? 0.068 : look.pants === "cargo" ? 0.096 : 0.088;
+  hip.position.set(side * 0.11, 0.88, 0);
+  hip.rotation.z = side * 0.025;
+
+  // Thigh mass.
+  const thighR = look.pants === "slim" ? 0.072 : look.pants === "cargo" ? 0.1 : 0.09;
   const thighLen = 0.4;
   const thigh = bone(0, 0, 0, 0, -thighLen, 0, thighR, k.pants);
   hip.add(thigh);
   const cloth: THREE.Mesh[] = [thigh];
   if (look.pants === "cargo") {
     const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.08), k.pants);
-    pouch.position.set(side * 0.08, -0.18, 0.04);
+    pouch.position.set(side * 0.08, -0.18, -0.02);
     hip.add(pouch);
     extras.push(pouch);
     cloth.push(pouch);
   }
+
   const knee = new THREE.Group();
   knee.position.y = -thighLen;
   hip.add(knee);
+
+  // Calf mass.
   const shinLen = look.pants === "shorts" ? 0.32 : 0.42;
   const shinMat = look.pants === "shorts" ? k.flesh : k.pants;
-  const shinR = look.pants === "slim" ? 0.058 : look.pants === "shorts" ? 0.06 : 0.078;
+  const shinR = look.pants === "slim" ? 0.06 : look.pants === "shorts" ? 0.062 : 0.08;
   const shin = bone(0, 0, 0, 0, -shinLen, 0, shinR, shinMat);
   knee.add(shin);
   if (look.pants !== "shorts") cloth.push(shin);
   if (look.pants === "wrap") {
-    const puttee = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.082, 0.22, 8), k.pants);
+    const puttee = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.084, 0.22, 8), k.pants);
     puttee.position.y = -shinLen * 0.45;
     knee.add(puttee);
     cloth.push(puttee);
   }
   if (look.pants === "armor") {
     const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.1), k.plate);
-    plate.position.set(0, -shinLen * 0.45, 0.04);
+    plate.position.set(0, -shinLen * 0.45, -0.05);
     knee.add(plate);
     extras.push(plate);
   }
@@ -728,6 +800,7 @@ function makeLeg(side: 1 | -1, k: Kit, extras: THREE.Mesh[], look: Appearance) {
   return { hip, knee, cloth, hits: [thigh, shin, foot] };
 }
 
+/** Shoes are always a boxy foot mass under the hip, toes pointing -Z. */
 function makeShoe(id: ShoesId, k: Kit, shinLen: number) {
   if (id === "sneaker") {
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.2), k.boot);
@@ -754,9 +827,8 @@ function makeShoe(id: ShoesId, k: Kit, shinLen: number) {
     return foot;
   }
   if (id === "bare") {
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), k.flesh);
-    foot.scale.set(1.1, 0.7, 1.4);
-    foot.position.set(0, -shinLen - 0.03, -0.05);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.2), k.flesh);
+    foot.position.set(0, -shinLen - 0.03, -0.06);
     foot.castShadow = true;
     return foot;
   }
