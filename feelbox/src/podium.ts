@@ -17,6 +17,9 @@ export type PodiumPlace = {
   look?: string | Appearance;
 };
 
+/** Pawns face -Z. The match-end camera sits on -Z looking +Z, so yaw 0 shows faces. */
+export const PODIUM_FACE_YAW = 0;
+
 let group: THREE.Group | null = null;
 
 export function mountPodium(scene: THREE.Scene, world: World, places: PodiumPlace[]) {
@@ -44,12 +47,12 @@ export function mountPodium(scene: THREE.Scene, world: World, places: PodiumPlac
     buildPawn(fig, s.place.team, s.place.id, parseLook(s.place.look) ?? s.place.skin);
     poseStance(fig, "stand");
     fig.position.set(s.x, s.h, 0);
-    fig.rotation.y = Math.PI;
+    fig.rotation.y = PODIUM_FACE_YAW;
     fig.scale.setScalar(1.35);
     group.add(fig);
     const plate = nameplate(s.place);
     if (plate) {
-      plate.position.set(s.x, s.h + 2.55, 0.2);
+      plate.position.set(s.x, s.h + 2.55, -0.4);
       group.add(plate);
     }
   }

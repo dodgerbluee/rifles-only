@@ -11,6 +11,7 @@ import { buildMap } from "../src/maps/index.ts";
 import { createBots } from "../src/bots.ts";
 import { reseatPeer, seatPeer } from "../src/peers.ts";
 import { holdScoreboard, line, noteKill, podiumStat, swapLines } from "../src/stats.ts";
+import { PODIUM_FACE_YAW, podiumCam, podiumLookAt } from "../src/podium.ts";
 
 let failed = 0;
 function check(name: string, ok: boolean, extra = "") {
@@ -111,6 +112,16 @@ check("podium uses actor tags", podiumWho("Cal", "Reed") === "Cal (Reed)");
 check("podium does not print You", podiumWho("You") === "Rifle");
 check("podium side names the faction", podiumSide("ember") === "Ember" && podiumSide("stone") === "Stone");
 check("podium stats spell out K/A/D", podiumStat({ kills: 12, assists: 3, deaths: 4 }) === "12 K · 3 A · 4 D · 3.00");
+
+{
+  const world = { bounds: { minX: -40, maxX: 40, minZ: -40, maxZ: 40 } };
+  const at = podiumLookAt(world);
+  const cam = podiumCam(world, 0);
+  const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), PODIUM_FACE_YAW);
+  const toCam = new THREE.Vector3(cam.x - at.x, 0, cam.z - at.z).normalize();
+  check("podium camera sits in front of the stands", cam.z < at.z);
+  check("podium figures face the camera", forward.dot(toCam) > 0.85, `dot=${forward.dot(toCam).toFixed(3)}`);
+}
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "index.html"), "utf8");
