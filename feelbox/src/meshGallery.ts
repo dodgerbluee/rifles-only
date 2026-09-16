@@ -20,14 +20,14 @@ const ground = new THREE.Mesh(
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-const gap = 2.2;
+const gap = 2.7;
 const n = MESH_STYLES.length;
 const look = packLook(DEFAULT_LOOK);
 
 MESH_STYLES.forEach((style, i) => {
   const root = new THREE.Group();
   meshStyle.current = style.id;
-  buildPawn(root, i % 2 === 0 ? "ember" : "stone", 0, look);
+  buildPawn(root, i === 0 ? "ember" : "stone", 0, look);
   root.position.x = (i - (n - 1) / 2) * gap;
   root.rotation.y = 0.38;
   scene.add(root);
@@ -48,8 +48,8 @@ MESH_STYLES.forEach((style, i) => {
 });
 meshStyle.current = "cs2";
 
-const camera = new THREE.PerspectiveCamera(42, 1, 0.08, 40);
-camera.position.set(0, 1.52, -8.6);
+const camera = new THREE.PerspectiveCamera(34, 1, 0.08, 40);
+camera.position.set(0, 1.48, -6.4);
 camera.lookAt(0, 0.95, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
