@@ -44,7 +44,7 @@ world.visible = false;
 world.add(
   new THREE.Mesh(
     new THREE.SphereGeometry(8, 20, 14),
-    new THREE.MeshBasicMaterial({ color: 0xc8cbc4, side: THREE.BackSide }),
+    new THREE.MeshBasicMaterial({ color: 0x6a6e64, side: THREE.BackSide }),
   ),
 );
 {
