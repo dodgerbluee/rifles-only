@@ -35,7 +35,7 @@ if (rear && rear instanceof THREE.Mesh) {
   const box = rear.geometry.boundingBox!;
   check("rear is smaller than the old plate", box.max.x - box.min.x < 0.04, `w=${box.max.x - box.min.x}`);
   check("rear sinks below the receiver top", box.min.y < -0.004, `minY=${box.min.y}`);
-  check("U is 35% shorter", box.max.y > 0.008 && box.max.y < 0.012, `maxY=${box.max.y}`);
+  check("U is 35% shorter", box.max.y > 0.008 * 0.6 && box.max.y < 0.012 * 0.6, `maxY=${box.max.y}`);
 }
 if (bar && bar instanceof THREE.Mesh && rear) {
   bar.geometry.computeBoundingBox();
@@ -45,7 +45,7 @@ if (bar && bar instanceof THREE.Mesh && rear) {
   const notchW = Number(rear.userData.karIronNotchW);
   check("U cutout is 2× the aiming rectangle on each side", notchW >= barW + 2 * (2 * barW) - 1e-9, `notchW=${notchW} barW=${barW}`);
   check("U top is wider than the bottom cutout", Number(rear.userData.karIronTopW) > notchW + 1e-6, `topW=${rear.userData.karIronTopW} botW=${notchW}`);
-  check("aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
+  check("aiming bar is 35% shorter", barH > 0.0055 * 0.6 && barH < 0.008 * 0.6, `barH=${barH}`);
 }
 if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   fore.geometry.computeBoundingBox();
@@ -63,16 +63,17 @@ if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
   check("boxy U starts inside the rounded U", boxyNear > roundFront && boxyNear < roundBack, `boxyNear=${boxyNear} roundFront=${roundFront} roundBack=${roundBack}`);
   check("boxy U finishes outside the rounded U", roundFront - boxyFar >= 0.018, `stickOut=${roundFront - boxyFar}`);
   check("boxy U is taller than the rounded U", fore.geometry.boundingBox!.max.y > rear.geometry.boundingBox!.max.y, `boxyH=${fore.geometry.boundingBox!.max.y} roundH=${rear.geometry.boundingBox!.max.y}`);
-  check("boxy U is 5% shorter", fore.geometry.boundingBox!.max.y < 0.0144, `maxY=${fore.geometry.boundingBox!.max.y}`);
-  check("boxy U is 10% wider", foreW > 0.064, `foreW=${foreW}`);
+  check("boxy U is 5% shorter", fore.geometry.boundingBox!.max.y < 0.0144 * 0.6, `maxY=${fore.geometry.boundingBox!.max.y}`);
+  check("boxy U is 10% wider", foreW > 0.064 * 0.6, `foreW=${foreW}`);
   const hoodHex = (fore.material as THREE.MeshStandardMaterial).color.getHex();
   const rearHex = (rear.material as THREE.MeshStandardMaterial).color.getHex();
   check("boxy U is the same black as the rifle", hoodHex === 0x1c1e1a, `hex=${hoodHex.toString(16)}`);
   check("boxy U sheen differs from the rounded U", (fore.material as THREE.MeshStandardMaterial).roughness !== (rear.material as THREE.MeshStandardMaterial).roughness, `hoodR=${(fore.material as THREE.MeshStandardMaterial).roughness} leafR=${(rear.material as THREE.MeshStandardMaterial).roughness}`);
   check("boxy and rounded Us are separate meshes", hoodHex === rearHex && fore !== rear);
   const ch = Number(fore.userData.karIronChamfer);
-  check("boxy U has a small corner chamfer", ch > 0.0015 && ch < 0.0035, `ch=${ch}`);
-  check("boxy U cutout is a bit bigger", Number(fore.userData.karIronHoleW) > 0.025, `holeW=${fore.userData.karIronHoleW}`);
+  check("boxy U has a small corner chamfer", ch > 0.0009 && ch < 0.0022, `ch=${ch}`);
+  check("boxy U cutout is a bit bigger", Number(fore.userData.karIronHoleW) > 0.025 * 0.6, `holeW=${fore.userData.karIronHoleW}`);
+  check("irons are 40% smaller", Number(fore.userData.karIronScale) === 0.6);
   if (bar && bar instanceof THREE.Mesh) {
     bar.geometry.computeBoundingBox();
     const bH = bar.geometry.boundingBox!.max.y - bar.geometry.boundingBox!.min.y;

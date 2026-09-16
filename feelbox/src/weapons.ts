@@ -246,19 +246,22 @@ function karIronRearStock(root: THREE.Group, z: number, floorY: number, steel: T
   root.add(bar);
 }
 
+/** Kar98k-2 iron profile vs the last two-piece U. ADS pose is unchanged. */
+const KAR2_SIGHT = 0.6;
+
 /**
  * Kar98k-2 rounded leaf: thick arms, flared cutout. The square hood sits behind it.
  */
 function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.Material) {
-  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
-  const recW = 0.026;
+  const earH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65 * KAR2_SIGHT;
+  const recW = 0.026 * KAR2_SIGHT;
   const sink = 0.011;
-  const barW = 0.003;
+  const barW = 0.003 * KAR2_SIGHT;
   const depth = 0.009 * 1.5;
   const cutW = barW + 2 * (2 * barW);
   const botW = cutW * 0.5;
   const topW = botW * 1.32;
-  const earThick = recW * 0.5 + 0.0012 - topW;
+  const earThick = recW * 0.5 + 0.0012 * KAR2_SIGHT - topW;
   const bw = topW + earThick * 1.5;
   const notchFloor = 0.001;
   const roundH = (earH - notchFloor) * 0.38;
@@ -288,6 +291,7 @@ function karIronRear(root: THREE.Group, z: number, floorY: number, steel: THREE.
   rear.userData.karIronTopW = topW * 2;
   rear.userData.karIronOuterW = bw * 2;
   rear.userData.karIronDepth = depth;
+  rear.userData.karIronScale = KAR2_SIGHT;
   place(root, rear, 0, floorY, z);
 }
 
@@ -304,23 +308,23 @@ function karIronForeU(
   steel: THREE.Material,
   depth: number,
 ) {
-  const roundEarH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65;
+  const roundEarH = 0.026 * 1.85 * 0.6 * 0.5 * 0.65 * KAR2_SIGHT;
   const earH = roundEarH * 1.55 * 0.95;
-  const recW = 0.026;
-  const barW = 0.003;
+  const recW = 0.026 * KAR2_SIGHT;
+  const barW = 0.003 * KAR2_SIGHT;
   const cutW = barW + 2 * (2 * barW);
   const botW = cutW * 0.5;
   const topW = botW * 1.32;
-  const earThick = recW * 0.5 + 0.0012 - topW;
+  const earThick = recW * 0.5 + 0.0012 * KAR2_SIGHT - topW;
   const roundBw = topW + earThick * 1.5;
-  const bw = (roundBw + 0.013) * 1.1;
-  const nw = (topW + 0.0012) * 1.22;
+  const bw = (roundBw + 0.013 * KAR2_SIGHT) * 1.1;
+  const nw = (topW + 0.0012 * KAR2_SIGHT) * 1.22;
   const sink = 0.011;
   const barH = roundEarH * 0.7;
   const aimLocal = 0.005;
   const barMin = aimLocal - barH * 0.5;
   const notchFloor = barMin + barH * 0.2;
-  const ch = 0.0022;
+  const ch = 0.0022 * KAR2_SIGHT;
   const leaf = new THREE.Shape();
   leaf.moveTo(-bw, -sink);
   leaf.lineTo(-bw, earH - ch);
@@ -354,6 +358,7 @@ function karIronForeU(
   hood.userData.karIronHoleW = nw * 2;
   hood.userData.karIronChamfer = ch;
   hood.userData.karIronNotchFloor = notchFloor;
+  hood.userData.karIronScale = KAR2_SIGHT;
   place(root, hood, 0, floorY, z);
 
   const barD = 0.01;
@@ -559,7 +564,8 @@ function buildKar98(kind: "kar" | "kar2" | "karscope", world = false): RifleView
     place(root, cylY(0.0014, wingH, steel, 5), -0.0044, recTop + wingH * 0.35, postZ);
     place(root, cylY(0.0014, wingH, steel, 5), 0.0044, recTop + wingH * 0.35, postZ);
   } else {
-    const front = new THREE.Mesh(new THREE.BoxGeometry(0.0022, postH + 0.007, 0.0045), steel);
+    const s = twoU ? KAR2_SIGHT : 1;
+    const front = new THREE.Mesh(new THREE.BoxGeometry(0.0022 * s, postH + 0.007 * s, 0.0045), steel);
     front.position.set(0, recTop + postH, postZ);
     front.userData.karIronFront = true;
     root.add(front);

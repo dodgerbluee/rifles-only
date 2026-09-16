@@ -423,7 +423,7 @@ body.ads #crosshair {
   inset: 0;
   background: radial-gradient(
     circle closest-side at 50% 50%,
-    transparent 50%,
+    rgba(8, 9, 7, 0) 50%,
     rgba(8, 9, 7, 0.38) 71%,
     #080907 75.5%
   );
