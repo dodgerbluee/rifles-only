@@ -146,6 +146,12 @@ function canvas(id = "view") {
     "first-person play restores the hip near plane",
     /camera\.near = 0\.05;\s*camera\.far = 85;\s*camera\.fov = fov/.test(src),
   );
+  check(
+    "leaving the podium snaps the hip viewmodel",
+    src.includes('if (seenPhase === "matchover") resetPlayViewmodel()') &&
+      /else if \(podiumOn\) \{[\s\S]*?resetPlayViewmodel\(\)/.test(src) &&
+      src.includes("if (!ads && fov < 80) fov = 90"),
+  );
 }
 
 if (failed) {

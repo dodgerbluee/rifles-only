@@ -5099,6 +5099,8 @@ function resetPlayViewmodel() {
   punchY = 0;
   punchR = 0;
   gunKickZ = 0;
+  camera.up.set(0, 1, 0);
+  camera.scale.set(1, 1, 1);
   camera.near = 0.05;
   camera.far = 85;
   camera.fov = 90;
@@ -5779,6 +5781,7 @@ function frame(now: number) {
   if (match.phase === "freeze" && seenPhase !== "freeze") {
     setRoundResult(null);
     plantBroke = false;
+    if (seenPhase === "matchover") resetPlayViewmodel();
     if (isClient) {
       clearTape(tape);
       lastRecord = -1;
@@ -6082,6 +6085,8 @@ function frame(now: number) {
         camera.rotation.z = -lean * THREE.MathUtils.degToRad(8) - punchR * 0.02;
         const fovTarget = ads ? RIFLES[rifleKind].adsFov : 90;
         const zoomRate = RIFLES[rifleKind].glass ? 6.5 : 10;
+        // Podium / join overview leave fov at ~46–62. Don't ease that into hip fire.
+        if (!ads && fov < 80) fov = 90;
         fov += (fovTarget - fov) * Math.min(1, dt * zoomRate);
         camera.near = 0.05;
         camera.far = 85;
@@ -6305,6 +6310,7 @@ function frame(now: number) {
     hidePodium();
     clearPodium(scene);
     ghost.visible = false;
+    resetPlayViewmodel();
   }
   updateHud({
     hp,
