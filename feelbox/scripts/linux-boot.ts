@@ -136,6 +136,16 @@ function canvas(id = "view") {
     "in-match locker hides the world instead of wiping it",
     src.includes("if (playWorldMustStay()) hidePlayWorldForLocker()") && src.includes("function teardownLockerWorld"),
   );
+  check(
+    "round start snaps the play viewmodel and camera",
+    src.includes("function resetPlayViewmodel") &&
+      /function roundSpawn\([\s\S]*?resetPlayViewmodel\(\)/.test(src) &&
+      src.includes("resetPlayViewmodel();"),
+  );
+  check(
+    "first-person play restores the hip near plane",
+    /camera\.near = 0\.05;\s*camera\.far = 85;\s*camera\.fov = fov/.test(src),
+  );
 }
 
 if (failed) {

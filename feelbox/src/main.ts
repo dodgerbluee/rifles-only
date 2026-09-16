@@ -585,10 +585,7 @@ function enterPlay() {
   document.body.classList.remove("choosing", "spectating", "paused");
   hideJoinTeam();
   closePause();
-  camera.near = 0.05;
-  camera.far = 85;
-  camera.fov = 90;
-  camera.updateProjectionMatrix();
+  resetPlayViewmodel();
   requestAnimationFrame(() => lock());
 }
 
@@ -1904,6 +1901,7 @@ function playWorldMustStay() {
 }
 
 function restorePlayCamera() {
+  fov = 90;
   camera.aspect = innerWidth / Math.max(1, innerHeight);
   camera.near = 0.05;
   camera.far = 85;
@@ -4807,6 +4805,7 @@ function trySkipReel() {
 function stopReel() {
   document.body.classList.remove("bestplay");
   lastReelAds = false;
+  resetPlayViewmodel();
   ghost.visible = false;
   for (const b of bots) {
     b.root.rotation.order = "YXZ";
@@ -5094,6 +5093,27 @@ function hurtPlayer(amount: number, source: string, killerId?: number, force = f
   }
 }
 
+function resetPlayViewmodel() {
+  fov = 90;
+  punchP = 0;
+  punchY = 0;
+  punchR = 0;
+  gunKickZ = 0;
+  camera.near = 0.05;
+  camera.far = 85;
+  camera.fov = 90;
+  camera.aspect = innerWidth / Math.max(1, innerHeight);
+  camera.updateProjectionMatrix();
+  for (const id of PRIMARY_IDS) {
+    const hold = rifles[id];
+    hold.root.position.copy(hold.hipPos);
+    hold.root.rotation.set(0.1, 0.22, 0.06);
+    poseBolt(hold, 0);
+    poseAdsMask(hold, false);
+    hold.flash.visible = false;
+  }
+}
+
 function roundSpawn() {
   const you = slotById(match, playerId);
   const planter = plantingTeam(match);
@@ -5115,6 +5135,7 @@ function roundSpawn() {
   weapon = "rifle";
   bashT = 0;
   clearFire(fireQ);
+  resetPlayViewmodel();
   px = spawn.x;
   py = spawn.y;
   pz = spawn.z;
@@ -5914,6 +5935,7 @@ function frame(now: number) {
     throwHeld = null;
     predHist.length = 0;
     paintNadeView();
+    resetPlayViewmodel();
   }
 
   const joinMenu =
@@ -6061,6 +6083,8 @@ function frame(now: number) {
         const fovTarget = ads ? RIFLES[rifleKind].adsFov : 90;
         const zoomRate = RIFLES[rifleKind].glass ? 6.5 : 10;
         fov += (fovTarget - fov) * Math.min(1, dt * zoomRate);
+        camera.near = 0.05;
+        camera.far = 85;
         camera.fov = fov;
         camera.updateProjectionMatrix();
         const bashing = bashT > 0;
