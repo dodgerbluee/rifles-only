@@ -11,7 +11,7 @@ import {
   type LookSlot,
 } from "./look";
 import type { Team } from "./match";
-import { buildPawn, pawnStyle } from "./pawn";
+import { buildPawn, pawnStyle, meshStyle } from "./pawn";
 
 const SIZE = 112;
 const cache = new Map<string, string>();
@@ -67,7 +67,7 @@ function frameCam(slot: LookSlot) {
 
 export function lookOptionThumb(team: Team, base: Appearance, slot: LookSlot, optionId: string): string {
   const look = applyLookChoice(base, slot, optionId);
-  const key = `${team}|${slot}|${optionId}|${packLook(look)}`;
+  const key = `${meshStyle.current}|${team}|${slot}|${optionId}|${packLook(look)}`;
   const hit = cache.get(key);
   if (hit) return hit;
 

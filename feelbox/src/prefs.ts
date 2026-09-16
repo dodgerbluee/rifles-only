@@ -1,5 +1,6 @@
 import { DEFAULT_LOOK, parseLook, packLook, skinFromLook, type Appearance } from "./look";
 import { DEFAULT_LOADOUT, parseLoadout, type Loadout } from "./loadout";
+import { parseMeshId, type MeshId } from "./pawns/ids";
 import {
   FACTORY_CROSSHAIRS,
   parseCrosshairBank,
@@ -19,6 +20,8 @@ export type Prefs = {
   look: Appearance;
   /** Opaque packed look string. Do not parse slots here. */
   lookId: string;
+  /** Bake-off figure. `current` is today's goofy limbs pawn. */
+  meshStyle: MeshId;
   loadout: Loadout;
   crosshairSlot: number;
   crosshairs: Crosshair[];
@@ -34,6 +37,7 @@ const defaults: Prefs = {
   skin: "rifle",
   look: { ...DEFAULT_LOOK },
   lookId: packLook(DEFAULT_LOOK),
+  meshStyle: "cs2",
   loadout: { ...DEFAULT_LOADOUT },
   crosshairSlot: factoryBank.crosshairSlot,
   crosshairs: factoryBank.crosshairs,
@@ -63,6 +67,7 @@ function load(): Prefs {
       team: p.team === "stone" || p.team === "ember" ? p.team : undefined,
       look,
       lookId: lookId || packLook(look),
+      meshStyle: parseMeshId(p.meshStyle) ?? "cs2",
       skin: skinFromLook(look),
       loadout: parseLoadout(p.loadout),
       crosshairSlot: bank.crosshairSlot,
@@ -73,6 +78,7 @@ function load(): Prefs {
       ...defaults,
       look: { ...DEFAULT_LOOK },
       lookId: packLook(DEFAULT_LOOK),
+      meshStyle: "cs2",
       loadout: { ...DEFAULT_LOADOUT },
       crosshairs: parseCrosshairBank(FACTORY_CROSSHAIRS, 0).crosshairs,
     };

@@ -14,8 +14,10 @@ import {
   type ShoesId,
 } from "./look";
 import { makeWorldKar } from "./weapons";
+import { MESH_BUILDERS, type MeshId } from "./pawns/index";
 
 export { parseLook, packLook, resolveLook, lookFor, looksEqual, type Appearance } from "./look";
+export { MESH_IDS, MESH_STYLES, parseMeshId, type MeshId } from "./pawns/ids";
 
 /** Cylinder body (current). Keep so we can revert from admin. */
 export type PawnStyle = "classic" | "limbs";
@@ -33,6 +35,8 @@ export function parseSkin(raw: unknown): PawnSkin | undefined {
 }
 
 export const pawnStyle: { current: PawnStyle } = { current: "limbs" };
+/** Which limbs figure to build. `current` is the pre-bake-off pawn. */
+export const meshStyle: { current: MeshId } = { current: "cs2" };
 
 export type PawnParts = {
   body: THREE.Mesh;
@@ -100,6 +104,10 @@ export function setPawnCloth(cloth: THREE.Mesh[], color: number) {
 }
 
 export function buildPawn(root: THREE.Group, team: Team, botId?: number, kit?: PawnSkin | Appearance | string): PawnParts {
+  if (pawnStyle.current !== "classic" && meshStyle.current !== "current") {
+    const build = MESH_BUILDERS[meshStyle.current];
+    if (build) return build(root, team, botId, kit);
+  }
   clearGroup(root);
   const look = resolveLook(kit, botId);
   const parts = pawnStyle.current === "classic" ? classicPawn(team, look) : limbsPawn(team, look);

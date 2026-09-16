@@ -176,7 +176,7 @@ import {
   writeBrowserLibrary,
   type StudioLibrary,
 } from "./maps/studio-lib";
-import { buildPawn, pawnStyle, poseStance, setPawnCloth, setPawnHeldVisible, stepWalkFromPos, teamCloth, packLook } from "./pawn";
+import { buildPawn, pawnStyle, meshStyle, poseStance, setPawnCloth, setPawnHeldVisible, stepWalkFromPos, teamCloth, packLook, MESH_STYLES, parseMeshId } from "./pawn";
 import { clearPodium, mountPodium, podiumCam, podiumLookAt } from "./podium";
 import { pickBodyVictim, pawnHitMeshes, remoteTargets, meleeTarget, type LiveBody } from "./combat";
 import {
@@ -290,6 +290,7 @@ const RELOAD = 1.45;
 const MOUSE = 0.0036;
 const HP_MAX = 100;
 const FRAG_R = 6.5;
+meshStyle.current = prefs.meshStyle;
 
 let canvas = document.querySelector<HTMLCanvasElement>("#view")!;
 const startEl = document.querySelector<HTMLElement>("#start")!;
@@ -1666,6 +1667,31 @@ function commitLook() {
   refreshMeleeView();
 }
 
+function fillMeshSelect(sel: HTMLSelectElement) {
+  sel.replaceChildren();
+  for (const s of MESH_STYLES) {
+    const o = document.createElement("option");
+    o.value = s.id;
+    o.textContent = s.label;
+    sel.append(o);
+  }
+  sel.value = meshStyle.current;
+}
+
+function applyMeshChoice(id: string) {
+  const next = parseMeshId(id);
+  if (!next) return;
+  meshStyle.current = next;
+  prefs.meshStyle = next;
+  savePrefs();
+  clearLookThumbs();
+  dressLockerPawn();
+  paintLocker();
+  rebuildPawns();
+  const adminSel = document.querySelector<HTMLSelectElement>("#admin-mesh");
+  if (adminSel) adminSel.value = next;
+}
+
 function paintLocker() {
   const pip = document.querySelector<HTMLElement>("#locker-pip");
   if (pip) {
@@ -1716,6 +1742,16 @@ function paintLocker() {
           : "";
     hint.textContent = `${slot.label} · ${cam}${rule}`;
   }
+  const meshSel = document.querySelector<HTMLSelectElement>("#locker-mesh");
+  if (meshSel) {
+    if (!meshSel.childElementCount) fillMeshSelect(meshSel);
+    meshSel.value = meshStyle.current;
+  }
+  const meshBlurb = document.querySelector("#locker-mesh-blurb");
+  if (meshBlurb) {
+    const row = MESH_STYLES.find((s) => s.id === meshStyle.current);
+    meshBlurb.textContent = row?.blurb ?? "";
+  }
   const opts = document.querySelector("#locker-opts");
   if (opts) {
     opts.replaceChildren();
@@ -1764,6 +1800,7 @@ function paintLocker() {
 
 function dressLockerPawn() {
   pawnStyle.current = "limbs";
+  meshStyle.current = prefs.meshStyle;
   buildPawn(lockerPawn, locker.team, 0, prefs.look);
   const held = makeMelee(prefs.look.melee);
   held.scale.setScalar(4.2);
@@ -2326,6 +2363,7 @@ function returnToStudio() {
 
 function rebuildPawns() {
   pawnStyle.current = rules.classicPawn ? "classic" : "limbs";
+  meshStyle.current = prefs.meshStyle;
   for (const b of bots) refillBotPawn(b);
   const youTeam = slotById(match, playerId)?.team ?? "ember";
   const gfig = buildPawn(ghost, youTeam, playerId, prefs.look);
@@ -2370,6 +2408,9 @@ bindAdmin({
     rules.classicPawn = classic;
     pawnStyle.current = classic ? "classic" : "limbs";
     rebuildPawns();
+  },
+  onMeshStyle: (id) => {
+    applyMeshChoice(id);
   },
   onRules: () => {
     net.sendEvent({
@@ -2486,6 +2527,10 @@ paintStatsChrome();
     clearLookThumbs();
     dressLockerPawn();
     paintLocker();
+  });
+  document.querySelector("#locker-mesh")?.addEventListener("change", (e) => {
+    e.stopPropagation();
+    applyMeshChoice((e.currentTarget as HTMLSelectElement).value);
   });
   document.querySelector("#settings")?.addEventListener("mousedown", (e) => e.stopPropagation());
   document.querySelector("#studio-turn")?.addEventListener("click", (e) => {

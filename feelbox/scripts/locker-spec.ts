@@ -21,7 +21,7 @@ import {
   unpackLook,
   resolveLook,
 } from "../src/look.ts";
-import { buildPawn, parseSkin, SKINS, skinFor } from "../src/pawn.ts";
+import { buildPawn, parseSkin, SKINS, skinFor, MESH_STYLES, meshStyle } from "../src/pawn.ts";
 import { meleeReach, tuning } from "../src/tuning.ts";
 
 let failed = 0;
@@ -125,6 +125,22 @@ const b = lookFor(4);
 check("bot looks are stable", packLook(a) === packLook(b));
 check("bot looks differ by id", packLook(lookFor(0)) !== packLook(lookFor(1)));
 check("bot looks obey hair/hat", a.hat === "none" || a.hair === HAIR_UNDER_HAT);
+
+check("two figure styles", MESH_STYLES.length === 2);
+check("figure ids unique", new Set(MESH_STYLES.map((s) => s.id)).size === 2);
+check(
+  "operator default with current kept",
+  MESH_STYLES.map((s) => s.id).join() === "cs2,current",
+);
+const prevMesh = meshStyle.current;
+for (const style of MESH_STYLES) {
+  meshStyle.current = style.id;
+  const root = new THREE.Group();
+  const parts = buildPawn(root, "ember", 0, DEFAULT_LOOK);
+  check(`${style.id} figure builds`, !!parts.body && !!parts.head && !!parts.helm);
+  check(`${style.id} figure has hits`, parts.hits.length > 0 || parts.head != null);
+}
+meshStyle.current = prevMesh;
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);

@@ -2062,6 +2062,14 @@ body.admin #admin {
   padding: 4px 8px;
 }
 
+#locker-mesh-row {
+  margin: 8px 0 4px;
+}
+
+#locker-mesh-blurb {
+  margin: 0 0 12px;
+}
+
 .admin-team {
   display: flex;
   align-items: center;
