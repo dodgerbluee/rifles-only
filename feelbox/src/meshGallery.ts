@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { DEFAULT_LOOK } from "./look";
-import { MESH_STYLES, meshStyle, buildPawn } from "./pawn";
+import { MESH_STYLES, meshStyle, buildPawn, packLook } from "./pawn";
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1c14);
@@ -20,15 +20,16 @@ const ground = new THREE.Mesh(
 ground.rotation.x = -Math.PI / 2;
 scene.add(ground);
 
-const gap = 2.45;
+const gap = 2.2;
 const n = MESH_STYLES.length;
+const look = packLook(DEFAULT_LOOK);
 
 MESH_STYLES.forEach((style, i) => {
   const root = new THREE.Group();
   meshStyle.current = style.id;
-  buildPawn(root, i % 2 === 0 ? "ember" : "stone", i, DEFAULT_LOOK);
+  buildPawn(root, i % 2 === 0 ? "ember" : "stone", 0, look);
   root.position.x = (i - (n - 1) / 2) * gap;
-  root.rotation.y = 0.42;
+  root.rotation.y = 0.38;
   scene.add(root);
 
   const plate = new THREE.Mesh(
@@ -47,9 +48,9 @@ MESH_STYLES.forEach((style, i) => {
 });
 meshStyle.current = "cs2";
 
-const camera = new THREE.PerspectiveCamera(40, 1, 0.08, 40);
-camera.position.set(0, 1.48, -7.15);
-camera.lookAt(0, 0.92, 0);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.08, 40);
+camera.position.set(0, 1.52, -8.6);
+camera.lookAt(0, 0.95, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
