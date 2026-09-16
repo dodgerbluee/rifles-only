@@ -122,6 +122,22 @@ function canvas(id = "view") {
   check("production build does not preload Three.js on the home screen", vite.includes("modulePreload") && vite.includes('!dep.includes("three")'));
 }
 
+{
+  const src = readFileSync(join(root, "src/main.ts"), "utf8");
+  check(
+    "locker scissor view puts the camera aspect back",
+    src.includes("const prevAspect = cam.aspect") && src.includes("cam.aspect = prevAspect"),
+  );
+  check(
+    "leaving the locker restores the window aspect",
+    /function restorePlayCamera[\s\S]*?camera\.aspect = innerWidth/.test(src),
+  );
+  check(
+    "in-match locker hides the world instead of wiping it",
+    src.includes("if (playWorldMustStay()) hidePlayWorldForLocker()") && src.includes("function teardownLockerWorld"),
+  );
+}
+
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);

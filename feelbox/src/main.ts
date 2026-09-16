@@ -397,6 +397,10 @@ const locker = {
   slot: "face" as LookSlot,
 };
 const lockerBodyCam = new THREE.PerspectiveCamera(42, 1, 0.12, 80);
+const lockerStage: THREE.Object3D[] = [];
+const lockerHidden: THREE.Object3D[] = [];
+const lockerClearScratch = new THREE.Color();
+let lockerSceneBak: { background: THREE.Scene["background"]; fog: THREE.Scene["fog"] } | null = null;
 const match = createMatch();
 {
   const you = humanSlot(match);
@@ -1871,6 +1875,7 @@ function renderLockerStage(
   const stage = lockerStageRect(el);
   if (!stage) return;
   place();
+  const prevAspect = cam.aspect;
   cam.aspect = stage.cssW / stage.cssH;
   cam.updateProjectionMatrix();
   const full = new THREE.Vector2();
@@ -1882,6 +1887,8 @@ function renderLockerStage(
   renderer.render(scene, cam);
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, full.x, full.y);
+  cam.aspect = prevAspect;
+  cam.updateProjectionMatrix();
 }
 
 function renderLockerDetail() {
@@ -1892,28 +1899,94 @@ function renderLockerPip() {
   renderLockerStage(document.querySelector("#locker-pip"), lockerBodyCam, applyLockerBodyCam);
 }
 
+function playWorldMustStay() {
+  return inServerSession() || document.body.classList.contains("started");
+}
+
+function restorePlayCamera() {
+  camera.aspect = innerWidth / Math.max(1, innerHeight);
+  camera.near = 0.05;
+  camera.far = 85;
+  camera.fov = 90;
+  camera.updateProjectionMatrix();
+}
+
+function addLockerStage(obj: THREE.Object3D) {
+  lockerStage.push(obj);
+  scene.add(obj);
+}
+
+function hidePlayWorldForLocker() {
+  lockerHidden.length = 0;
+  for (const c of scene.children) {
+    if (c === camera || c === lockerPawn) continue;
+    if (!c.visible) continue;
+    lockerHidden.push(c);
+    c.visible = false;
+  }
+}
+
+function revealPlayWorld() {
+  for (const c of lockerHidden) c.visible = true;
+  lockerHidden.length = 0;
+}
+
+function clearLockerStage() {
+  for (const o of lockerStage) {
+    scene.remove(o);
+    o.traverse((child: THREE.Object3D) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) for (const m of mat) m.dispose();
+      else mat.dispose();
+    });
+  }
+  lockerStage.length = 0;
+}
+
+function restoreLockerScene() {
+  clearLockerStage();
+  if (lockerSceneBak) {
+    scene.background = lockerSceneBak.background;
+    scene.fog = lockerSceneBak.fog;
+    lockerSceneBak = null;
+  }
+}
+
+function teardownLockerWorld(reload: boolean) {
+  restoreLockerScene();
+  restorePlayCamera();
+  if (reload && !studio.on && !playWorldMustStay()) loadMap(mapId, true);
+  else revealPlayWorld();
+}
+
 function rebuildLocker() {
-  wipeMapMeshes();
+  restoreLockerScene();
+  if (playWorldMustStay()) hidePlayWorldForLocker();
+  else wipeMapMeshes();
+  lockerSceneBak = { background: scene.background, fog: scene.fog };
   scene.background = new THREE.Color(0x14160f);
   scene.fog = null;
-  scene.add(new THREE.HemisphereLight(0xe4dcc8, 0x242018, 1.45));
+  addLockerStage(new THREE.HemisphereLight(0xe4dcc8, 0x242018, 1.45));
   const sun = new THREE.DirectionalLight(0xfff4e4, 1.35);
   sun.position.set(3.2, 9.5, 4.6);
   sun.castShadow = true;
-  scene.add(sun);
+  addLockerStage(sun);
   const fill = new THREE.DirectionalLight(0xb0c0d4, 0.55);
   fill.position.set(-4, 3.4, -2.5);
-  scene.add(fill);
+  addLockerStage(fill);
   const rim = new THREE.DirectionalLight(0xd8c8a8, 0.35);
   rim.position.set(0.5, 2.2, -5);
-  scene.add(rim);
+  addLockerStage(rim);
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(7, 40),
     new THREE.MeshStandardMaterial({ color: 0x1a1c14, roughness: 0.9, metalness: 0.03 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
-  scene.add(floor);
+  addLockerStage(floor);
   if (!lockerPawn.parent) scene.add(lockerPawn);
   dressLockerPawn();
   const want = lockerCamTarget();
@@ -1959,11 +2032,7 @@ function showSettingsSection(section: typeof settingsSection) {
     if (pip) pip.hidden = true;
     // Keep settings open; drop the character stage until Model is selected again.
     locker.on = false;
-    camera.near = 0.05;
-    camera.far = 85;
-    camera.fov = 90;
-    camera.updateProjectionMatrix();
-    if (!studio.on && !inServerSession()) loadMap(mapId, true);
+    teardownLockerWorld(true);
   }
 }
 
@@ -1998,11 +2067,7 @@ function leaveLocker(reload = true) {
   const pip = document.querySelector<HTMLElement>("#locker-pip");
   if (pip) pip.hidden = true;
   paintLocker();
-  camera.near = 0.05;
-  camera.far = 85;
-  camera.fov = 90;
-  camera.updateProjectionMatrix();
-  if (reload && !studio.on && !inServerSession()) loadMap(mapId, true);
+  teardownLockerWorld(reload);
 }
 
 function walkSpawn() {
@@ -6632,12 +6697,15 @@ function frame(now: number) {
   renderer.autoClear = true;
   if (locker.on) {
     const prevExposure = renderer.toneMappingExposure;
+    const prevClear = renderer.getClearColor(lockerClearScratch);
+    const prevAlpha = renderer.getClearAlpha();
     renderer.toneMappingExposure = 1.18;
     renderer.setClearColor(0x0c0e0a, 1);
     renderer.clear();
     renderLockerDetail();
     renderLockerPip();
     renderer.toneMappingExposure = prevExposure;
+    renderer.setClearColor(prevClear, prevAlpha);
   } else {
     const glassVm = RIFLES[rifleKind].glass && rifles[rifleKind].root.visible && (watching ? lastReelAds : ads);
     if (glassVm) {
