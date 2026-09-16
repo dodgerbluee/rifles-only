@@ -1,4 +1,4 @@
-import { makeKar98 } from "../src/weapons.ts";
+import { makeKar98Two } from "../src/weapons.ts";
 import * as THREE from "three";
 
 let failed = 0;
@@ -15,9 +15,10 @@ function findFlag(root: THREE.Object3D, key: string) {
   return found;
 }
 
-const iron = makeKar98();
+const iron = makeKar98Two();
 const rear = findFlag(iron.root, "karIronRear");
 const bar = findFlag(iron.root, "karPoiBar");
+const fore = findFlag(iron.root, "karIronForeU");
 const stockY = -0.052;
 const stockZ = -0.15;
 
@@ -28,6 +29,7 @@ check("no extra pitch", iron.adsPitch == null || iron.adsPitch === 0);
 check("no wrap grips", !iron.adsGrip);
 check("has sunk rear leaf", !!rear);
 check("has option-3 aiming bar", !!bar);
+check("has square fore U", !!fore);
 if (rear && rear instanceof THREE.Mesh) {
   rear.geometry.computeBoundingBox();
   const box = rear.geometry.boundingBox!;
@@ -45,9 +47,44 @@ if (bar && bar instanceof THREE.Mesh && rear) {
   check("U top is wider than the bottom cutout", Number(rear.userData.karIronTopW) > notchW + 1e-6, `topW=${rear.userData.karIronTopW} botW=${notchW}`);
   check("aiming bar is 35% shorter", barH > 0.0055 && barH < 0.008, `barH=${barH}`);
 }
+if (fore && fore instanceof THREE.Mesh && rear && rear instanceof THREE.Mesh) {
+  fore.geometry.computeBoundingBox();
+  rear.geometry.computeBoundingBox();
+  const foreW = fore.geometry.boundingBox!.max.x - fore.geometry.boundingBox!.min.x;
+  const rearW = rear.geometry.boundingBox!.max.x - rear.geometry.boundingBox!.min.x;
+  check("boxy U black is outside the rounded U", foreW > rearW, `foreW=${foreW} rearW=${rearW}`);
+  check("rounded U is in front of the boxy U", rear.position.z > fore.position.z, `roundZ=${rear.position.z} boxyZ=${fore.position.z}`);
+  const roundDepth = Number(rear.userData.karIronDepth);
+  const boxyDepth = Number(fore.userData.karIronDepth);
+  const boxyNear = fore.position.z + boxyDepth / 2;
+  const boxyFar = fore.position.z - boxyDepth / 2;
+  const roundFront = rear.position.z - roundDepth / 2;
+  const roundBack = rear.position.z + roundDepth / 2;
+  check("boxy U starts inside the rounded U", boxyNear > roundFront && boxyNear < roundBack, `boxyNear=${boxyNear} roundFront=${roundFront} roundBack=${roundBack}`);
+  check("boxy U finishes outside the rounded U", roundFront - boxyFar >= 0.018, `stickOut=${roundFront - boxyFar}`);
+  check("boxy U is taller than the rounded U", fore.geometry.boundingBox!.max.y > rear.geometry.boundingBox!.max.y, `boxyH=${fore.geometry.boundingBox!.max.y} roundH=${rear.geometry.boundingBox!.max.y}`);
+  check("boxy U is 5% shorter", fore.geometry.boundingBox!.max.y < 0.0144, `maxY=${fore.geometry.boundingBox!.max.y}`);
+  check("boxy U is 10% wider", foreW > 0.064, `foreW=${foreW}`);
+  const hoodHex = (fore.material as THREE.MeshStandardMaterial).color.getHex();
+  const rearHex = (rear.material as THREE.MeshStandardMaterial).color.getHex();
+  check("boxy U is the same black as the rifle", hoodHex === 0x1c1e1a, `hex=${hoodHex.toString(16)}`);
+  check("boxy U sheen differs from the rounded U", (fore.material as THREE.MeshStandardMaterial).roughness !== (rear.material as THREE.MeshStandardMaterial).roughness, `hoodR=${(fore.material as THREE.MeshStandardMaterial).roughness} leafR=${(rear.material as THREE.MeshStandardMaterial).roughness}`);
+  check("boxy and rounded Us are separate meshes", hoodHex === rearHex && fore !== rear);
+  const ch = Number(fore.userData.karIronChamfer);
+  check("boxy U has a small corner chamfer", ch > 0.0015 && ch < 0.0035, `ch=${ch}`);
+  check("boxy U cutout is a bit bigger", Number(fore.userData.karIronHoleW) > 0.025, `holeW=${fore.userData.karIronHoleW}`);
+  if (bar && bar instanceof THREE.Mesh) {
+    bar.geometry.computeBoundingBox();
+    const bH = bar.geometry.boundingBox!.max.y - bar.geometry.boundingBox!.min.y;
+    const bMin = bar.position.y - fore.position.y - bH * 0.5;
+    const floor = Number(fore.userData.karIronNotchFloor);
+    const frac = (floor - bMin) / bH;
+    check("square U covers ~1/5 of the aiming bar", frac > 0.15 && frac < 0.25, `frac=${frac}`);
+  }
+}
 
 if (failed) {
   console.error(`\n${failed} case(s) failed`);
   process.exit(1);
 }
-console.log("\niron Kar keeps the live ADS pose; U is smaller and sunk into the receiver");
+console.log("\nKar98k-2 keeps the live ADS pose; two-piece U is sunk into the receiver");

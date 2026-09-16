@@ -1635,7 +1635,7 @@ body.settings #locker-pip[hidden] {
 .loadout-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-auto-rows: 1fr;
   justify-items: stretch;
   align-items: stretch;
   gap: 10px;
