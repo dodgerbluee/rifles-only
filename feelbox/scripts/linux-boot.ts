@@ -148,9 +148,16 @@ function canvas(id = "view") {
   );
   check(
     "leaving the podium snaps the hip viewmodel",
-    src.includes('if (seenPhase === "matchover") resetPlayViewmodel()') &&
-      /else if \(podiumOn\) \{[\s\S]*?resetPlayViewmodel\(\)/.test(src) &&
+    src.includes("function beginNextMatch") &&
+      src.includes('if (seenPhase === "matchover") beginNextMatch()') &&
+      /else if \(podiumOn\) \{[\s\S]*?beginNextMatch\(\)/.test(src) &&
       src.includes("if (!ads && fov < 80) fov = 90"),
+  );
+  check(
+    "killcam does not keep driving after the podium",
+    src.includes('if (match.phase === "live" || match.phase === "planted" || match.phase === "settle") tickKillCam(dt)') &&
+      src.includes("function clearCinematicView") &&
+      src.includes("if (newMatch) beginNextMatch()"),
   );
 }
 

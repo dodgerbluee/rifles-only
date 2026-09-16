@@ -806,6 +806,7 @@ let reel: Reel | null = null;
 let reelPlayed = false;
 let lastRecord = -1;
 let killCam: { killerId: number; playT: number; endT: number } | null = null;
+let snapHipView = false;
 let freeLook = false;
 const specFly = { x: 0, y: 8, z: 0 };
 let viewFx: TapeFx = { nades: [], clouds: [] };
@@ -5099,6 +5100,8 @@ function resetPlayViewmodel() {
   punchY = 0;
   punchR = 0;
   gunKickZ = 0;
+  snapHipView = true;
+  camera.rotation.order = "YXZ";
   camera.up.set(0, 1, 0);
   camera.scale.set(1, 1, 1);
   camera.near = 0.05;
@@ -5114,6 +5117,36 @@ function resetPlayViewmodel() {
     poseAdsMask(hold, false);
     hold.flash.visible = false;
   }
+}
+
+function clearCinematicView() {
+  killCam = null;
+  reel = null;
+  lastReelAds = false;
+  document.body.classList.remove("killcam", "bestplay");
+  hideDeathOverlay();
+}
+
+function beginNextMatch() {
+  clearCinematicView();
+  possessId = null;
+  specId = null;
+  freeLook = false;
+  adsMouse = false;
+  ads = false;
+  pitch = 0;
+  mouseDown = false;
+  clearFire(fireQ);
+  podiumOn = false;
+  hidePodium();
+  clearPodium(scene);
+  ghost.visible = false;
+  hideDeath();
+  document.body.classList.remove("dead", "ads", "podium", "killcam", "bestplay");
+  for (const g of clientPawns.values()) g.visible = true;
+  for (const b of bots) b.root.visible = b.hp > 0;
+  for (const r of remotes.values()) r.root.visible = r.alive;
+  resetPlayViewmodel();
 }
 
 function roundSpawn() {
@@ -5781,7 +5814,7 @@ function frame(now: number) {
   if (match.phase === "freeze" && seenPhase !== "freeze") {
     setRoundResult(null);
     plantBroke = false;
-    if (seenPhase === "matchover") resetPlayViewmodel();
+    if (seenPhase === "matchover") beginNextMatch();
     if (isClient) {
       clearTape(tape);
       lastRecord = -1;
@@ -5805,7 +5838,11 @@ function frame(now: number) {
   } else if (reel) {
     stopReel();
   } else if (killCam) {
-    tickKillCam(dt);
+    if (match.phase === "live" || match.phase === "planted" || match.phase === "settle") tickKillCam(dt);
+    else {
+      clearCinematicView();
+      hideDeath();
+    }
   }
   const watching = viewingTape();
   document.body.classList.toggle("ads", watching ? lastReelAds : ads);
@@ -5930,7 +5967,11 @@ function frame(now: number) {
     seenRound = match.round;
     roundSpawn();
   }
+  if (isClient && lastSnap && match.phase === "freeze" && seenPhase === "matchover") {
+    beginNextMatch();
+  }
   if (isClient && lastSnap && match.round !== seenRound) {
+    const newMatch = match.round < seenRound;
     seenRound = match.round;
     nadeBag = { ...NADE_MAX };
     nadeKind = "smoke";
@@ -5938,7 +5979,8 @@ function frame(now: number) {
     throwHeld = null;
     predHist.length = 0;
     paintNadeView();
-    resetPlayViewmodel();
+    if (newMatch) beginNextMatch();
+    else resetPlayViewmodel();
   }
 
   const joinMenu =
@@ -6079,6 +6121,8 @@ function frame(now: number) {
         );
       } else {
         setSpec(alive ? (possessId != null ? `On ${slotById(match, possessId)?.name ?? "bot"} · their score` : null) : "No one to spectate · RMB free look");
+        camera.rotation.order = "YXZ";
+        camera.up.set(0, 1, 0);
         camera.position.set(px + rightX * leanM, eyeY, pz + rightZ * leanM);
         camera.rotation.y = yaw;
         camera.rotation.x = (alive ? pitch : Math.min(pitch + 0.35, 0.6)) - punchP * 0.018;
@@ -6118,7 +6162,10 @@ function frame(now: number) {
         const rest = (ads ? hold.adsPos : hold.hipPos).clone();
         const wrap = aiming && !!hold.adsGrip;
         const g = hold.root;
-        g.position.lerp(rest, Math.min(1, dt * 14));
+        if (snapHipView && !ads) {
+          g.position.copy(rest);
+          snapHipView = false;
+        } else g.position.lerp(rest, Math.min(1, dt * 14));
         g.position.z += gunKickZ;
         g.rotation.x = wrap && hold.adsPitch != null ? hold.adsPitch : (ads ? 0 : 0.1) - punchP * (wrap ? 0 : 0.04);
         g.rotation.y = ads ? 0 : 0.22;
@@ -6306,11 +6353,7 @@ function frame(now: number) {
       mountPodium(scene, world, ranked);
     }
   } else if (podiumOn) {
-    podiumOn = false;
-    hidePodium();
-    clearPodium(scene);
-    ghost.visible = false;
-    resetPlayViewmodel();
+    beginNextMatch();
   }
   updateHud({
     hp,
